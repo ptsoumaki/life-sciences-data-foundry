@@ -1,0 +1,30 @@
+name: "DataOps: Infrastructure CI/CD Gate"
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  terraform-spec-validation:
+    name: "Lint & Validate Structural Architecture"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform Binary
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Initialize Configuration Environments
+        run: terraform -chdir=terraform init -backend=false
+
+      - name: Static Layout Compliance Check
+        run: terraform -chdir=terraform fmt -check
+
+      - name: Declarative Syntax Evaluation
+        run: terraform -chdir=terraform validate

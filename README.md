@@ -39,7 +39,7 @@ This platform operates as an enterprise-grade, decoupled data foundry designed t
 [ STORAGE TIER ]                              [ COMPUTE TIER ]
 ┌──────────────────────────────┐              ┌──────────────────────────────┐
 │ AWS S3 (Raw / Object Locked) │              │ AWS ECS Container Cluster    │
-│ s3://abgl-raw-data-prod      │              │ abgl-ecs-cluster-prod        │
+│ s3://multiomics-raw-prod     │              │ multiomics-ecs-cluster-prod  │
 └──────────────┬───────────────┘              └──────────────┬───────────────┘
                │                                             │
                │      ┌──────────────────────────────┐       │

@@ -5,5 +5,5 @@ variable "aws_region" {
 
 variable "environment" {
   type    = string
-  default = "mva-prod"
+  default = "prod"
 }

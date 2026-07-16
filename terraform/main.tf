@@ -86,8 +86,8 @@ resource "aws_iam_policy" "s3_bypass_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = [
+        Effect = "Allow"
+        Action = [
           "s3:BypassGovernanceRetention",
           "s3:DeleteBucket",
           "s3:DeleteObject",

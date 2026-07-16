@@ -2,6 +2,11 @@
 resource "aws_s3_bucket" "raw_data" {
   bucket        = "multiomics-raw-${var.environment}"
   force_destroy = true
+  object_lock_enabled = true
+
+  versioning {
+    enabled = true
+  }
 }
 
 resource "aws_s3_bucket_object_lock_configuration" "raw_lock" {
@@ -17,6 +22,11 @@ resource "aws_s3_bucket_object_lock_configuration" "raw_lock" {
 resource "aws_s3_bucket" "processed_data" {
   bucket        = "multiomics-processed-${var.environment}"
   force_destroy = true
+  object_lock_enabled = true
+
+  versioning {
+    enabled = true
+  }
 }
 
 # 2. Compute Infrastructure - ECS Cluster for Containerized Workflow Nodes

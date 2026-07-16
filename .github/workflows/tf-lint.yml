@@ -19,6 +19,18 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
+      - name: Verify required secrets
+        run: |
+          if [ -z "${{ secrets.ENVIRONMENT }}" ]; then echo "Missing ENVIRONMENT secret" >&2; exit 1; fi
+          if [ -z "${{ secrets.AWS_REGION }}" ]; then echo "Missing AWS_REGION secret" >&2; exit 1; fi
+
+      - name: Load environment vars into workflow
+        run: |
+          echo "TF_VAR_environment=${{ secrets.ENVIRONMENT }}" >> $GITHUB_ENV
+          echo "TF_VAR_aws_region=${{ secrets.AWS_REGION }}" >> $GITHUB_ENV
+          echo "ENVIRONMENT=${{ secrets.ENVIRONMENT }}" >> $GITHUB_ENV
+          echo "AWS_REGION=${{ secrets.AWS_REGION }}" >> $GITHUB_ENV
+
       - name: Setup Terraform Binary
         uses: hashicorp/setup-terraform@v3
         with:
@@ -32,3 +44,13 @@ jobs:
 
       - name: Declarative Syntax Evaluation
         run: terraform -chdir=terraform validate
+
+      - name: Install Nextflow
+        run: |
+          curl -s https://get.nextflow.io | bash
+          sudo mv nextflow /usr/local/bin/
+
+      - name: Nextflow validation
+        run: |
+          nextflow -v
+          nextflow info pipelines/main.nf || true

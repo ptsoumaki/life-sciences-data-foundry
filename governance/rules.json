@@ -1,0 +1,60 @@
+{
+  "data_asset_type": "clinical_omop_person_ingest",
+  "expectation_suite_name": "gxp_clinical_integrity_checks",
+  "meta": {
+    "compliance_standard": "FDA_21_CFR_Part_11",
+    "target_schema": "OMOP_CDM_v5.4",
+    "author": "Vivi Tsoumaki"
+  },
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "person_id"
+      },
+      "meta": {
+        "severity": "CRITICAL_FATAL",
+        "description": "Primary key required for absolute audit traceability and patient identity linking."
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_match_regex",
+      "kwargs": {
+        "column": "birth_datetime",
+        "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+      },
+      "meta": {
+        "severity": "ERROR",
+        "description": "Timestamps must conform strictly to ISO-8601 UTC format to prevent clinical event misordering."
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "gender_concept_id",
+        "value_set": [8507, 8532, 0]
+      },
+      "meta": {
+        "severity": "WARNING",
+        "description": "Validates alignment with OMOP vocabulary standard concepts (8507=Male, 8532=Female, 0=Unknown)."
+      }
+    },
+    {
+      "expectation_type": "expect_table_columns_to_match_ordered_list",
+      "kwargs": {
+        "column_list": [
+          "person_id",
+          "gender_concept_id",
+          "year_of_birth",
+          "birth_datetime",
+          "race_concept_id",
+          "ethnicity_concept_id"
+        ]
+      },
+      "meta": {
+        "severity": "CRITICAL_FATAL",
+        "description": "Guarantees strict schema lock before writing to gold Delta layer."
+      }
+    }
+  ]
+}

@@ -35,6 +35,10 @@ To work with this platform blueprint, ensure the following core toolchains are i
   - Databricks PySpark semantic mapping scripts (`analytical-layer/omop_mapping.py`) translating unstructured genomic and clinical fields into standard OHDSI OMOP CDM v5.4 structures.
 - [ ] **Phase 4: Agentic Compliance Auditing Tier** (📅 *Planned*)
   - Model Context Protocol (MCP) server running LangGraph multi-agent loops to validate configurations and lineage against FDA regulatory parameters.
+- [ ] **Phase 5: GxP Hardening & Quality Engineering** (📋 *Backlog*)
+  - Python CI validation gate, `tests/` PyTest suite, S3 access audit logging, explicit KMS key isolation policy, and Delta Lake persistence.
+
+> 💡 For detailed upcoming tasks, security hardening items, and component backlogs, see **[TODO.md](file:///c:/Repos/life-sciences-platform-blueprint/life-sciences-platform-blueprint/TODO.md)**.
 
 ---
 
@@ -133,7 +137,8 @@ life-sciences-platform-blueprint/
 ├── CONTRIBUTING.md                   # Development workflow & commit standards
 ├── LICENSE                           # Repository license
 ├── README.md                         # Main platform blueprint specification
-└── SECURITY.md                       # Security controls & disclosure policy
+├── SECURITY.md                       # Security controls & disclosure policy
+└── TODO.md                           # Platform engineering backlog & TODO checklist
 ```
 
 ---

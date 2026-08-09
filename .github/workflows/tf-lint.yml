@@ -13,7 +13,7 @@ env:
 
 jobs:
   dataops-spec-validation:
-    name: "Lint & Validate Structural Architecture"
+    name: "Lint & Validate Structural Blueprint"
     runs-on: ubuntu-latest
 
     steps:

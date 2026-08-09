@@ -106,8 +106,8 @@ resource "aws_batch_compute_environment" "nextflow_exec" {
     ec2_configuration {
       image_type = "ECS_AL2"
     }
-    instance_type      = ["c6i.xlarge", "c6i.2xlarge", "m6i.2xlarge", "r6i.2xlarge"]
-    max_vcpus          = 128
+    instance_type      = ["c6i.xlarge", "c6i.2xlarge", "m6i.2xlarge", "r6i.2xlarge", "r6i.4xlarge", "r6i.8xlarge"]
+    max_vcpus          = 256
     min_vcpus          = 0
     subnets            = var.subnet_ids
     security_group_ids = [var.security_group_id]

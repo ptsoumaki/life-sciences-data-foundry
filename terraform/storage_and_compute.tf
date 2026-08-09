@@ -1,5 +1,5 @@
 # ==============================================================================
-# 1. ENCRYPTION & KEY MANAGEMENT (21 CFR PART 11 / HIPAA COMPLIANT)
+# 1. ENCRYPTION & KEY MANAGEMENT (21 CFR PART 11 COMPLIANT)
 # ==============================================================================
 
 resource "aws_kms_key" "gxp_key" {
@@ -17,7 +17,6 @@ resource "aws_kms_alias" "gxp_key_alias" {
 # 2. RAW & PROCESSED STORAGE TIERS (WORM IMMUTABILITY & ENCRYPTION)
 # ==============================================================================
 
-# Raw Ingestion Zone (WORM Locked)
 resource "aws_s3_bucket" "raw_data" {
   bucket              = "life-sciences-platform-raw-${var.environment}"
   force_destroy       = var.environment == "prod" ? false : true
@@ -59,7 +58,6 @@ resource "aws_s3_bucket_object_lock_configuration" "raw_lock" {
   }
 }
 
-# Processed Analytics Zone (Delta Lake / OMOP Target)
 resource "aws_s3_bucket" "processed_data" {
   bucket        = "life-sciences-platform-processed-${var.environment}"
   force_destroy = var.environment == "prod" ? false : true
@@ -130,7 +128,7 @@ resource "aws_batch_job_queue" "nextflow_queue" {
 }
 
 # ==============================================================================
-# 4. IAM EXECUTION & TASK ROLES
+# 4. IAM EXECUTION ROLES & GOVERNANCE POLICIES
 # ==============================================================================
 
 resource "aws_iam_role" "batch_service_role" {
@@ -196,4 +194,37 @@ resource "aws_iam_policy" "batch_s3_kms_policy" {
 resource "aws_iam_role_policy_attachment" "attach_task_s3_kms" {
   role       = aws_iam_role.batch_execution_role.name
   policy_arn = aws_iam_policy.batch_s3_kms_policy.arn
+}
+
+resource "aws_iam_policy" "s3_bypass_policy" {
+  count       = var.environment == "prod" ? 0 : 1
+  name        = "life-sciences-platform-s3-bypass-${var.environment}"
+  description = "Allows bypassing S3 GOVERNANCE retention mode during dev testing"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:BypassGovernanceRetention",
+          "s3:DeleteBucket",
+          "s3:DeleteObject",
+          "s3:DeleteObjectVersion"
+        ]
+        Resource = [
+          aws_s3_bucket.raw_data.arn,
+          "${aws_s3_bucket.raw_data.arn}/*",
+          aws_s3_bucket.processed_data.arn,
+          "${aws_s3_bucket.processed_data.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "attach_bypass" {
+  count      = var.environment == "prod" ? 0 : 1
+  role       = aws_iam_role.batch_execution_role.name
+  policy_arn = aws_iam_policy.s3_bypass_policy[0].arn
 }

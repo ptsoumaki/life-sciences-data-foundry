@@ -15,7 +15,7 @@ This repository functions as an enterprise-grade, integrated data foundry design
 - [x] **Phase 2: GxP Governance & Ingestion Integrity Gates**
   - Programmatic data quality suite using Great Expectations (`governance/rules.json`) enforcing FDA 21 CFR Part 11 electronic records integrity.
   - Automated execution lineage, SHA-256 cryptographic file tracking, and metric logging via MLflow (`governance/mlflow_tracker.py`).
-- [ ] **Phase 3: Clinical Normalization Ring (OMOP CDM)** (🛠️ *In Active Development*)
+- [x] **Phase 3: Clinical Normalization Ring (OMOP CDM)**
   - Databricks PySpark semantic mapping scripts (`analytical-layer/omop_mapping.py`) translating unstructured genomic and clinical fields into standard OHDSI OMOP CDM v5.4 structures.
 - [ ] **Phase 4: Agentic Compliance Auditing Tier** (📅 *Planned*)
   - Model Context Protocol (MCP) server running LangGraph multi-agent loops to validate configurations and lineage against FDA regulatory parameters.

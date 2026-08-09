@@ -1,26 +1,23 @@
 # ==============================================================================
-# 1. ENCRYPTION & DATA SECURITY (21 CFR PART 11 / HIPAA AT-REST BOUNDARIES)
+# 1. ENCRYPTION & KEY MANAGEMENT (21 CFR PART 11 / HIPAA COMPLIANT)
 # ==============================================================================
 
 resource "aws_kms_key" "gxp_key" {
-  description             = "Customer-managed KMS Key for GxP S3 data bucket encryption at rest"
+  description             = "Customer-managed KMS key for GxP data encryption at rest"
   deletion_window_in_days = 30
   enable_key_rotation     = true
-
-  tags = {
-    Name = "life-sciences-kms-${var.environment}"
-  }
 }
 
 resource "aws_kms_alias" "gxp_key_alias" {
-  name          = "alias/life-sciences-platform-key-${var.environment}"
+  name          = "alias/life-sciences-platform-${var.environment}"
   target_key_id = aws_kms_key.gxp_key.key_id
 }
 
 # ==============================================================================
-# 2. RAW INGESTION ZONE (WORM LOCKING & IMMUTABILITY)
+# 2. RAW & PROCESSED STORAGE TIERS (WORM IMMUTABILITY & ENCRYPTION)
 # ==============================================================================
 
+# Raw Ingestion Zone (WORM Locked)
 resource "aws_s3_bucket" "raw_data" {
   bucket              = "life-sciences-platform-raw-${var.environment}"
   force_destroy       = var.environment == "prod" ? false : true
@@ -29,9 +26,7 @@ resource "aws_s3_bucket" "raw_data" {
 
 resource "aws_s3_bucket_versioning" "raw_versioning" {
   bucket = aws_s3_bucket.raw_data.id
-  versioning_configuration {
-    status = "Enabled"
-  }
+  versioning_configuration { status = "Enabled" }
 }
 
 resource "aws_s3_bucket_public_access_block" "raw_private" {
@@ -42,9 +37,8 @@ resource "aws_s3_bucket_public_access_block" "raw_private" {
   restrict_public_buckets = true
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "raw_encryption" {
+resource "aws_s3_bucket_server_side_encryption_configuration" "raw_enc" {
   bucket = aws_s3_bucket.raw_data.id
-
   rule {
     apply_server_side_encryption_by_default {
       kms_master_key_id = aws_kms_key.gxp_key.arn
@@ -53,7 +47,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "raw_encryption" {
   }
 }
 
-# Cryptographic WORM Enforcement: Locks raw sequencing data for 90 days
 resource "aws_s3_bucket_object_lock_configuration" "raw_lock" {
   bucket     = aws_s3_bucket.raw_data.id
   depends_on = [aws_s3_bucket_versioning.raw_versioning]
@@ -66,10 +59,7 @@ resource "aws_s3_bucket_object_lock_configuration" "raw_lock" {
   }
 }
 
-# ==============================================================================
-# 3. PROCESSED ANALYTICS ZONE (DELTA LAKE / OMOP TARGET)
-# ==============================================================================
-
+# Processed Analytics Zone (Delta Lake / OMOP Target)
 resource "aws_s3_bucket" "processed_data" {
   bucket        = "life-sciences-platform-processed-${var.environment}"
   force_destroy = var.environment == "prod" ? false : true
@@ -77,9 +67,7 @@ resource "aws_s3_bucket" "processed_data" {
 
 resource "aws_s3_bucket_versioning" "processed_versioning" {
   bucket = aws_s3_bucket.processed_data.id
-  versioning_configuration {
-    status = "Enabled"
-  }
+  versioning_configuration { status = "Enabled" }
 }
 
 resource "aws_s3_bucket_public_access_block" "processed_private" {
@@ -90,9 +78,8 @@ resource "aws_s3_bucket_public_access_block" "processed_private" {
   restrict_public_buckets = true
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "processed_encryption" {
+resource "aws_s3_bucket_server_side_encryption_configuration" "processed_enc" {
   bucket = aws_s3_bucket.processed_data.id
-
   rule {
     apply_server_side_encryption_by_default {
       kms_master_key_id = aws_kms_key.gxp_key.arn
@@ -102,7 +89,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "processed_encrypt
 }
 
 # ==============================================================================
-# 4. COMPUTE TOPOLOGY (ECS & AWS BATCH FOR NEXTFLOW ORCHESTRATION)
+# 3. HYBRID BATCH COMPUTE TOPOLOGY FOR NEXTFLOW (FINOPS OPTIMIZED)
 # ==============================================================================
 
 resource "aws_ecs_cluster" "batch_cluster" {
@@ -115,13 +102,20 @@ resource "aws_batch_compute_environment" "nextflow_exec" {
   service_role             = aws_iam_role.batch_service_role.arn
 
   compute_resources {
-    type               = "FARGATE"
-    max_vcpus          = 64
+    type                = "SPOT"
+    allocation_strategy = "SPOT_CAPACITY_OPTIMIZED"
+    bid_percentage      = 100
+    ec2_configuration {
+      image_type = "ECS_AL2"
+    }
+    instance_type      = ["c6i.xlarge", "c6i.2xlarge", "m6i.2xlarge", "r6i.2xlarge"]
+    max_vcpus          = 128
+    min_vcpus          = 0
     subnets            = var.subnet_ids
     security_group_ids = [var.security_group_id]
   }
 
-  depends_on = [aws_iam_role_policy_attachment.batch_service_role_attach]
+  depends_on = [aws_iam_role_policy_attachment.batch_service_attach]
 }
 
 resource "aws_batch_job_queue" "nextflow_queue" {
@@ -136,13 +130,11 @@ resource "aws_batch_job_queue" "nextflow_queue" {
 }
 
 # ==============================================================================
-# 5. IDENTITY & ACCESS MANAGEMENT (PIPELINE PROCESS ROLES & POLICIES)
+# 4. IAM EXECUTION & TASK ROLES
 # ==============================================================================
 
-# AWS Batch Service Role
 resource "aws_iam_role" "batch_service_role" {
   name = "life-sciences-platform-batch-service-role-${var.environment}"
-
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -153,15 +145,13 @@ resource "aws_iam_role" "batch_service_role" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "batch_service_role_attach" {
+resource "aws_iam_role_policy_attachment" "batch_service_attach" {
   role       = aws_iam_role.batch_service_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole"
 }
 
-# ECS Container Task Execution Role
 resource "aws_iam_role" "batch_execution_role" {
   name = "life-sciences-platform-execution-role-${var.environment}"
-
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -172,27 +162,21 @@ resource "aws_iam_role" "batch_execution_role" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_attach" {
+resource "aws_iam_role_policy_attachment" "ecs_execution_attach" {
   role       = aws_iam_role.batch_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# S3 Data Access & KMS Decryption Policy for Nextflow Microservices
 resource "aws_iam_policy" "batch_s3_kms_policy" {
   name        = "life-sciences-platform-task-policy-${var.environment}"
-  description = "Grants containerized processes read/write access to encrypted S3 zones"
+  description = "Grants Nextflow workers read/write access to encrypted S3 zones"
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:GetObjectVersion",
-          "s3:PutObject",
-          "s3:ListBucket"
-        ]
+        Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:ListBucket"]
         Resource = [
           aws_s3_bucket.raw_data.arn,
           "${aws_s3_bucket.raw_data.arn}/*",
@@ -202,13 +186,7 @@ resource "aws_iam_policy" "batch_s3_kms_policy" {
       },
       {
         Effect = "Allow"
-        Action = [
-          "kms:Decrypt",
-          "kms:DescribeKey",
-          "kms:Encrypt",
-          "kms:GenerateDataKey*",
-          "kms:ReEncrypt*"
-        ]
+        Action = ["kms:Decrypt", "kms:DescribeKey", "kms:Encrypt", "kms:GenerateDataKey*"]
         Resource = [aws_kms_key.gxp_key.arn]
       }
     ]
@@ -218,38 +196,4 @@ resource "aws_iam_policy" "batch_s3_kms_policy" {
 resource "aws_iam_role_policy_attachment" "attach_task_s3_kms" {
   role       = aws_iam_role.batch_execution_role.name
   policy_arn = aws_iam_policy.batch_s3_kms_policy.arn
-}
-
-# Dev/Staging Bypass Policy for S3 GOVERNANCE WORM Mode
-resource "aws_iam_policy" "s3_bypass_policy" {
-  count       = var.environment == "prod" ? 0 : 1
-  name        = "life-sciences-platform-s3-bypass-${var.environment}"
-  description = "Allows bypassing S3 GOVERNANCE retention mode during dev testing"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:BypassGovernanceRetention",
-          "s3:DeleteBucket",
-          "s3:DeleteObject",
-          "s3:DeleteObjectVersion"
-        ]
-        Resource = [
-          aws_s3_bucket.raw_data.arn,
-          "${aws_s3_bucket.raw_data.arn}/*",
-          aws_s3_bucket.processed_data.arn,
-          "${aws_s3_bucket.processed_data.arn}/*"
-        ]
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "attach_bypass" {
-  count      = var.environment == "prod" ? 0 : 1
-  role       = aws_iam_role.batch_execution_role.name
-  policy_arn = aws_iam_policy.s3_bypass_policy[0].arn
 }

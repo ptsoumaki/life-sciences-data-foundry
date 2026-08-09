@@ -14,6 +14,7 @@ To work with this platform blueprint, ensure the following core toolchains are i
 | Tool | Required Version | Purpose |
 | --- | --- | --- |
 | **Python** | `>=3.10, <3.12` | Governance validation, lineage tracking, and PySpark OMOP CDM mapping |
+| **Java / JDK** | `>=11` (17 recommended) | Required JVM runtime engine for Nextflow pipeline workflow execution |
 | **Terraform** | `>=1.5.0` | Declarative IaC infrastructure provisioning |
 | **Nextflow** | `>=23.04.0` | Episodic containerized workflow orchestration |
 | **Docker Engine** | Latest Stable | Container execution context for Nextflow processes |
@@ -117,8 +118,10 @@ life-sciences-platform-blueprint/
 │   ├── sample_clinical.csv           # Synthetic OMOP CDM v5.4 test dataset
 │   └── README.md                     # Governance & quality layer specification
 ├── pipelines/
-│   ├── modules/                      # Modular Nextflow DSL2 process definitions
-│   ├── templates/                    # Workflow execution script templates
+│   ├── modules/
+│   │   └── fastqc.nf                 # Modular Nextflow DSL2 process definitions
+│   ├── templates/
+│   │   └── qc_summary.sh             # Workflow execution script template
 │   ├── main.nf                       # Nextflow orchestration execution entry point
 │   ├── nextflow.config               # Engine runtime configuration
 │   └── README.md                     # Pipeline module specification
@@ -126,20 +129,36 @@ life-sciences-platform-blueprint/
 │   ├── bootstrap.ps1                 # Windows PowerShell environment initializer
 │   └── bootstrap.sh                  # POSIX shell environment initializer
 ├── terraform/
-│   ├── main.tf                       # Storage, compute, WORM, and IAM resources
-│   ├── providers.tf                  # AWS provider settings & default tags
-│   ├── variables.tf                  # Environment variable validations
+│   ├── github_governance.tf          # GitHub repo governance, branch protection, & envs
+│   ├── main.tf                       # Root module entry point & account/region discovery
+│   ├── providers.tf                  # AWS/GitHub provider settings & default tags
+│   ├── storage_and_compute.tf        # S3 WORM storage, KMS encryption, & AWS Batch topology
+│   ├── variables.tf                  # Environment variable validations & defaults
 │   └── terraform.tfvars.example      # Example environment inputs template
-├── .env                              # Active environment overrides
 ├── .env.example                      # Environment variable template
 ├── .gitignore                        # Git exclusion rules
 ├── CHANGELOG.md                      # Platform version release history
 ├── CONTRIBUTING.md                   # Development workflow & commit standards
 ├── LICENSE                           # Repository license
+├── pyproject.toml                    # Python build backend & project dependencies
 ├── README.md                         # Main platform blueprint specification
 ├── SECURITY.md                       # Security controls & disclosure policy
 └── TODO.md                           # Platform engineering backlog & TODO checklist
 ```
+
+---
+
+## 📚 Component Specifications & Documentation
+
+| Component | Path | Focus Area |
+| --- | --- | --- |
+| **Governance & GxP** | [`governance/README.md`](file:///c:/Repos/life-sciences-platform-blueprint/life-sciences-platform-blueprint/governance/README.md) | Great Expectations rules, MLflow lineage tracking, & synthetic data |
+| **Analytical Engine** | [`analytical-layer/README.md`](file:///c:/Repos/life-sciences-platform-blueprint/life-sciences-platform-blueprint/analytical-layer/README.md) | PySpark Medallion Delta Lake pipeline & OMOP CDM v5.4 mapping |
+| **Nextflow Pipelines** | [`pipelines/README.md`](file:///c:/Repos/life-sciences-platform-blueprint/life-sciences-platform-blueprint/pipelines/README.md) | DSL2 process modules, AWS Batch queue targeting, & execution profiles |
+| **Agentic Intelligence**| [`agentic-ai/README.md`](file:///c:/Repos/life-sciences-platform-blueprint/life-sciences-platform-blueprint/agentic-ai/README.md) | Planned LangGraph multi-agent compliance auditor & MCP server |
+| **Contribution Guide** | [`CONTRIBUTING.md`](file:///c:/Repos/life-sciences-platform-blueprint/life-sciences-platform-blueprint/CONTRIBUTING.md) | Feature branching, conventional commit standards, & PR rules |
+| **Release History** | [`CHANGELOG.md`](file:///c:/Repos/life-sciences-platform-blueprint/life-sciences-platform-blueprint/CHANGELOG.md) | Semantic versioning release history |
+| **Engineering Backlog**| [`TODO.md`](file:///c:/Repos/life-sciences-platform-blueprint/life-sciences-platform-blueprint/TODO.md) | Upcoming Phase 4/5 tasks and GxP hardening items |
 
 ---
 
@@ -151,6 +170,7 @@ life-sciences-platform-blueprint/
 | **Compute Execution Context** | Amazon ECS Clusters | Persistent EC2 Nodes | Fixed servers incur heavy idle runtime costs and introduce significant software version configuration drift over time. |
 | **Data Integrity Layer** | S3 WORM Object Locking | Standard IAM Deny Rules | Administrative users can bypass IAM policies; WORM configurations introduce a strict cryptographic block that cannot be overwritten. |
 | **Schema Validation Engine** | Decoupled JSON Expectations (`rules.json`) | Inline DLT `@dlt.expect` Decorators | Decoupled JSON allows validation execution across non-Databricks orchestrators (Nextflow/AWS Batch) without engine vendor lock-in. |
+| **Clinical Analytics Engine** | PySpark & Delta Lake | Traditional RDBMS (Postgres) | Traditional relational DBs bottleneck on petabyte-scale multi-omics join queries; Delta Lake provides ACID transactions, Z-Ordering, and linear horizontal scaling. |
 | **DataOps Quality Control** | GitHub Actions Pipeline | Manual Peer Review | Human review is slow and subjective; automated DataOps pipelines ensure strict compliance checks on every git commit. |
 
 ---
@@ -178,6 +198,12 @@ terraform apply
 # Run Nextflow Orchestration
 cd ..
 nextflow run pipelines/main.nf -c pipelines/nextflow.config
+
+# Run GxP Data Quality & Lineage Gate
+python governance/mlflow_tracker.py
+
+# Run PySpark OMOP CDM v5.4 Normalization Engine
+python analytical-layer/omop_mapping.py
 ```
 
 ### Required CI Secrets

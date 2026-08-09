@@ -1,9 +1,9 @@
 nextflow.enable.dsl=2
 
-params.raw_input = "s3://multiomics-raw-${params.environment}/*.fastq"
-params.outdir    = "s3://multiomics-processed-${params.environment}/qc/"
+params.raw_input = "s3://life-sciences-platform-raw-${params.environment}/*.fastq"
+params.outdir    = "s3://life-sciences-platform-processed-${params.environment}/qc/"
 
-// Require the environment param to be set in the shell or via nextflow.config
+// Enforce strict environment parameter validation
 if (!params.environment) {
     error("ENVIRONMENT is not set. Export ENVIRONMENT or set params.environment in nextflow.config before running Nextflow.")
 }

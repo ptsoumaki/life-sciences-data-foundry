@@ -1,7 +1,23 @@
 # Enterprise Life Sciences Platform Blueprint 🏗️ (WIP)
 
+[![DataOps CI/CD Gate](https://github.com/ptsoumaki/life-sciences-platform-blueprint/actions/workflows/tf-lint.yml/badge.svg)](https://github.com/ptsoumaki/life-sciences-platform-blueprint/actions/workflows/tf-lint.yml)
+
 ## 📋 Strategic Vision
 This repository functions as an enterprise-grade, integrated data foundry designed to transform high-throughput raw biological data and real-world clinical records into queryable, GxP-compliant relational datasets.
+
+---
+
+## 🛠️ Prerequisites & Development Toolchain
+
+To work with this platform blueprint, ensure the following core toolchains are installed:
+
+| Tool | Required Version | Purpose |
+| --- | --- | --- |
+| **Python** | `>=3.10, <3.12` | Governance validation, lineage tracking, and PySpark OMOP CDM mapping |
+| **Terraform** | `>=1.5.0` | Declarative IaC infrastructure provisioning |
+| **Nextflow** | `>=23.04.0` | Episodic containerized workflow orchestration |
+| **Docker Engine** | Latest Stable | Container execution context for Nextflow processes |
+| **AWS CLI** | `v2` | AWS infrastructure authentication and operations |
 
 ---
 
@@ -86,12 +102,16 @@ life-sciences-platform-blueprint/
 │       └── tf-lint.yml               # DataOps CI/CD linting & syntax gate
 ├── agentic-ai/
 │   ├── graph_auditor.py              # LangGraph compliance multi-agent state loops
-│   └── mcp_server.py                 # Model Context Protocol (MCP) audit server
+│   ├── mcp_server.py                 # Model Context Protocol (MCP) audit server
+│   └── README.md                     # Agentic AI architecture specification
 ├── analytical-layer/
-│   └── omop_mapping.py               # PySpark clinical normalization to OMOP CDM v5.4
+│   ├── omop_mapping.py               # PySpark clinical normalization to OMOP CDM v5.4
+│   └── README.md                     # Analytical layer architecture specification
 ├── governance/
 │   ├── mlflow_tracker.py             # MLflow lineage logging & SHA-256 audit tracking
-│   └── rules.json                    # Great Expectations GxP clinical validation suite
+│   ├── rules.json                    # Great Expectations GxP clinical validation suite
+│   ├── sample_clinical.csv           # Synthetic OMOP CDM v5.4 test dataset
+│   └── README.md                     # Governance & quality layer specification
 ├── pipelines/
 │   ├── modules/                      # Modular Nextflow DSL2 process definitions
 │   ├── templates/                    # Workflow execution script templates
@@ -104,13 +124,16 @@ life-sciences-platform-blueprint/
 ├── terraform/
 │   ├── main.tf                       # Storage, compute, WORM, and IAM resources
 │   ├── providers.tf                  # AWS provider settings & default tags
-│   └── variables.tf                  # Environment variable validations
+│   ├── variables.tf                  # Environment variable validations
+│   └── terraform.tfvars.example      # Example environment inputs template
 ├── .env                              # Active environment overrides
 ├── .env.example                      # Environment variable template
 ├── .gitignore                        # Git exclusion rules
+├── CHANGELOG.md                      # Platform version release history
+├── CONTRIBUTING.md                   # Development workflow & commit standards
 ├── LICENSE                           # Repository license
-└── README.md                         # Main platform blueprint specification
-
+├── README.md                         # Main platform blueprint specification
+└── SECURITY.md                       # Security controls & disclosure policy
 ```
 
 ---
@@ -134,11 +157,12 @@ Synchronize runtime parameters across Terraform, Nextflow, and local execution e
 ```bash
 # Copy template and configure target parameters
 cp .env.example .env
-source .env
 
-# Export Terraform-specific inputs
-export TF_VAR_environment=$ENVIRONMENT
-export TF_VAR_aws_region=$AWS_REGION
+# Option A: Load environment on POSIX (Linux/macOS)
+source scripts/bootstrap.sh
+
+# Option B: Load environment on PowerShell (Windows)
+.\scripts\bootstrap.ps1
 
 # Deploy Infrastructure
 cd terraform
@@ -149,7 +173,6 @@ terraform apply
 # Run Nextflow Orchestration
 cd ..
 nextflow run pipelines/main.nf -c pipelines/nextflow.config
-
 ```
 
 ### Required CI Secrets

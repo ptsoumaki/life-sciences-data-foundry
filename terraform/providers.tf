@@ -17,18 +17,17 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Environment = var.environment
-      ManagedBy   = "Terraform"
-      Project     = "Life-Sciences-Platform"
-      Repository  = "life-sciences-platform-blueprint"
+      Environment        = var.environment
+      ManagedBy          = "Terraform"
+      Project            = "Life-Sciences-Platform"
+      Repository         = "life-sciences-platform-blueprint"
+      ComplianceStandard = "FDA_21_CFR_Part_11"
     }
   }
 }
 
 provider "github" {
-  # Authenticates via Personal Access Token (PAT) or GitHub App token
+  # Authenticates via Personal Access Token (PAT) or GitHub App token 
+  # TODO: Implement SSH keys auth
   token = var.github_token
 }
-
-
-

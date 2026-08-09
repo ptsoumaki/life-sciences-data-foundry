@@ -12,3 +12,15 @@ variable "environment" {
     error_message = "The environment variable must be exactly 'dev', 'staging', or 'prod'."
   }
 }
+
+variable "is_solo_developer" {
+  type        = bool
+  default     = true
+  description = "Toggle to false when onboarding team members to enforce multi-party peer reviews."
+}
+
+variable "github_token" {
+  type        = string
+  sensitive   = true
+  description = "GitHub Personal Access Token with repo administration scopes."
+}

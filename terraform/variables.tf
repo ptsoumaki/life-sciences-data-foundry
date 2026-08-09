@@ -1,6 +1,6 @@
 variable "environment" {
   type        = string
-  description = "Deployment environment suffix (dev, staging, prod). Provide via TF_VAR_environment or -var flag. No default to enforce explicit selection."
+  description = "Deployment environment suffix (dev, staging, prod). Provide via TF_VAR_environment or -var flag."
 
   validation {
     condition     = contains(["dev", "staging", "prod"], var.environment)
@@ -16,21 +16,25 @@ variable "is_solo_developer" {
 
 variable "github_token" {
   type        = string
+  default     = ""
   sensitive   = true
   description = "GitHub Personal Access Token with repo administration scopes."
 }
 
 variable "aws_region" {
   type        = string
-  description = "AWS region for infrastructure deployment. Provide via TF_VAR_aws_region or -var flag. No default to enforce explicit selection."
+  default     = "eu-west-1"
+  description = "AWS region for infrastructure deployment. Provide via TF_VAR_aws_region or -var flag."
 }
 
 variable "subnet_ids" {
   type        = list(string)
+  default     = []
   description = "Target VPC private subnet IDs for AWS Batch compute environments."
 }
 
 variable "security_group_id" {
   type        = string
+  default     = ""
   description = "Security group ID allowing egress for Nextflow container execution tasks."
 }

@@ -1,0 +1,7 @@
+# Example Terraform environment inputs for Life Sciences Platform deployment
+environment       = "dev"
+aws_region        = "eu-west-1"
+is_solo_developer = true
+github_token      = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+subnet_ids        = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+security_group_id = "sg-0123456789abcdef0"

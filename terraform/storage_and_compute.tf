@@ -18,7 +18,7 @@ resource "aws_kms_alias" "gxp_key_alias" {
 # ==============================================================================
 
 resource "aws_s3_bucket" "raw_data" {
-  bucket              = "life-sciences-platform-raw-${var.environment}"
+  bucket              = "life-sciences-platform-raw-${data.aws_caller_identity.current.account_id}-${var.environment}"
   force_destroy       = var.environment == "prod" ? false : true
   object_lock_enabled = true
 }
@@ -59,7 +59,7 @@ resource "aws_s3_bucket_object_lock_configuration" "raw_lock" {
 }
 
 resource "aws_s3_bucket" "processed_data" {
-  bucket        = "life-sciences-platform-processed-${var.environment}"
+  bucket        = "life-sciences-platform-processed-${data.aws_caller_identity.current.account_id}-${var.environment}"
   force_destroy = var.environment == "prod" ? false : true
 }
 
@@ -94,6 +94,30 @@ resource "aws_ecs_cluster" "batch_cluster" {
   name = "life-sciences-platform-ecs-cluster-${var.environment}"
 }
 
+# IAM Instance Role and Instance Profile for AWS Batch EC2 Instances
+resource "aws_iam_role" "ecs_instance_role" {
+  name = "life-sciences-platform-ecs-instance-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_instance_role_attach" {
+  role       = aws_iam_role.ecs_instance_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
+resource "aws_iam_instance_profile" "ecs_instance_profile" {
+  name = "life-sciences-platform-ecs-instance-profile-${var.environment}"
+  role = aws_iam_role.ecs_instance_role.name
+}
+
 resource "aws_batch_compute_environment" "nextflow_exec" {
   compute_environment_name = "nextflow-compute-${var.environment}"
   type                     = "MANAGED"
@@ -106,6 +130,7 @@ resource "aws_batch_compute_environment" "nextflow_exec" {
     ec2_configuration {
       image_type = "ECS_AL2"
     }
+    instance_role      = aws_iam_instance_profile.ecs_instance_profile.arn
     instance_type      = ["c6i.xlarge", "c6i.2xlarge", "m6i.2xlarge", "r6i.2xlarge", "r6i.4xlarge", "r6i.8xlarge"]
     max_vcpus          = 256
     min_vcpus          = 0
@@ -113,7 +138,10 @@ resource "aws_batch_compute_environment" "nextflow_exec" {
     security_group_ids = [var.security_group_id]
   }
 
-  depends_on = [aws_iam_role_policy_attachment.batch_service_attach]
+  depends_on = [
+    aws_iam_role_policy_attachment.batch_service_attach,
+    aws_iam_instance_profile.ecs_instance_profile
+  ]
 }
 
 resource "aws_batch_job_queue" "nextflow_queue" {
@@ -148,6 +176,7 @@ resource "aws_iam_role_policy_attachment" "batch_service_attach" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole"
 }
 
+# Task Execution Role (for ECS Agent pulling images and logging)
 resource "aws_iam_role" "batch_execution_role" {
   name = "life-sciences-platform-execution-role-${var.environment}"
   assume_role_policy = jsonencode({
@@ -163,6 +192,19 @@ resource "aws_iam_role" "batch_execution_role" {
 resource "aws_iam_role_policy_attachment" "ecs_execution_attach" {
   role       = aws_iam_role.batch_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# Task Job Role (for running containers executing Nextflow workloads)
+resource "aws_iam_role" "batch_job_role" {
+  name = "life-sciences-platform-job-role-${var.environment}"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
+  })
 }
 
 resource "aws_iam_policy" "batch_s3_kms_policy" {
@@ -196,6 +238,11 @@ resource "aws_iam_role_policy_attachment" "attach_task_s3_kms" {
   policy_arn = aws_iam_policy.batch_s3_kms_policy.arn
 }
 
+resource "aws_iam_role_policy_attachment" "attach_job_s3_kms" {
+  role       = aws_iam_role.batch_job_role.name
+  policy_arn = aws_iam_policy.batch_s3_kms_policy.arn
+}
+
 resource "aws_iam_policy" "s3_bypass_policy" {
   count       = var.environment == "prod" ? 0 : 1
   name        = "life-sciences-platform-s3-bypass-${var.environment}"
@@ -226,5 +273,11 @@ resource "aws_iam_policy" "s3_bypass_policy" {
 resource "aws_iam_role_policy_attachment" "attach_bypass" {
   count      = var.environment == "prod" ? 0 : 1
   role       = aws_iam_role.batch_execution_role.name
+  policy_arn = aws_iam_policy.s3_bypass_policy[0].arn
+}
+
+resource "aws_iam_role_policy_attachment" "attach_job_bypass" {
+  count      = var.environment == "prod" ? 0 : 1
+  role       = aws_iam_role.batch_job_role.name
   policy_arn = aws_iam_policy.s3_bypass_policy[0].arn
 }

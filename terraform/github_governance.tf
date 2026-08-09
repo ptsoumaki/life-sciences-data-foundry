@@ -4,13 +4,13 @@ resource "github_repository" "blueprint" {
   visibility  = "public"
 
   # Enforce explicit merge commits for 21 CFR Part 11 audit trails
-  allow_merge_commit     = true
-  allow_squash_merge     = false
-  allow_rebase_merge     = false
+  allow_merge_commit = true
+  allow_squash_merge = false
+  allow_rebase_merge = false
 
-  has_issues           = true
-  has_projects         = false
-  has_wiki             = false
+  has_issues   = true
+  has_projects = false
+  has_wiki     = false
 
   security_and_analysis {
     secret_scanning {
@@ -43,7 +43,7 @@ resource "github_branch_protection" "main_protection" {
     required_approving_review_count = var.is_solo_developer ? 0 : 1
   }
 
-  allows_deletions   = false
+  allows_deletions    = false
   allows_force_pushes = false
 }
 

@@ -183,8 +183,8 @@ resource "aws_iam_policy" "batch_s3_kms_policy" {
         ]
       },
       {
-        Effect = "Allow"
-        Action = ["kms:Decrypt", "kms:DescribeKey", "kms:Encrypt", "kms:GenerateDataKey*"]
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:Encrypt", "kms:GenerateDataKey*"]
         Resource = [aws_kms_key.gxp_key.arn]
       }
     ]

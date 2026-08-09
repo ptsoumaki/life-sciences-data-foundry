@@ -1,17 +1,17 @@
-name: "DataOps: Infrastructure CI/CD Gate"
+name: "DataOps: Infrastructure & Pipeline CI/CD Gate"
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, dev ]
 
 # Force the runner execution environment to prioritize the Node.js 24 engine
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  terraform-spec-validation:
+  dataops-spec-validation:
     name: "Lint & Validate Structural Architecture"
     runs-on: ubuntu-latest
 
@@ -19,18 +19,19 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Verify required secrets
+      # GxP Compliance: Resolve environment inputs with audit trail logging
+      - name: Verify and Resolve Deployment Secrets
         run: |
           # Use secrets if present; otherwise, fall back to non-sensitive defaults for testing
           ENV_NAME="${{ secrets.ENVIRONMENT }}"
           REG_NAME="${{ secrets.AWS_REGION }}"
           
           if [ -z "$ENV_NAME" ]; then
-            echo "::warning::ENVIRONMENT secret is empty. Falling back to default: dev"
+            echo "::warning::ENVIRONMENT secret missing. Defaulting to 'dev' for static linting."
             ENV_NAME="dev"
           fi
           if [ -z "$REG_NAME" ]; then
-            echo "::warning::AWS_REGION secret is empty. Falling back to default: eu-west-1"
+            echo "::warning::AWS_REGION secret missing. Defaulting to 'eu-west-1' for static linting."
             REG_NAME="eu-west-1"
           fi
           
@@ -38,34 +39,55 @@ jobs:
           echo "RESOLVED_ENV=$ENV_NAME" >> $GITHUB_ENV
           echo "RESOLVED_REG=$REG_NAME" >> $GITHUB_ENV
 
-      - name: Load environment vars into workflow
+      - name: Populate Terraform & Pipeline Environment Variables
         run: |
           echo "TF_VAR_environment=$RESOLVED_ENV" >> $GITHUB_ENV
           echo "TF_VAR_aws_region=$RESOLVED_REG" >> $GITHUB_ENV
           echo "ENVIRONMENT=$RESOLVED_ENV" >> $GITHUB_ENV
           echo "AWS_REGION=$RESOLVED_REG" >> $GITHUB_ENV
 
+      # Infrastructure Validation Tier (Terraform IaC)
       - name: Setup Terraform Binary
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.5.0
 
-      - name: Initialize Configuration Environments
+      - name: Initialize Terraform (Detached Backend)
         run: terraform -chdir=terraform init -backend=false
 
-      - name: Static Layout Compliance Check
+      - name: Verify Terraform Formatting Standards
         run: terraform -chdir=terraform fmt -check
 
-      - name: Declarative Syntax Evaluation
+      - name: Validate Declarative HCL Syntax
         run: terraform -chdir=terraform validate
+
+      # Pipeline Validation Tier (Nextflow DSL2)
+      - name: Cache Nextflow Engine Binaries
+        id: cache-nextflow
+        uses: actions/cache@v4
+        with:
+          path: ~/.nextflow
+          key: ${{ runner.os }}-nextflow-23.04.0
+          restore-keys: |
+            ${{ runner.os }}-nextflow-
 
       - name: Install Nextflow
         run: |
+          mkdir -p ~/.nextflow
           curl -s https://get.nextflow.io | bash
           sudo mv nextflow /usr/local/bin/
-
-      - name: Nextflow validation
-        run: |
           nextflow -v
-          # Updated to target the correct path in the new monorepo layout
-          nextflow info pipelines/main.nf || true
+
+      - name: Evaluate Nextflow Config Resolution
+        run: nextflow config pipelines/main.nf -profile local_dev
+
+      - name: Dry-Run Stub Execution Gate
+        # -stub compiles processes and channel graphs without running container microservices
+        run: |
+          mkdir -p mock_data
+          touch mock_data/sample_1.fastq
+          nextflow run pipelines/main.nf \
+            -profile local_dev \
+            -stub \
+            --raw_input "mock_data/*.fastq" \
+            --outdir "mock_data/out"

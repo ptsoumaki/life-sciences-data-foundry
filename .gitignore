@@ -1,4 +1,89 @@
-terraform/.terraform.lock.hcl
-terraform/.terraform/providers/registry.terraform.io/hashicorp/aws/5.100.0/windows_amd64/terraform-provider-aws_v5.100.0_x5.exe
-terraform/.terraform/providers/registry.terraform.io/hashicorp/aws/5.100.0/windows_amd64/LICENSE.txt
+# ==========================================
+# 1. Environment & Local Secrets
+# ==========================================
 .env
+!.env.example
+*.pem
+*.key
+*.tfvars
+!*.tfvars.example
+
+# ==========================================
+# 2. Terraform IaC Layer (/terraform)
+# ==========================================
+terraform/.terraform/
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform-provider-*.exe
+*.exe
+
+# ==========================================
+# 3. Nextflow Pipeline Layer (/pipelines)
+# ==========================================
+.nextflow/
+.nextflow.log*
+work/
+mock_data/
+.nextflow.status
+*.annData
+*.rds
+*.bam
+*.fastq.gz
+
+# ==========================================
+# 4. Governance & Quality Layer (/governance)
+# ==========================================
+mlruns/
+mlruns.db
+.great_expectations/uncommitted/
+great_expectations/uncommitted/
+
+# ==========================================
+# 5. Analytical Layer (/analytical-layer)
+# ==========================================
+metastore_db/
+derby.log
+spark-warehouse/
+.dbfs/
+*.parquet
+
+# ==========================================
+# 6. Agentic AI & MCP Layer (/agentic-ai)
+# ==========================================
+node_modules/
+*.sqlite
+*.sqlite3
+*.db
+.langchain/
+.mcp/
+
+# ==========================================
+# 7. Python & Local Runtime Artifacts
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+*.log
+
+# ==========================================
+# 8. OS & IDE Specific Artifacts
+# ==========================================
+.DS_Store
+Thumbs.db
+.vscode/
+!.vscode/settings.json
+.idea/

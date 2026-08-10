@@ -37,7 +37,7 @@ Ensure your local development station has the following required toolchain versi
 
 | Tool | Required Version | Purpose |
 | --- | --- | --- |
-| **Python** | `>=3.10, <3.12` | Governance validation, lineage tracking, and PySpark OMOP CDM mapping |
+| **Python** | `3.11` (`>=3.10, <3.12`) | Governance validation, lineage tracking, and PySpark OMOP CDM mapping |
 | **Java / JDK** | `>=11` (17 recommended) | JVM runtime engine required by Nextflow pipeline runner |
 | **Terraform** | `>=1.5.0` | Declarative IaC infrastructure provisioning and governance |
 | **Nextflow** | `>=23.04.0` | Episodic containerized DSL2 workflow orchestration |

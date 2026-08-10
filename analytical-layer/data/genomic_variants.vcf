@@ -1,0 +1,15 @@
+##fileformat=VCFv4.2
+##fileDate=20240110
+##source=NextflowVariantCallingPipeline
+##reference=GRCh38
+##INFO=<ID=GENE,Number=1,Type=String,Description="Gene Symbol">
+##INFO=<ID=CLNSIG,Number=1,Type=String,Description="ClinVar Clinical Significance">
+##INFO=<ID=AF,Number=1,Type=Float,Description="Allele Frequency">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	PATIENT_ID	SAMPLE_ID
+chr17	43044295	rs80357906	T	TG	99.0	PASS	GENE=BRCA1;CLNSIG=Pathogenic;AF=0.001	PAT_1001	SAMPLE_01
+chr17	7673803	rs28934578	G	A	95.5	PASS	GENE=TP53;CLNSIG=Pathogenic;AF=0.0005	PAT_1002	SAMPLE_02
+chr7	55191822	rs121434568	C	T	99.0	PASS	GENE=EGFR;CLNSIG=Pathogenic;AF=0.002	PAT_1003	SAMPLE_03
+chr13	32315474	rs11571833	A	T	45.0	PASS	GENE=BRCA2;CLNSIG=Benign;AF=0.045	PAT_1004	SAMPLE_04
+chr1	10089	rs11122233	C	T	18.2	LOW_QUAL	GENE=UNKNOWN;CLNSIG=Uncertain_significance;AF=0.10	PAT_1005	SAMPLE_05

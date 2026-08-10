@@ -203,7 +203,7 @@ terraform apply
 
 # Run Nextflow Orchestration
 cd ..
-nextflow run pipelines/main.nf -c pipelines/nextflow.config
+nextflow run pipelines/main.nf -profile local_dev -c pipelines/nextflow.config
 
 # Run GxP Data Quality & Lineage Gate
 python governance/mlflow_tracker.py

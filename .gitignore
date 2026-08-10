@@ -2,6 +2,7 @@
 # 1. Environment & Local Secrets
 # ==========================================
 .env
+*.egg-info/
 !.env.example
 *.pem
 *.key
@@ -95,4 +96,5 @@ htmlcov/
 Thumbs.db
 .vscode/
 !.vscode/settings.json
+analytical-layer/hadoop/
 .idea/

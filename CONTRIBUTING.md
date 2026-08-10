@@ -1,6 +1,6 @@
-# Contributing to the Enterprise Life Sciences Platform Blueprint 🧬
+# Contributing to Enterprise Life Sciences Data Foundry 🧬
 
-Thank you for contributing to the **Enterprise Life Sciences Platform Blueprint**. This project provides an enterprise-grade, GxP-compliant data foundry for high-throughput biological sequencing and clinical record normalization.
+Thank you for contributing to **Enterprise Life Sciences Data Foundry**. This project provides an enterprise-grade, GxP-compliant data foundry for high-throughput biological sequencing and clinical record normalization.
 
 To maintain strict regulatory integrity (FDA 21 CFR Part 11), zero-trust security, and high-quality software engineering standards, all contributions must adhere to the workflows and guidelines described in this document.
 
@@ -37,7 +37,7 @@ Ensure your local development station has the following required toolchain versi
 
 | Tool | Required Version | Purpose |
 | --- | --- | --- |
-| **Python** | `>=3.10, <3.12` | Governance validation, lineage tracking, and PySpark OMOP CDM mapping |
+| **Python** | `3.11` (`>=3.10, <3.12`) | Governance validation, lineage tracking, and PySpark OMOP CDM mapping |
 | **Java / JDK** | `>=11` (17 recommended) | JVM runtime engine required by Nextflow pipeline runner |
 | **Terraform** | `>=1.5.0` | Declarative IaC infrastructure provisioning and governance |
 | **Nextflow** | `>=23.04.0` | Episodic containerized DSL2 workflow orchestration |
@@ -50,8 +50,8 @@ Ensure your local development station has the following required toolchain versi
 
 1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/ptsoumaki/life-sciences-platform-blueprint.git
-   cd life-sciences-platform-blueprint
+   git clone https://github.com/ptsoumaki/life-sciences-data-foundry.git
+   cd life-sciences-data-foundry
    ```
 
 2. **Configure Local Environment File:**

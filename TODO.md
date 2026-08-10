@@ -1,40 +1,54 @@
-# 📋 Platform Engineering Backlog & TODO List
+# 📋 Data Engineering & Clinical Analytics Backlog
 
-This document tracks upcoming milestones, roadmap phases, and operational hardening tasks for the **Enterprise Life Sciences Platform Blueprint**.
-
----
-
-## 🤖 Phase 4: Agentic Compliance Auditing Tier (Roadmap Milestone)
-
-- [ ] **LangGraph Multi-Agent Audit Loop (`agentic-ai/graph_auditor.py`)**
-  - Implement state graph evaluating Terraform IaC state, S3 WORM object locks, and MLflow audit lineage against FDA 21 CFR Part 11 parameters.
-- [ ] **Model Context Protocol Server (`agentic-ai/mcp_server.py`)**
-  - Implement FastMCP server exposing GxP audit validation, Great Expectations rule checking, and MLflow lineage query tools.
+This document tracks active development phases and engineering priorities for the **Enterprise Life Sciences Data Platform Blueprint**.
 
 ---
 
-## ⚡ Phase 5: GxP Hardening & Operational Excellence
+## 🧪 Phase 4: Data Lakehouse & Clinical Normalization Engine (Active Sprint)
 
-### 1. DataOps CI/CD & Automated Testing
-- [ ] **Python Pipeline CI Gate (`.github/workflows/tf-lint.yml`)**
-  - Add Python code quality checks (`ruff`, `mypy`, `pytest`, `python -m py_compile`) to the GitHub Actions workflow.
-- [ ] **Automated Integration Test Suite (`tests/`)**
-  - Create `tests/` directory with `pytest` unit/integration tests covering `governance/mlflow_tracker.py`, `analytical-layer/omop_mapping.py`, and bootstrap scripts.
+- [x] **Modular PySpark OMOP CDM v5.4 Package Refactoring (`analytical-layer/omop_cdm_v54/`)**
+  - Refactored monolithic mapping script into modular domain packages (`person.py`, `measurement.py`, `condition_occurrence.py`, `genomic_variants.py`, `connectors.py`).
+  - Mapped clinical diagnosis phenotypes to SNOMED standard concept IDs (`201826`, `316866`) and LOINC laboratory codes.
+  - Built PySpark transformation modules mapping genomic variant fields (VCF v4.2 metadata) to OMOP `MEASUREMENT` structures.
+  - Implemented Dual Ingestion Modes (`--mode demo`, `--mode remote`, `--data_dir`).
+- [ ] **Delta Lake Performance & Storage Optimization (`analytical-layer/medallion/`)**
+  - Implement PySpark write sinks utilizing Delta Lake Liquid Clustering (`CLUSTER BY (person_id, concept_id)`).
+  - Enforce schema evolution and merge contracts (`option("mergeSchema", "true")`) for incoming unstructured variant payloads.
+- [ ] **Data Contract Runtime Enforcement (`governance/rules.json` & `analytical-layer/omop_mapping.py`)**
+  - Integrate Great Expectations runtime assertions directly into PySpark DataFrame write streams before Silver-to-Gold tier persistence.
 
-### 2. GxP Security & Audit Infrastructure
-- [ ] **S3 Server Access Logging (`terraform/storage_and_compute.tf`)**
-  - Provision an S3 audit log bucket (`aws_s3_bucket.audit_logs`) and attach `aws_s3_bucket_logging` to `raw_data` and `processed_data` buckets for FDA 21 CFR Part 11 access auditability.
-- [ ] **Explicit KMS Key Access Policy (`terraform/storage_and_compute.tf`)**
-  - Replace default KMS key policy with explicit IAM principal access restrictions to enforce strict key isolation.
+---
 
-### 3. Analytical Engine & Clinical Normalization
-- [ ] **Delta Lake Output Persistence (`analytical-layer/omop_mapping.py`)**
-  - Add configurable Delta Lake output writing (`df.write.format("delta").mode("overwrite").save(...)`) for local PySpark and Databricks Lakehouse execution.
-- [ ] **OMOP `CONDITION_OCCURRENCE` Schema Mapping (`analytical-layer/omop_mapping.py`)**
-  - Map clinical diagnosis phenotypes to SNOMED standard concept IDs (`201826`, `316866`).
+## 🧪 Phase 5: Automated Testing & Quality Assurance Suite
 
-### 4. Governance & Developer Experience
-- [ ] **Flexible ISO-8601 Timestamp Validation (`governance/rules.json`)**
-  - Update regex pattern to support ISO-8601 timestamps with millisecond precision (`.SSSZ`) and space separators.
+- [ ] **PySpark Unit Testing Suite (`tests/unit/`)**
+  - Construct isolated `pytest` unit tests for each domain transformer (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`).
+  - Validate string normalization, ICD-10 code mapping, LOINC code resolution, and explicit OMOP CDM v5.4 type casting.
+- [ ] **End-to-End Integration Testing Suite (`tests/integration/`)**
+  - Construct `pytest-spark` integration tests verifying full Medallion pipeline execution (`--mode demo` and `--mode remote`).
+  - Validate Great Expectations rule enforcement and MLflow SHA-256 cryptographic lineage tracking (`governance/mlflow_tracker.py`).
+
+---
+
+## 🤖 Phase 6: Agentic Lineage & MLOps Infrastructure
+
+- [ ] **LangGraph Delta Lake Lineage Auditor (`agentic-ai/graph_auditor.py`)**
+  - Build state graph evaluating MLflow lineage trees (`governance/mlflow_tracker.py`), Delta Lake transaction commit logs (`_delta_log/`), and schema integrity against FDA 21 CFR Part 11 parameters.
+- [ ] **Model Context Protocol (MCP) Clinical Data Server (`agentic-ai/mcp_server.py`)**
+  - Expose FastMCP tools for querying OMOP CDM concept hierarchies, vocabulary relationships, and pipeline execution state.
+
+---
+
+## ⚡ Phase 7: Production DataOps & CI/CD Pipeline Automation
+
+- [ ] **DataOps CI/CD Gate Expansion (`.github/workflows/tf-lint.yml`)**
+  - Configure GitHub Actions to execute `ruff`, `mypy`, and PySpark unit/integration test suites on all feature branch pull requests.
+
+---
+
+## 🛠️ Background Utilities & Nice-to-Haves
+
 - [ ] **Environment Cleanup Utilities (`scripts/clean.ps1` / `scripts/clean.sh`)**
-  - Add cleanup script to reset local execution artifacts (`mock_data/`, `mlruns/`, `metastore_db/`, `spark-warehouse/`).
+  - Maintain utility scripts to reset local execution artifacts (`mock_data/`, `mlruns/`, `metastore_db/`, `spark-warehouse/`).
+- [ ] **GitHub Projects (v2) Automated Status Tracking (`.github/workflows/projects-automation.yml`)** *(Nice-to-Have)*
+  - Optional automation workflow for syncing issues, pull request status, and GitHub Projects v2 board columns upon PR open/merge.

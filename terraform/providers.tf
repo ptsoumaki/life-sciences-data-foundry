@@ -19,8 +19,8 @@ provider "aws" {
     tags = {
       Environment        = var.environment
       ManagedBy          = "Terraform"
-      Project            = "Life-Sciences-Platform"
-      Repository         = "life-sciences-platform-blueprint"
+      Project            = "Life-Sciences-Data-Foundry"
+      Repository         = "life-sciences-data-foundry"
       ComplianceStandard = "FDA_21_CFR_Part_11"
     }
   }

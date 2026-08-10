@@ -1,5 +1,5 @@
 resource "github_repository" "blueprint" {
-  name        = "life-sciences-platform-blueprint"
+  name        = "life-sciences-data-foundry"
   description = "Enterprise GxP-compliant multi-omics foundry & clinical normalization engine"
   visibility  = "public"
 

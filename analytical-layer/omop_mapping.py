@@ -16,7 +16,7 @@ from pyspark.sql.functions import (
 def create_spark_session() -> SparkSession:
     """Initializes local Spark session configured for Delta Lake extensions."""
     return SparkSession.builder \
-        .appName("life-sciences-platform-omop-cdm-foundry") \
+        .appName("life-sciences-data-foundry-omop-cdm") \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
         .config("spark.sql.shuffle.partitions", "4") \

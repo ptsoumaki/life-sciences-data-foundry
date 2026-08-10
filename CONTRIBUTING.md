@@ -1,6 +1,6 @@
-# Contributing to the Enterprise Life Sciences Platform Blueprint 🧬
+# Contributing to Enterprise Life Sciences Data Foundry 🧬
 
-Thank you for contributing to the **Enterprise Life Sciences Platform Blueprint**. This project provides an enterprise-grade, GxP-compliant data foundry for high-throughput biological sequencing and clinical record normalization.
+Thank you for contributing to **Enterprise Life Sciences Data Foundry**. This project provides an enterprise-grade, GxP-compliant data foundry for high-throughput biological sequencing and clinical record normalization.
 
 To maintain strict regulatory integrity (FDA 21 CFR Part 11), zero-trust security, and high-quality software engineering standards, all contributions must adhere to the workflows and guidelines described in this document.
 
@@ -50,8 +50,8 @@ Ensure your local development station has the following required toolchain versi
 
 1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/ptsoumaki/life-sciences-platform-blueprint.git
-   cd life-sciences-platform-blueprint
+   git clone https://github.com/ptsoumaki/life-sciences-data-foundry.git
+   cd life-sciences-data-foundry
    ```
 
 2. **Configure Local Environment File:**

@@ -20,7 +20,7 @@ This repository is a production-grade, open-source Data Engineering proof-of-con
 
 | Standard / Domain | Platform Implementation | Strategic Purpose in Biopharma R&D |
 | :--- | :--- | :--- |
-| **OHDSI OMOP CDM v5.4** | `analytical-layer/omop_mapping.py` | Cross-institutional RWE analytics & standardized cohort building across clinical networks |
+| **OHDSI OMOP CDM v5.4** | `analytical-layer/omop_cdm_v54/` | Cross-institutional RWE analytics & standardized cohort building across clinical networks |
 | **FDA 21 CFR Part 11** | `governance/rules.json` & `mlflow_tracker.py` | Electronic records integrity, SHA-256 cryptographic run lineage & programmatic data contracts |
 | **Delta Lake ACID** | `analytical-layer/` | Transactional reliability, schema evolution, time-travel auditing & Liquid Clustering |
 | **Model Context Protocol** | `agentic-ai/mcp_server.py` | FastMCP agentic interface for querying OMOP concept hierarchies & execution state |
@@ -33,7 +33,7 @@ To run the analytical pipelines, validation suites, and IaC deployment engines, 
 
 | Tool | Required Version | Strategic Purpose |
 | --- | --- | --- |
-| **Python** | `>=3.10, <3.12` | Core PySpark transformations, MLflow lineage tracking, and data contract engines |
+| **Python** | `3.11` (`>=3.10, <3.12`) | Core PySpark transformations, MLflow lineage tracking, and data contract engines |
 | **Apache Spark / PySpark** | `>=3.5.0` | Distributed data engine for OMOP CDM mapping and Delta Lake persistence |
 | **Delta Lake** | `>=3.1.0` | ACID storage engine enforcing Liquid Clustering and Z-Ordering |
 | **Nextflow** | `>=23.04.0` | Episodic containerized workflow orchestration for data pipeline execution |
@@ -54,17 +54,20 @@ To run the analytical pipelines, validation suites, and IaC deployment engines, 
   - Programmatic data quality suite using Great Expectations (`governance/rules.json`) enforcing FDA 21 CFR Part 11 electronic records integrity.
   - Automated execution lineage, SHA-256 cryptographic file tracking, and metric logging via MLflow (`governance/mlflow_tracker.py`).
 - [x] **Phase 3: Base Clinical Normalization Ring (OMOP CDM)**
-  - Databricks PySpark semantic mapping scripts (`analytical-layer/omop_mapping.py`) translating unstructured genomic and clinical fields into standard OHDSI OMOP CDM v5.4 `PERSON` and `MEASUREMENT` structures.
+  - PySpark semantic mapping package (`analytical-layer/omop_cdm_v54/`) translating unstructured genomic and clinical fields into standard OHDSI OMOP CDM v5.4 `PERSON`, `CONDITION_OCCURRENCE`, and `MEASUREMENT` structures.
 - [ ] **Phase 4: Data Lakehouse & Clinical Normalization Engine** (🚀 *Active Sprint*)
-  - Refactor monolithic `omop_mapping.py` into modular domain packages (`analytical-layer/omop_cdm_v54/` with `person.py`, `measurement.py`, `condition_occurrence.py`, `genomic_variants.py`).
+  - Refactored monolithic mapping script into modular domain packages (`analytical-layer/omop_cdm_v54/` with `person.py`, `measurement.py`, `condition_occurrence.py`, `genomic_variants.py`, `connectors.py`).
+  - Dual Ingestion Open Data Connectors (`--mode demo`, `--mode remote`, `--data_dir`).
   - PySpark write streams with Delta Lake Liquid Clustering (`CLUSTER BY (person_id, concept_id)`) and schema evolution.
   - Runtime assertion hooks connecting Great Expectations rules (`governance/rules.json`) directly to Silver-to-Gold tier persistence.
-- [ ] **Phase 5: Agentic Lineage & MLOps Infrastructure** (📅 *Planned*)
+- [ ] **Phase 5: Automated Testing & Quality Assurance Suite** (🧪 *Upcoming*)
+  - Unit test suite (`tests/unit/`) with `pytest` covering PySpark domain transformers (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`).
+  - Integration test suite (`tests/integration/`) with `pytest-spark` covering end-to-end Medallion pipeline execution, Open Data Connectors, and MLflow lineage tracking.
+- [ ] **Phase 6: Agentic Lineage & MLOps Infrastructure** (🤖 *Planned*)
   - LangGraph state graph evaluator (`agentic-ai/graph_auditor.py`) auditing MLflow lineage trees (`governance/mlflow_tracker.py`) and Delta Lake transaction commit logs (`_delta_log/`) against GxP regulatory parameters.
   - Model Context Protocol (MCP) clinical server (`agentic-ai/mcp_server.py`) exposing FastMCP tools for OMOP CDM concept hierarchies and pipeline state.
-- [ ] **Phase 6: Automated DataOps & Quality Engineering** (📋 *Backlog*)
-  - Integration test suite (`tests/`) with `pytest` / `pytest-spark` covering OMOP mapping, Delta Lake schema enforcement, and MLflow tracking.
-  - DataOps CI workflow expansion (`.github/workflows/tf-lint.yml`) running `ruff`, `mypy`, and `pytest` on PRs.
+- [ ] **Phase 7: Production DataOps & CI/CD Pipeline Automation** (⚡ *Backlog*)
+  - DataOps CI workflow expansion (`.github/workflows/tf-lint.yml`) running `ruff`, `mypy`, and automated test suites on PRs.
 
 > 💡 For detailed upcoming tasks, security hardening items, and component backlogs, see **[TODO.md](TODO.md)**.
 
@@ -136,8 +139,20 @@ life-sciences-data-foundry/
 │   ├── graph_auditor.py              # LangGraph compliance multi-agent state loops
 │   ├── mcp_server.py                 # Model Context Protocol (MCP) clinical audit server
 │   └── README.md                     # Agentic AI architecture specification
-├── analytical-layer/                 # PRIMARY ENGINE: Analytical Data Engineering
-│   ├── omop_mapping.py               # PySpark clinical normalization to OMOP CDM v5.4
+├── analytical-layer/                 # PRIMARY ENGINE: Analytical Data Engineering & OMOP Normalization
+│   ├── data/                         # Real-World Clinical & Multi-Omics Ingestion Datasets
+│   │   ├── clinical_diagnoses.csv    # ICD-10-CM clinical diagnosis events
+│   │   ├── clinical_patients.csv     # Patient demographics (Synthea / MIMIC-IV format)
+│   │   ├── genomic_variants.vcf      # VCF v4.2 variant annotations (ClinVar / 1000 Genomes)
+│   │   └── lab_measurements.csv      # LOINC lab biomarker observations
+│   ├── omop_cdm_v54/                 # MODULAR PYSPARK OMOP CDM v5.4 DOMAIN PACKAGE
+│   │   ├── __init__.py               # Package exports & versioning
+│   │   ├── condition_occurrence.py   # ICD-10 to SNOMED CT concept transformer
+│   │   ├── connectors.py             # Open Data ingestion connector (demo vs remote mode)
+│   │   ├── genomic_variants.py       # VCF parser & variant measurement transformer
+│   │   ├── measurement.py            # LOINC lab biomarker transformer
+│   │   ├── person.py                 # Demographics to OMOP PERSON transformer
+│   │   └── pipeline.py               # Production Medallion pipeline orchestrator
 │   └── README.md                     # Analytical layer architecture specification
 ├── governance/                       # DATA GOVERNANCE & GxP COMPLIANCE LAYER
 │   ├── mlflow_tracker.py             # MLflow lineage logging & SHA-256 audit tracking
@@ -204,28 +219,77 @@ life-sciences-data-foundry/
 
 ## ⚙️ Execution & Pipeline Operations
 
-Initialize runtime parameters and trigger core data engineering workflows:
+### 🐍 Virtual Environment (`.venv`) Setup & Environment Bootstrap
+
+Follow these steps to establish a clean Python 3.11 development environment and execute the pipeline:
+
+#### 1. Create and Activate Virtual Environment
+
+**On Windows (PowerShell):**
+```powershell
+# 1. Create virtual environment using Python 3.11
+py -3.11 -m venv .venv
+
+# 2. Activate virtual environment
+.\.venv\Scripts\Activate.ps1
+```
+
+**On Linux / macOS:**
+```bash
+# 1. Create virtual environment using Python 3.11
+python3.11 -m venv .venv
+
+# 2. Activate virtual environment
+source .venv/bin/activate
+```
+
+#### 2. Install Project Dependencies from `pyproject.toml`
+
+With `.venv` activated, install core & development dependencies directly from [`pyproject.toml`](pyproject.toml):
 
 ```bash
-# Copy template and configure target parameters
-cp .env.example .env
+# Upgrade pip and install repository in editable mode
+pip install --upgrade pip
+pip install -e ".[dev]"
+```
 
-# Option A: Load environment on POSIX (Linux/macOS)
-source scripts/bootstrap.sh
+#### 3. Configure Java Environment (`JAVA_HOME`)
 
-# Option B: Load environment on PowerShell (Windows)
-.\scripts\bootstrap.ps1
+PySpark 3.5+ requires **Java 17 (JDK 17)**:
 
+```powershell
+# Windows (PowerShell) - Point JAVA_HOME to OpenJDK 17
+$env:JAVA_HOME="C:\Program Files\Microsoft\jdk-17.0.20.8-hotspot"
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+```
+*(On Linux/macOS, ensure `JAVA_HOME` points to your JDK 17 installation directory).*
+
+---
+
+### 🚀 Running Pipeline Execution Modes
+
+The **PySpark OMOP CDM v5.4 Normalization Engine** supports **Dual Ingestion Modes** via Open Data Connectors ([`omop_cdm_v54/connectors.py`](analytical-layer/omop_cdm_v54/connectors.py)):
+
+```bash
+# Mode A: Execute with local synthetic demo dataset (Default / Instant offline demo)
+python analytical-layer/omop_cdm_v54/pipeline.py --mode demo
+
+# Mode B: Stream directly from remote public AWS Open Data S3 & NCBI endpoints
+python analytical-layer/omop_cdm_v54/pipeline.py --mode remote
+```
+
+---
+
+### 🛠️ DataOps Validation & Pipeline Commands
+
+```bash
 # 1. Run GxP Data Quality Contract & Lineage Audit Gate
 python governance/mlflow_tracker.py
 
-# 2. Run PySpark OMOP CDM v5.4 Clinical Normalization Engine
-python analytical-layer/omop_mapping.py
-
-# 3. Run Nextflow Dry-Run Pipeline Orchestration
+# 2. Run Nextflow Dry-Run Pipeline Orchestration
 nextflow run pipelines/main.nf -profile local_dev -stub
 
-# 4. Run Terraform IaC Background Infrastructure Validation
+# 3. Run Terraform IaC Background Infrastructure Validation
 terraform -chdir=terraform init -backend=false
 terraform -chdir=terraform validate
 ```

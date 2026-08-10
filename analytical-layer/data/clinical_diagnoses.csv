@@ -1,0 +1,8 @@
+encounter_id,raw_patient_id,diagnosis_date,icd10_code,diagnosis_description,condition_type
+ENC_5001,PAT_1001,2023-03-15 10:30:00,E11.9,Type 2 diabetes mellitus without complications,EHR_OUTPATIENT
+ENC_5002,PAT_1001,2023-03-15 10:30:00,I10,Essential primary hypertension,EHR_OUTPATIENT
+ENC_5003,PAT_1002,2023-05-20 14:00:00,J45.909,Unspecified asthma uncomplicated,EHR_OUTPATIENT
+ENC_5004,PAT_1003,2023-08-10 09:15:00,I21.9,Acute myocardial infarction unspecified,EHR_INPATIENT
+ENC_5005,PAT_1004,2023-09-01 11:45:00,C34.90,Malignant neoplasm of unspecified part of bronchus or lung,EHR_INPATIENT
+ENC_5006,PAT_1005,2023-11-12 16:20:00,E11.9,Type 2 diabetes mellitus without complications,EHR_OUTPATIENT
+ENC_5007,PAT_1007,2024-01-08 08:00:00,I10,Essential primary hypertension,EHR_OUTPATIENT

@@ -150,6 +150,18 @@ All commit messages must adhere to the [Conventional Commits](https://www.conven
 - **Invalid:** `updated code` (lacks type, scope, and imperative format)
 - **Invalid:** `FIX: fixed bug in script` (incorrect casing and structure)
 
+### Merge Commit Specifications
+
+To satisfy GxP / FDA 21 CFR Part 11 auditability standards, explicit merge commits are enforced (`allow_merge_commit = true`). Squash and rebase merges are disabled in repository settings (`github_governance.tf`).
+
+- **Standard GitHub Merge Format (Default):**
+  - **Subject:** `Merge pull request #<PR_NUMBER> from <branch-name>` (or `Merge branch '<feature-branch>' into <target-branch>`)
+  - **Body:** Summary of changes merged via the PR.
+- **Custom / Conventional Merge Format:**
+  - **Subject:** `<type>(<scope>): merge branch '<feature-branch>' into <target-branch>`
+  - **Body:** Details on technical context, risk assessment, or regulatory rationale, ending with issue links (e.g., `Closes #123`).
+
+
 ---
 
 ## 🎨 Code Style & Formatting Guidelines

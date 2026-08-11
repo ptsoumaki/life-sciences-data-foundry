@@ -10,7 +10,7 @@ import os
 import sys
 import argparse
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, to_timestamp, lit
+from pyspark.sql.functions import col, current_timestamp, lit, to_date, to_timestamp
 
 try:
     from delta import configure_spark_with_delta_pip
@@ -31,42 +31,27 @@ try:
     from .condition_occurrence import transform_condition_occurrence
     from .genomic_variants import transform_genomic_variants
 except ImportError:
-    try:
-        from omop_cdm_v54.connectors import (
-            configure_s3a_anonymous_access,
-            load_demographics_data,
-            load_diagnoses_data,
-            load_labs_data,
-            load_genomics_data,
-        )
-        from omop_cdm_v54.person import transform_person
-        from omop_cdm_v54.measurement import transform_measurement
-        from omop_cdm_v54.condition_occurrence import transform_condition_occurrence
-        from omop_cdm_v54.genomic_variants import transform_genomic_variants
-    except ImportError:
-        from connectors import (
-            configure_s3a_anonymous_access,
-            load_demographics_data,
-            load_diagnoses_data,
-            load_labs_data,
-            load_genomics_data,
-        )
-        from person import transform_person
-        from measurement import transform_measurement
-        from condition_occurrence import transform_condition_occurrence
-        from genomic_variants import transform_genomic_variants
+    # Fallback for direct script execution (e.g. python pipeline.py)
+    from connectors import (
+        configure_s3a_anonymous_access,
+        load_demographics_data,
+        load_diagnoses_data,
+        load_labs_data,
+        load_genomics_data,
+    )
+    from person import transform_person
+    from measurement import transform_measurement
+    from condition_occurrence import transform_condition_occurrence
+    from genomic_variants import transform_genomic_variants
 
 try:
     from medallion.writer import DeltaMedallionWriter
 except ImportError:
     try:
-        from ..medallion.writer import DeltaMedallionWriter
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from medallion.writer import DeltaMedallionWriter
     except ImportError:
-        try:
-            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from medallion.writer import DeltaMedallionWriter
-        except ImportError:
-            DeltaMedallionWriter = None
+        DeltaMedallionWriter = None
 
 
 
@@ -158,11 +143,14 @@ def run_omop_pipeline(
     # -------------------------------------------------------------------------
     print("\n[INFO] [SILVER TIER] Enforcing GxP Data Quality Contracts & Timestamp Parsing...")
 
-    from pyspark.sql.functions import try_to_timestamp
-
-    # Filter Demographics
+    # Filter Demographics — apply OMOP CDM v5.4 midnight normalization convention.
+    # Per OMOP §3.1 PERSON: "For data sources with date only, the time is defaulted to midnight."
+    # to_date() handles any recognizable format (YYYY-MM-DD, YYYY-MM-DD HH:mm:ss, ISO 8601, etc.).
+    # to_timestamp() promotes the date to 00:00:00, explicitly implementing the OMOP convention
+    # rather than treating date-only values as a parse error.
     df_clinical_parsed = df_raw_patients.withColumn(
-        "parsed_birth_dt", try_to_timestamp(col("birth_datetime"), lit("yyyy-MM-dd HH:mm:ss"))
+        "parsed_birth_dt",
+        to_timestamp(to_date(col("birth_datetime")))
     )
 
     df_silver_clinical = df_clinical_parsed.filter(
@@ -172,21 +160,26 @@ def run_omop_pipeline(
         col("parsed_birth_dt").isNull() | ~col("gender").isin("MALE", "FEMALE", "UNKNOWN")
     )
 
-    # Filter Diagnoses
+    # Filter Diagnoses — parse to DateType directly (OMOP condition_start_date is `date`, not `datetime`).
     df_silver_diagnoses = df_raw_diagnoses.withColumn(
-        "parsed_diag_dt", try_to_timestamp(col("diagnosis_date"), lit("yyyy-MM-dd HH:mm:ss"))
+        "parsed_diag_dt",
+        to_date(col("diagnosis_date"))
     ).filter(col("parsed_diag_dt").isNotNull())
 
-    # Filter Labs
+    # Filter Labs — parse to DateType directly (OMOP measurement_date is `date`, not `datetime`).
     df_silver_labs = df_raw_labs.withColumn(
-        "parsed_lab_dt", try_to_timestamp(col("lab_datetime"), lit("yyyy-MM-dd HH:mm:ss"))
+        "parsed_lab_dt",
+        to_date(col("lab_datetime"))
     ).filter(col("parsed_lab_dt").isNotNull())
 
     # Filter Genomics
     df_silver_genomics = df_raw_genomics.filter((col("filter") == "PASS") | (col("filter") == "."))
 
-    print(f"[METRIC] Silver Clinical Records Accepted: {df_silver_clinical.count()}")
-    print(f"[METRIC] Clinical Records Quarantined:     {df_quarantine_clinical.count()}")
+    # Cache counts to avoid re-scanning the Silver DataFrame twice (Issue #6 fix).
+    _silver_clinical_count = df_silver_clinical.count()
+    _qc_count = df_quarantine_clinical.count()
+    print(f"[METRIC] Silver Clinical Records Accepted: {_silver_clinical_count}")
+    print(f"[METRIC] Clinical Records Quarantined:     {_qc_count}")
     print(f"[METRIC] Silver Diagnoses Records Accepted: {df_silver_diagnoses.count()}")
     print(f"[METRIC] Silver Lab Biomarkers Accepted:    {df_silver_labs.count()}")
     print(f"[METRIC] Silver Genomic Variants Accepted:  {df_silver_genomics.count()}")
@@ -226,7 +219,7 @@ def run_omop_pipeline(
         writer.write_silver_table(df_silver_labs, "lab_measurements")
         writer.write_silver_table(df_silver_genomics, "genomic_variants")
 
-        if df_quarantine_clinical.count() > 0:
+        if _qc_count > 0:
             writer.write_quarantine_table(df_quarantine_clinical, "quarantine_clinical")
 
         # Write Gold Sinks with Liquid Clustering (CLUSTER BY (person_id, concept_id))
@@ -264,8 +257,8 @@ if __name__ == "__main__":
                         help="Execution mode: 'demo' (local synthetic datasets) or 'remote' (public open datasets)")
     parser.add_argument("--data_dir", type=str, default=None,
                         help="Path to custom directory containing real-world clinical & genomic input files")
-    parser.add_argument("--save_delta", action="store_true", default=True,
-                        help="Persist Medallion datasets into Delta Lake sinks with Liquid Clustering & Schema Evolution")
+    parser.add_argument("--save_delta", action=argparse.BooleanOptionalAction, default=True,
+                        help="Persist Medallion datasets into Delta Lake sinks (use --no-save_delta to skip)")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Custom path for Delta Lake warehouse storage")
     parser.add_argument("--run_maintenance", action="store_true", default=False,

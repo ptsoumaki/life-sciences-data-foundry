@@ -4,7 +4,7 @@ Description: PySpark domain transformer mapping VCF genomic variant annotations 
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, expr, lit, current_timestamp, concat_ws, regexp_extract, when, to_date
+from pyspark.sql.functions import col, expr, lit, current_timestamp, concat_ws, regexp_extract, when, to_date, coalesce
 
 
 def transform_genomic_variants(df_silver_genomics: DataFrame) -> DataFrame:
@@ -38,7 +38,7 @@ def transform_genomic_variants(df_silver_genomics: DataFrame) -> DataFrame:
         to_date(current_timestamp()).alias("measurement_date"),
         current_timestamp().alias("measurement_datetime"),
         lit(4182210).cast("integer").alias("measurement_type_concept_id"),
-        col("qual").cast("double").alias("value_as_number"),
+        coalesce(when(col("qual") == ".", lit(0.0)).otherwise(col("qual")).cast("double"), lit(0.0)).alias("value_as_number"),
         when(col("clinvar_sig") == "Pathogenic", 4182210)
         .otherwise(0).cast("integer").alias("value_as_concept_id"),
         lit("VCF_QUAL").cast("string").alias("unit_source_value"),

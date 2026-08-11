@@ -56,20 +56,46 @@ except ImportError:
         from condition_occurrence import transform_condition_occurrence
         from genomic_variants import transform_genomic_variants
 
+try:
+    from medallion.writer import DeltaMedallionWriter
+except ImportError:
+    try:
+        from ..medallion.writer import DeltaMedallionWriter
+    except ImportError:
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from medallion.writer import DeltaMedallionWriter
+        except ImportError:
+            DeltaMedallionWriter = None
+
+
 
 def configure_windows_hadoop_environment():
-    """Sets dummy HADOOP_HOME on Windows to prevent PySpark winutils.exe missing crashes."""
-    if os.name == 'nt' and "HADOOP_HOME" not in os.environ:
+    """Sets valid dummy winutils binary on Windows returning exit code 0 for Hadoop checks."""
+    if os.name == 'nt':
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         hadoop_dir = os.path.join(base_dir, "hadoop")
         bin_dir = os.path.join(hadoop_dir, "bin")
         os.makedirs(bin_dir, exist_ok=True)
         winutils_path = os.path.join(bin_dir, "winutils.exe")
-        if not os.path.exists(winutils_path):
-            with open(winutils_path, "wb") as f:
-                f.write(b"")
+
+        if not os.path.exists(winutils_path) or os.path.getsize(winutils_path) < 100:
+            csc = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+            cs_path = os.path.join(bin_dir, "dummy.cs")
+            if os.path.exists(csc):
+                try:
+                    import subprocess
+                    with open(cs_path, "w") as f:
+                        f.write("class Program { static int Main(string[] args) { return 0; } }\n")
+                    subprocess.run([csc, "/nologo", f"/out:{winutils_path}", cs_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+
         os.environ["HADOOP_HOME"] = hadoop_dir
         os.environ["hadoop.home.dir"] = hadoop_dir
+
+
+
 
 
 def create_spark_session(mode: str = "demo") -> SparkSession:
@@ -80,6 +106,9 @@ def create_spark_session(mode: str = "demo") -> SparkSession:
 
     builder = SparkSession.builder \
         .appName("life-sciences-data-foundry-omop-cdm") \
+        .master("local[*]") \
+        .config("spark.driver.host", "127.0.0.1") \
+        .config("spark.driver.bindAddress", "127.0.0.1") \
         .config("spark.sql.shuffle.partitions", "4")
 
     if mode.lower() == "remote":
@@ -94,7 +123,14 @@ def create_spark_session(mode: str = "demo") -> SparkSession:
     return builder.getOrCreate()
 
 
-def run_omop_pipeline(spark: SparkSession, mode: str = "demo", data_dir: str = None) -> dict:
+def run_omop_pipeline(
+    spark: SparkSession,
+    mode: str = "demo",
+    data_dir: str = None,
+    save_delta: bool = True,
+    output_dir: str = None,
+    run_maintenance: bool = False,
+) -> dict:
     """
     Executes the end-to-end Medallion OMOP CDM v5.4 pipeline.
     """
@@ -104,7 +140,7 @@ def run_omop_pipeline(spark: SparkSession, mode: str = "demo", data_dir: str = N
 
     print("==========================================================================")
     print(" OHDSI OMOP CDM v5.4 Clinical & Genomic Normalization Engine")
-    print(f" Execution Mode: [{mode.upper()}]")
+    print(f" Execution Mode: [{mode.upper()}] | Delta Lake Persistence: [{save_delta}]")
     print("==========================================================================")
 
     # -------------------------------------------------------------------------
@@ -177,6 +213,42 @@ def run_omop_pipeline(spark: SparkSession, mode: str = "demo", data_dir: str = N
     print("\n--- OHDSI OMOP CDM v5.4 MEASUREMENT Table (LOINC Labs & Genomic Variants) ---")
     df_omop_measurement.show(5, truncate=False)
 
+    # -------------------------------------------------------------------------
+    # 4. DELTA LAKE SINKS: Storage Optimization & Liquid Clustering Persistence
+    # -------------------------------------------------------------------------
+    if save_delta and HAS_DELTA and DeltaMedallionWriter is not None:
+        print("\n[INFO] [DELTA STORAGE] Persisting Medallion Tiers with Liquid Clustering & Schema Evolution...")
+        writer = DeltaMedallionWriter(spark, base_output_dir=output_dir)
+
+        # Write Silver Sinks
+        writer.write_silver_table(df_silver_clinical, "clinical_demographics")
+        writer.write_silver_table(df_silver_diagnoses, "clinical_diagnoses")
+        writer.write_silver_table(df_silver_labs, "lab_measurements")
+        writer.write_silver_table(df_silver_genomics, "genomic_variants")
+
+        if df_quarantine_clinical.count() > 0:
+            writer.write_quarantine_table(df_quarantine_clinical, "quarantine_clinical")
+
+        # Write Gold Sinks with Liquid Clustering (CLUSTER BY (person_id, concept_id))
+        person_path = writer.write_gold_omop_table(df_omop_person, "person", cluster_by=["person_id"])
+        cond_path = writer.write_gold_omop_table(df_omop_condition, "condition_occurrence", cluster_by=["person_id", "condition_concept_id"])
+        meas_path = writer.write_gold_omop_table(df_omop_measurement, "measurement", cluster_by=["person_id", "measurement_concept_id"])
+
+        # Log GxP Delta Metrology Telemetry
+        meas_telemetry = writer.get_table_telemetry(meas_path)
+        print(f"[DELTA METROLOGY] Gold MEASUREMENT Table Telemetry:")
+        print(f"   - Path: {meas_telemetry.get('table_path')}")
+        print(f"   - Files: {meas_telemetry.get('num_files')} | Size: {meas_telemetry.get('size_in_bytes')} bytes")
+        print(f"   - Clustering Keys: {meas_telemetry.get('clustering_columns')}")
+
+        print("[DELTA STORAGE] Delta Lake Liquid Clustering & Schema Evolution Sinks Written Successfully.")
+
+        if run_maintenance:
+            print("[DELTA MAINTENANCE] Executing automated compaction and vacuum routines...")
+            writer.optimize_table(meas_path)
+            writer.vacuum_table(meas_path, retention_hours=168.0)
+
+
     print(f"[SUCCESS] OHDSI OMOP CDM v5.4 Pipeline Execution Mode [{mode.upper()}] Completed Successfully.")
 
     return {
@@ -192,10 +264,24 @@ if __name__ == "__main__":
                         help="Execution mode: 'demo' (local synthetic datasets) or 'remote' (public open datasets)")
     parser.add_argument("--data_dir", type=str, default=None,
                         help="Path to custom directory containing real-world clinical & genomic input files")
+    parser.add_argument("--save_delta", action="store_true", default=True,
+                        help="Persist Medallion datasets into Delta Lake sinks with Liquid Clustering & Schema Evolution")
+    parser.add_argument("--output_dir", type=str, default=None,
+                        help="Custom path for Delta Lake warehouse storage")
+    parser.add_argument("--run_maintenance", action="store_true", default=False,
+                        help="Execute post-ingest Delta Lake OPTIMIZE compaction and VACUUM routines")
     args = parser.parse_args()
 
     mode_val = os.getenv("DATA_MODE", args.mode)
     data_dir_val = os.getenv("DATA_DIR", args.data_dir)
     spark = create_spark_session(mode=mode_val)
-    run_omop_pipeline(spark, mode=mode_val, data_dir=data_dir_val)
+    run_omop_pipeline(
+        spark,
+        mode=mode_val,
+        data_dir=data_dir_val,
+        save_delta=args.save_delta,
+        output_dir=args.output_dir,
+        run_maintenance=args.run_maintenance,
+    )
     spark.stop()
+

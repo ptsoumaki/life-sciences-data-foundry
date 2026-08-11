@@ -1,0 +1,37 @@
+# ==============================================================================
+# DATABRICKS ASSET BUNDLE (DABs) ARCHITECTURE SPECIFICATION
+# ==============================================================================
+# Enterprise DataOps & CI/CD deployment configuration for Life Sciences Data Foundry.
+# Managed via Databricks CLI: `databricks bundle deploy` & `databricks bundle run`
+# ==============================================================================
+
+bundle:
+  name: life-sciences-data-foundry
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-5abb8e4b-893e.cloud.databricks.com
+      root_path: /Workspace/Projects/life-sciences-data-foundry
+
+  staging:
+    mode: production
+    workspace:
+      host: ${var.databricks_host}
+      root_path: /Workspace/Projects/life-sciences-data-foundry
+
+  prod:
+    mode: production
+    workspace:
+      host: ${var.databricks_host}
+      root_path: /Workspace/Projects/life-sciences-data-foundry
+
+variables:
+  databricks_host:
+    description: Databricks Workspace URL
+    default: https://dbc-5abb8e4b-893e.cloud.databricks.com

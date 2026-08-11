@@ -8,9 +8,9 @@
 # ==============================================================================
 
 resource "databricks_secret_scope" "life_sciences_vault" {
-  count                    = var.enable_secret_scope ? 1 : 0
-  name                     = "life-sciences-vault-${var.environment}"
-  initial_manage_principal = "users"
+  count = var.enable_secret_scope ? 1 : 0
+  name  = "life-sciences-vault-${var.environment}"
+  # initial_manage_principal omitted: defaults to admin-only manage rights (least-privilege, GxP compliant)
 }
 
 # 1. Project Directory in Databricks Workspace

@@ -8,10 +8,16 @@ resources:
       name: "[${bundle.target}] OMOP CDM v5.4 Medallion Pipeline"
       description: "Orchestrates PySpark Medallion Delta Lake ingestion with Liquid Clustering & Schema Evolution."
 
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
+
       tasks:
         - task_key: execute_omop_normalization
+          environment_key: default
           spark_python_task:
-            python_file: ../analytical-layer/omop_cdm_v54/pipeline.py
+            python_file: ${workspace.root_path}/files/analytical-layer/omop_cdm_v54/pipeline.py
             parameters:
               - "--mode"
               - "demo"

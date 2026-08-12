@@ -9,6 +9,10 @@ terraform {
       source  = "integrations/github"
       version = "~> 6.0"
     }
+    databricks = {
+      source  = "databricks/databricks"
+      version = "~> 1.30"
+    }
   }
 }
 
@@ -27,7 +31,10 @@ provider "aws" {
 }
 
 provider "github" {
-  # Authenticates via Personal Access Token (PAT) or GitHub App token 
-  # TODO: Implement SSH keys auth
   token = var.github_token
+}
+
+provider "databricks" {
+  host  = var.databricks_host
+  token = var.databricks_token
 }

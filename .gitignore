@@ -61,6 +61,8 @@ great_expectations/uncommitted/
 metastore_db/
 derby.log
 spark-warehouse/
+analytical-layer/data/delta_warehouse/
+analytical-layer/data/test_delta_warehouse/
 .dbfs/
 *.parquet
 
@@ -98,3 +100,4 @@ Thumbs.db
 !.vscode/settings.json
 analytical-layer/hadoop/
 .idea/
+.databricks

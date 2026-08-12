@@ -13,6 +13,9 @@ analytical-layer/
 │   ├── clinical_patients.csv         # Demographics (Synthea / MIMIC-IV format)
 │   ├── genomic_variants.vcf          # VCF v4.2 variant annotations (ClinVar / 1000 Genomes)
 │   └── lab_measurements.csv          # LOINC lab biomarker observations
+├── medallion/                        # DELTA LAKE PERFORMANCE & STORAGE OPTIMIZATION
+│   ├── __init__.py                   # Package exports
+│   └── writer.py                     # DeltaMedallionWriter with Liquid Clustering & Schema Evolution
 ├── omop_cdm_v54/                     # MODULAR PYSPARK OMOP CDM v5.4 DOMAIN PACKAGE
 │   ├── __init__.py                   # Package exports & versioning
 │   ├── condition_occurrence.py       # ICD-10 to SNOMED CT concept transformer
@@ -58,8 +61,28 @@ The ingested datasets located under [`analytical-layer/data/`](data/) are struct
 │   ├── PERSON (demographics & concept IDs)               │
 │   ├── CONDITION_OCCURRENCE (SNOMED diagnosis concepts)  │
 │   └── MEASUREMENT (LOINC lab panels & genomic variants) │
+│   └── Delta Lake Liquid Clustering: CLUSTER BY          │
+│       (person_id, concept_id)                           │
 └─────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## ⚡ Delta Lake Performance & Storage Optimization (`medallion/writer.py`)
+
+The [`analytical-layer/medallion/writer.py`](medallion/writer.py) package implements enterprise-grade storage features:
+
+1. **Liquid Clustering (`CLUSTER BY`)**:
+   - Replaces traditional static Hive partitioning with multi-dimensional **Liquid Clustering** (`CLUSTER BY (person_id, concept_id)`).
+   - Dynamically re-sorts data on write to optimize query predicate pushdowns without partition file fragmentation.
+2. **Schema Evolution Contracts (`mergeSchema=True`)**:
+   - Enforces schema evolution options across Silver and Gold write streams, accommodating new clinical attributes and VCF genomic variant metadata without job failure.
+3. **Idempotent MERGE / Upsert (`DeltaTable.merge()`)**:
+   - Implements atomic SCD Type 1 upserts (`upsert_gold_omop_table`) on primary clinical keys (`person_id`, `measurement_id`, `condition_occurrence_id`) to prevent record duplication during batch re-runs.
+4. **Change Data Feed (CDF)**:
+   - Configures `delta.enableChangeDataFeed = true` to allow FastMCP / LangGraph AI audit agents to track row-level mutations.
+5. **GxP Storage Metrology**:
+   - Exposes `get_table_telemetry()` to extract transaction history (`dt.history()`), file counts, total byte size, and active clustering columns for GxP audit tracking.
 
 ---
 

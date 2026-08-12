@@ -38,3 +38,22 @@ variable "security_group_id" {
   default     = ""
   description = "Security group ID allowing egress for Nextflow container execution tasks."
 }
+
+variable "databricks_host" {
+  type        = string
+  default     = ""
+  description = "Databricks workspace host URL (e.g. https://community.cloud.databricks.com or trial workspace)."
+}
+
+variable "databricks_token" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Databricks Personal Access Token for workspace resource management."
+}
+
+variable "enable_secret_scope" {
+  type        = bool
+  default     = false
+  description = "Set to true for Enterprise workspaces supporting Secret Scopes API."
+}

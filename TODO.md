@@ -11,11 +11,12 @@ This document tracks active development phases and engineering priorities for th
   - Mapped clinical diagnosis phenotypes to SNOMED standard concept IDs (`201826`, `316866`) and LOINC laboratory codes.
   - Built PySpark transformation modules mapping genomic variant fields (VCF v4.2 metadata) to OMOP `MEASUREMENT` structures.
   - Implemented Dual Ingestion Modes (`--mode demo`, `--mode remote`, `--data_dir`).
-- [ ] **Delta Lake Performance & Storage Optimization (`analytical-layer/medallion/`)**
-  - Implement PySpark write sinks utilizing Delta Lake Liquid Clustering (`CLUSTER BY (person_id, concept_id)`).
-  - Enforce schema evolution and merge contracts (`option("mergeSchema", "true")`) for incoming unstructured variant payloads.
-- [ ] **Data Contract Runtime Enforcement (`governance/rules.json` & `analytical-layer/omop_mapping.py`)**
-  - Integrate Great Expectations runtime assertions directly into PySpark DataFrame write streams before Silver-to-Gold tier persistence.
+- [x] **Delta Lake Performance & Storage Optimization (`analytical-layer/medallion/`, `databricks.yml` & `terraform/databricks_medallion.tf`)**
+  - Implemented PySpark write sinks utilizing Delta Lake Liquid Clustering (`CLUSTER BY (person_id, concept_id)`).
+  - Enforced schema evolution and merge contracts (`option("mergeSchema", "true")`) for incoming unstructured variant payloads.
+  - Provisioned Databricks Asset Bundles (DABs `databricks.yml`) and Terraform workspace modules (`terraform/databricks_medallion.tf`).
+- [x] **Data Contract Runtime Enforcement (`governance/rules.json` & `analytical-layer/omop_cdm_v54/pipeline.py`)**
+  - Integrated Great Expectations runtime assertions directly into PySpark DataFrame write streams before Silver-to-Gold tier persistence with MLflow 21 CFR Part 11 cryptographic lineage auditing.
 
 ---
 

@@ -55,12 +55,14 @@ To run the analytical pipelines, validation suites, and IaC deployment engines, 
   - Automated execution lineage, SHA-256 cryptographic file tracking, and metric logging via MLflow (`governance/mlflow_tracker.py`).
 - [x] **Phase 3: Base Clinical Normalization Ring (OMOP CDM)**
   - PySpark semantic mapping package (`analytical-layer/omop_cdm_v54/`) translating unstructured genomic and clinical fields into standard OHDSI OMOP CDM v5.4 `PERSON`, `CONDITION_OCCURRENCE`, and `MEASUREMENT` structures.
-- [ ] **Phase 4: Data Lakehouse & Clinical Normalization Engine** (🚀 *Active Sprint*)
+- [x] **Phase 4: Data Lakehouse & Clinical Normalization Engine** (🚀 *Active Sprint*)
   - Refactored monolithic mapping script into modular domain packages (`analytical-layer/omop_cdm_v54/` with `person.py`, `measurement.py`, `condition_occurrence.py`, `genomic_variants.py`, `connectors.py`).
   - Dual Ingestion Open Data Connectors (`--mode demo`, `--mode remote`, `--data_dir`).
-  - PySpark write streams with Delta Lake Liquid Clustering (`CLUSTER BY (person_id, concept_id)`) and schema evolution.
+  - PySpark write streams with Delta Lake Liquid Clustering (`CLUSTER BY (person_id, concept_id)`), schema evolution merge contracts (`option("mergeSchema", "true")`), and idempotent MERGE upsert (`DeltaTable.merge()`).
+  - Provisioned Databricks workspace storage, secret scopes (`life-sciences-vault`), and job orchestration via Terraform (`terraform/databricks_medallion.tf`).
   - Runtime assertion hooks connecting Great Expectations rules (`governance/rules.json`) directly to Silver-to-Gold tier persistence.
-- [ ] **Phase 5: Automated Testing & Quality Assurance Suite** (🧪 *Upcoming*)
+- [ ] **Phase 5: Automated Testing & Data Contract Quality Suite** (🧪 *Upcoming Target*)
+  - Inline Data Contract Runtime Assertion Enforcement hooks connecting Great Expectations rules (`governance/rules.json`) directly to PySpark Silver-to-Gold write streams.
   - Unit test suite (`tests/unit/`) with `pytest` covering PySpark domain transformers (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`).
   - Integration test suite (`tests/integration/`) with `pytest-spark` covering end-to-end Medallion pipeline execution, Open Data Connectors, and MLflow lineage tracking.
 - [ ] **Phase 6: Agentic Lineage & MLOps Infrastructure** (🤖 *Planned*)
@@ -266,21 +268,74 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 
 ---
 
-### 🚀 Running Pipeline Execution Modes
+### 🚀 Environment Setup & How to Run Instructions
 
-The **PySpark OMOP CDM v5.4 Normalization Engine** supports **Dual Ingestion Modes** via Open Data Connectors ([`omop_cdm_v54/connectors.py`](analytical-layer/omop_cdm_v54/connectors.py)):
-
+#### 1. Python Virtual Environment (`.venv`) Setup
 ```bash
-# Mode A: Execute with local synthetic demo dataset (Default / Instant offline demo)
-python analytical-layer/omop_cdm_v54/pipeline.py --mode demo
+# Create Python 3.11 virtual environment
+python -m venv .venv
 
-# Mode B: Stream directly from remote public AWS Open Data S3 & NCBI endpoints
-python analytical-layer/omop_cdm_v54/pipeline.py --mode remote
+# Activate environment
+# On Windows (PowerShell):
+.\.venv\Scripts\Activate.ps1
+# On Mac/Linux:
+source .venv/bin/activate
+
+# Install core dependencies & PySpark Delta Lake packages
+pip install pyspark delta-spark mlflow great_expectations pytest databricks-cli
 ```
 
 ---
 
-### 🛠️ DataOps Validation & Pipeline Commands
+#### 2. Local PySpark Pipeline Execution
+```bash
+# Execute local synthetic demo dataset with Delta Lake Liquid Clustering & Deletion Vectors
+python analytical-layer/omop_cdm_v54/pipeline.py --mode demo --save_delta
+
+# Stream directly from remote public AWS Open Data S3 & NCBI endpoints
+python analytical-layer/omop_cdm_v54/pipeline.py --mode remote --save_delta
+
+# Run with post-ingest Delta Lake OPTIMIZE compaction & VACUUM maintenance
+python analytical-layer/omop_cdm_v54/pipeline.py --mode demo --save_delta --run_maintenance
+```
+
+---
+
+#### 3. Databricks Asset Bundles (DABs) Deployment
+```bash
+# 1. Verify Databricks CLI v0.228+ is available
+databricks version
+
+# 2. Configure workspace authentication
+databricks configure --host https://dbc-5abb8e4b-893e.cloud.databricks.com --token <dapi-token>
+
+# 3. Validate bundle configuration locally
+databricks bundle validate
+
+# 4. Deploy pipeline code to Databricks Workspace Project Directory
+databricks bundle deploy --target dev
+
+# 5. Trigger Databricks Serverless Compute Medallion Pipeline Job
+databricks bundle run omop_cdm_medallion_pipeline --target dev
+```
+
+---
+
+#### 4. Terraform Workspace Infrastructure Provisioning
+```bash
+# Navigate to Terraform module directory
+cd terraform
+
+# Initialize providers
+terraform init
+
+# Apply Databricks Workspace Project Directory & Serverless Job resources
+terraform apply -auto-approve "-target=databricks_directory.project_dir" "-target=databricks_workspace_file.pipeline_script" "-target=databricks_job.omop_cdm_medallion_pipeline"
+```
+
+---
+
+### 🛠️ DataOps Validation & Audit Commands
 
 ```bash
 # 1. Run GxP Data Quality Contract & Lineage Audit Gate
@@ -289,7 +344,7 @@ python governance/mlflow_tracker.py
 # 2. Run Nextflow Dry-Run Pipeline Orchestration
 nextflow run pipelines/main.nf -profile local_dev -stub
 
-# 3. Run Terraform IaC Background Infrastructure Validation
+# 3. Run Terraform IaC Infrastructure Validation
 terraform -chdir=terraform init -backend=false
 terraform -chdir=terraform validate
 ```

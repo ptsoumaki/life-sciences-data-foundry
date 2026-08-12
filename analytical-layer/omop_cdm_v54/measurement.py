@@ -4,7 +4,7 @@ Description: PySpark domain transformer mapping LOINC lab biomarkers and genomic
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, expr, lit, when, concat_ws, to_date, upper, trim
+from pyspark.sql.functions import col, expr, lit, when, concat_ws, upper, trim
 
 
 def transform_measurement(df_silver_labs: DataFrame) -> DataFrame:
@@ -29,8 +29,8 @@ def transform_measurement(df_silver_labs: DataFrame) -> DataFrame:
         .when(normalized_loinc == "2160-0", 3016723)
         .when(normalized_loinc == "33959-8", 3006923)
         .otherwise(0).cast("integer").alias("measurement_concept_id"),
-        to_date(col("parsed_lab_dt")).alias("measurement_date"),
-        col("parsed_lab_dt").alias("measurement_datetime"),
+        col("parsed_lab_dt").alias("measurement_date"),
+        lit(None).cast("timestamp").alias("measurement_datetime"),  # OMOP v5.4: NULL when source has date only
         lit(45754907).cast("integer").alias("measurement_type_concept_id"),  # Lab Result Concept
         col("numeric_value").cast("double").alias("value_as_number"),
         lit(0).cast("integer").alias("value_as_concept_id"),

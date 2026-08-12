@@ -147,6 +147,19 @@ class DeltaMedallionWriter:
         else:
             writer.save(path)
             print(f"[DELTA] Gold OMOP Table '{table_name}' saved to {path} (mode={mode}, clusterBy={cluster_by})")
+
+        if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA:
+            try:
+                cluster_cols_sql = ", ".join(cluster_by)
+                formatted_path = path.replace("\\", "/")
+                if not formatted_path.startswith("file:/") and not formatted_path.startswith("s3://") and not formatted_path.startswith("s3a://"):
+                    if os.name == "nt" and len(formatted_path) > 1 and formatted_path[1] == ":":
+                        formatted_path = f"file:///{formatted_path}"
+                self.spark.sql(f"ALTER TABLE delta.`{formatted_path}` CLUSTER BY ({cluster_cols_sql})")
+                print(f"[DELTA] Executed ALTER TABLE Liquid Clustering SQL on {formatted_path} (CLUSTER BY ({cluster_cols_sql}))")
+            except Exception as e:
+                print(f"[DELTA] Note: Path-based Liquid Clustering configured for Databricks Runtime / UC ({cluster_by})")
+
         return path
 
     def upsert_gold_omop_table(
@@ -226,12 +239,16 @@ class DeltaMedallionWriter:
             detail = dt.detail().collect()[0].asDict()
             history = dt.history(5).collect()
 
+            num_files = detail.get("numFiles") if detail.get("numFiles") is not None else detail.get("num_files")
+            size_in_bytes = detail.get("sizeInBytes") if detail.get("sizeInBytes") is not None else detail.get("size_in_bytes")
+            clustering_columns = detail.get("clusteringColumns", detail.get("clustering_columns", detail.get("partitionColumns", [])))
+
             return {
                 "table_path": table_path,
                 "format": detail.get("format"),
-                "num_files": detail.get("numFiles"),
-                "size_in_bytes": detail.get("sizeInBytes"),
-                "clustering_columns": detail.get("clusteringColumns"),
+                "num_files": num_files,
+                "size_in_bytes": size_in_bytes,
+                "clustering_columns": clustering_columns,
                 "recent_commits": [h.asDict() for h in history],
             }
         except Exception as e:

@@ -10,7 +10,7 @@ import os
 import sys
 import argparse
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, expr, lit, to_date, to_timestamp
+from pyspark.sql.functions import col, current_timestamp, expr, lit, to_date, to_timestamp, upper, trim
 
 # Ensure repository root and analytical-layer directory are in sys.path for direct script execution
 _base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -162,11 +162,12 @@ def run_omop_pipeline(
         to_timestamp(expr("try_cast(birth_datetime as date)"))
     )
 
+    valid_gender_expr = upper(trim(col("gender"))).isin("MALE", "FEMALE", "M", "F", "UNKNOWN")
     df_silver_clinical = df_clinical_parsed.filter(
-        col("parsed_birth_dt").isNotNull() & col("gender").isin("MALE", "FEMALE", "UNKNOWN")
+        col("parsed_birth_dt").isNotNull() & valid_gender_expr
     )
     df_quarantine_clinical = df_clinical_parsed.filter(
-        col("parsed_birth_dt").isNull() | ~col("gender").isin("MALE", "FEMALE", "UNKNOWN")
+        col("parsed_birth_dt").isNull() | ~valid_gender_expr
     )
 
     # Filter Diagnoses — parse to DateType directly (OMOP condition_start_date is `date`, not `datetime`).

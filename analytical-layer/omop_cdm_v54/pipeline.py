@@ -10,7 +10,7 @@ import os
 import sys
 import argparse
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, lit, to_date, to_timestamp
+from pyspark.sql.functions import col, current_timestamp, expr, lit, to_date, to_timestamp
 
 try:
     from delta import configure_spark_with_delta_pip

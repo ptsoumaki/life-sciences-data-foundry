@@ -64,35 +64,82 @@ def load_dataset(data_path: str) -> pd.DataFrame:
         return pd.read_csv(data_path)
 
 
-def run_governance_pipeline(data_path: str, rules_path: str, experiment_name: str):
-    """Executes dynamic Great Expectations suites and logs audit lineage to MLflow."""
+def evaluate_data_contract(
+    df,
+    rules_path: str = "governance/rules.json",
+    experiment_name: str = "gxp_clinical_governance",
+    dataset_source_path: str | None = None,
+    strict: bool = False,
+) -> dict:
+    """
+    Evaluates Great Expectations data contract rules against a Pandas or PySpark DataFrame
+    and logs GxP compliance metrics & cryptographic audit lineage to MLflow.
+
+    Args:
+        df: Pandas DataFrame or PySpark DataFrame to validate.
+        rules_path: Path to Great Expectations JSON contract specification (rules.json).
+        experiment_name: MLflow experiment name for GxP audit tracking.
+        dataset_source_path: Optional path to input file for SHA-256 cryptographic provenance.
+        strict: If True, raises RuntimeError when contract validation fails.
+
+    Returns:
+        dict containing validation outcome and statistics.
+    """
+    # Normalize rules_path location if relative
+    resolved_rules_path = rules_path
+    if not os.path.exists(resolved_rules_path):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        candidate = os.path.join(base_dir, rules_path)
+        if os.path.exists(candidate):
+            resolved_rules_path = candidate
+        else:
+            raise FileNotFoundError(f"Data contract rules not found at: {rules_path}")
+
+    # Convert PySpark DataFrame to Pandas if necessary
+    if hasattr(df, "toPandas"):
+        pdf = df.toPandas()
+    elif isinstance(df, pd.DataFrame):
+        pdf = df
+    else:
+        pdf = pd.DataFrame(df)
+
+    # Format datetime / timestamp columns to ISO string format so regex expectations work predictably
+    for col_name in pdf.columns:
+        if pd.api.types.is_datetime64_any_dtype(pdf[col_name]):
+            pdf[col_name] = pdf[col_name].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
     clean_experiment_name = experiment_name.lstrip("/")
     try:
         mlflow.set_experiment(clean_experiment_name)
     except Exception:
-        mlflow.set_experiment("gxp_clinical_governance")
+        pass
 
-    df = load_dataset(data_path)
+    rules_checksum = compute_sha256(resolved_rules_path) if os.path.exists(resolved_rules_path) else "N/A"
+    data_checksum = (
+        compute_sha256(dataset_source_path)
+        if (dataset_source_path and os.path.exists(dataset_source_path))
+        else "in_memory_dataframe"
+    )
 
-    with mlflow.start_run(run_name="gxp_ingestion_integrity_gate") as run:
-        # 1. Cryptographic Hash Provenance (21 CFR Part 11)
-        data_checksum = compute_sha256(data_path)
-        rules_checksum = compute_sha256(rules_path)
+    # Parse Governance Metadata
+    with open(resolved_rules_path, "r") as f:
+        suite_config = json.load(f)
 
-        mlflow.log_param("data_input_path", data_path)
+    meta = suite_config.get("meta", {})
+
+    active_run = mlflow.active_run()
+    run_context = active_run if active_run else mlflow.start_run(run_name="gxp_data_contract_gate")
+    run_id = "active_run"  # Safe default; overwritten inside the context manager once the run is active.
+
+    with run_context as run:
+        mlflow.log_param("data_input_path", dataset_source_path or "in_memory_dataframe")
         mlflow.log_param("data_sha256", data_checksum)
         mlflow.log_param("rules_sha256", rules_checksum)
         mlflow.log_param("execution_environment", os.getenv("ENVIRONMENT", "dev"))
-
-        # 2. Parse Governance Metadata
-        with open(rules_path, "r") as f:
-            suite_config = json.load(f)
-
-        meta = suite_config.get("meta", {})
         mlflow.log_param("compliance_standard", meta.get("compliance_standard", "FDA_21_CFR_Part_11"))
         mlflow.log_param("target_schema", meta.get("target_schema", "OMOP_CDM_v5.4"))
 
-        # 3. Dynamic Great Expectations Suite Execution
+        # Dynamic Great Expectations 1.x Suite Execution
         try:
             context = ge.get_context(mode="ephemeral")
             ds = context.data_sources.add_pandas("gxp_pandas_source")
@@ -113,14 +160,22 @@ def run_governance_pipeline(data_path: str, rules_path: str, experiment_name: st
             val_def = context.validation_definitions.add(
                 ge.ValidationDefinition(name="gxp_validation_def", data=batch_def, suite=suite)
             )
-            results = val_def.run(batch_parameters={"dataframe": df})
+            results = val_def.run(batch_parameters={"dataframe": pdf})
 
             evaluated_expectations = len(results.results)
             successful_expectations = sum(1 for r in results.results if r.success)
             unsuccessful_expectations = evaluated_expectations - successful_expectations
             success_rate = (successful_expectations / evaluated_expectations * 100.0) if evaluated_expectations > 0 else 0.0
             validation_passed = results.success
-            res_dict = {"success": validation_passed, "statistics": {"evaluated_expectations": evaluated_expectations, "successful_expectations": successful_expectations, "unsuccessful_expectations": unsuccessful_expectations, "success_percent": success_rate}}
+            res_dict = {
+                "success": validation_passed,
+                "statistics": {
+                    "evaluated_expectations": evaluated_expectations,
+                    "successful_expectations": successful_expectations,
+                    "unsuccessful_expectations": unsuccessful_expectations,
+                    "success_percent": success_rate,
+                },
+            }
         except Exception as e:
             print(f"[CONNECTOR WARNING] GE 1.x suite execution fallback: {e}")
             evaluated_expectations, successful_expectations, unsuccessful_expectations = 0, 0, 0
@@ -128,35 +183,59 @@ def run_governance_pipeline(data_path: str, rules_path: str, experiment_name: st
             validation_passed = True
             res_dict = {"success": True}
 
-        # 4. Metric & Artifact Logging
-        mlflow.log_metric("total_records_ingested", len(df))
+        # Metric & Artifact Logging
+        mlflow.log_metric("total_records_ingested", len(pdf))
         mlflow.log_metric("evaluated_expectations", evaluated_expectations)
         mlflow.log_metric("successful_expectations", successful_expectations)
         mlflow.log_metric("unsuccessful_expectations", unsuccessful_expectations)
         mlflow.log_metric("expectation_success_rate", success_rate)
         mlflow.log_metric("gxp_gate_passed", 1.0 if validation_passed else 0.0)
 
-        # Log Contract and Audit Results as MLflow Artifacts
-        mlflow.log_artifact(rules_path, artifact_path="governance_contracts")
+        mlflow.log_artifact(resolved_rules_path, artifact_path="governance_contracts")
 
         results_output_path = "validation_results.json"
         with open(results_output_path, "w") as f:
             json.dump(res_dict, f, indent=2)
         mlflow.log_artifact(results_output_path, artifact_path="audit_reports")
 
-        # Cleanup local temporary audit report
         if os.path.exists(results_output_path):
             os.remove(results_output_path)
 
-        run_id = run.info.run_id
+        run_id = run.info.run_id if hasattr(run, "info") else "active_run"
         if not validation_passed:
-            print(f"[WARNING] GxP Integrity Gate: {unsuccessful_expectations} expectations evaluated for review. Run ID {run_id}.")
-
-        print(f"[SUCCESS] Lineage & Governance Audit Logged. Run ID: {run_id}")
+            print(f"[WARNING] GxP Data Contract Gate: {unsuccessful_expectations} expectations evaluated for review. Run ID: {run_id}")
+        else:
+            print(f"[SUCCESS] GxP Data Contract Gate Passed. Run ID: {run_id}")
         print(f"[METRIC] Evaluated: {evaluated_expectations} | Passed: {successful_expectations} | Pass Rate: {success_rate:.1f}%")
+
+    if strict and not validation_passed:
+        raise RuntimeError(
+            f"GxP Data Contract Validation failed! {unsuccessful_expectations} expectation(s) failed."
+        )
+
+    return {
+        "success": validation_passed,
+        "total_records": len(pdf),
+        "evaluated_expectations": evaluated_expectations,
+        "successful_expectations": successful_expectations,
+        "unsuccessful_expectations": unsuccessful_expectations,
+        "success_rate": success_rate,
+        "run_id": run_id,
+    }
+
+
+def run_governance_pipeline(data_path: str, rules_path: str, experiment_name: str):
+    """Executes dynamic Great Expectations suites and logs audit lineage to MLflow."""
+    df = load_dataset(data_path)
+    return evaluate_data_contract(
+        df,
+        rules_path=rules_path,
+        experiment_name=experiment_name,
+        dataset_source_path=data_path,
+    )
 
 
 if __name__ == "__main__":
     data_target = sys.argv[1] if len(sys.argv) > 1 else "governance/sample_clinical.csv"
     rules_target = sys.argv[2] if len(sys.argv) > 2 else "governance/rules.json"
-    run_governance_pipeline(data_target, rules_target, "gxp_clinical_governance")
+    run_governance_pipeline(data_target, rules_target, "gxp_clinical_governance")

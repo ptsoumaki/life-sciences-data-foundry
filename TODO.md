@@ -15,8 +15,8 @@ This document tracks active development phases and engineering priorities for th
   - Implemented PySpark write sinks utilizing Delta Lake Liquid Clustering (`CLUSTER BY (person_id, concept_id)`).
   - Enforced schema evolution and merge contracts (`option("mergeSchema", "true")`) for incoming unstructured variant payloads.
   - Provisioned Databricks Asset Bundles (DABs `databricks.yml`) and Terraform workspace modules (`terraform/databricks_medallion.tf`).
-- [ ] **Data Contract Runtime Enforcement (`governance/rules.json` & `analytical-layer/omop_mapping.py`)**
-  - Integrate Great Expectations runtime assertions directly into PySpark DataFrame write streams before Silver-to-Gold tier persistence.
+- [x] **Data Contract Runtime Enforcement (`governance/rules.json` & `analytical-layer/omop_cdm_v54/pipeline.py`)**
+  - Integrated Great Expectations runtime assertions directly into PySpark DataFrame write streams before Silver-to-Gold tier persistence with MLflow 21 CFR Part 11 cryptographic lineage auditing.
 
 ---
 

@@ -113,8 +113,8 @@ def parse_vcf_to_dataframe(spark: SparkSession, vcf_path: str, max_rows: Optiona
     from pyspark.sql.functions import split
     df_raw = spark.read.text(vcf_path).filter(~col("value").startswith("##"))
 
-    # Extract the #CHROM header BEFORE applying any row limit so the header line
-    # is always present regardless of partition ordering (Issue #8 fix).
+    # Extract the #CHROM header before applying any row limit: Spark partition
+    # ordering is non-deterministic, so the header must be resolved independently.
     header_row = df_raw.filter(col("value").startswith("#CHROM")).first()
     if not header_row:
         raise ValueError(f"No #CHROM header line found in VCF: {vcf_path}")

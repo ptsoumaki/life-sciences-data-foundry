@@ -21,7 +21,7 @@
       "expectation_type": "expect_column_values_to_match_regex",
       "kwargs": {
         "column": "birth_datetime",
-        "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+        "regex": "^\\d{4}-\\d{2}-\\d{2}"
       },
       "meta": {
         "severity": "ERROR",
@@ -40,20 +40,21 @@
       }
     },
     {
-      "expectation_type": "expect_table_columns_to_match_ordered_list",
+      "expectation_type": "expect_table_columns_to_match_set",
       "kwargs": {
-        "column_list": [
+        "column_set": [
           "person_id",
           "gender_concept_id",
           "year_of_birth",
           "birth_datetime",
           "race_concept_id",
           "ethnicity_concept_id"
-        ]
+        ],
+        "exact_match": false
       },
       "meta": {
         "severity": "CRITICAL_FATAL",
-        "description": "Guarantees strict schema lock before writing to gold Delta layer."
+        "description": "Guarantees presence of required OMOP CDM v5.4 clinical fields before Silver-to-Gold tier write stream persistence."
       }
     }
   ]

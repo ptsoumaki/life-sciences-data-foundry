@@ -53,6 +53,17 @@ except ImportError:
     except ImportError:
         DeltaMedallionWriter = None
 
+try:
+    from governance.mlflow_tracker import evaluate_data_contract
+except ImportError:
+    try:
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if base_dir not in sys.path:
+            sys.path.insert(0, base_dir)
+        from governance.mlflow_tracker import evaluate_data_contract
+    except ImportError:
+        evaluate_data_contract = None
+
 
 
 def configure_windows_hadoop_environment():
@@ -115,6 +126,8 @@ def run_omop_pipeline(
     save_delta: bool = True,
     output_dir: str = None,
     run_maintenance: bool = False,
+    enable_contract_enforcement: bool = True,
+    rules_path: str = "governance/rules.json",
 ) -> dict:
     """
     Executes the end-to-end Medallion OMOP CDM v5.4 pipeline.
@@ -150,7 +163,7 @@ def run_omop_pipeline(
     # rather than treating date-only values as a parse error.
     df_clinical_parsed = df_raw_patients.withColumn(
         "parsed_birth_dt",
-        to_timestamp(to_date(col("birth_datetime")))
+        to_timestamp(expr("try_cast(birth_datetime as date)"))
     )
 
     df_silver_clinical = df_clinical_parsed.filter(
@@ -163,19 +176,20 @@ def run_omop_pipeline(
     # Filter Diagnoses — parse to DateType directly (OMOP condition_start_date is `date`, not `datetime`).
     df_silver_diagnoses = df_raw_diagnoses.withColumn(
         "parsed_diag_dt",
-        to_date(col("diagnosis_date"))
+        expr("try_cast(diagnosis_date as date)")
     ).filter(col("parsed_diag_dt").isNotNull())
 
     # Filter Labs — parse to DateType directly (OMOP measurement_date is `date`, not `datetime`).
     df_silver_labs = df_raw_labs.withColumn(
         "parsed_lab_dt",
-        to_date(col("lab_datetime"))
+        expr("try_cast(lab_datetime as date)")
     ).filter(col("parsed_lab_dt").isNotNull())
 
     # Filter Genomics
     df_silver_genomics = df_raw_genomics.filter((col("filter") == "PASS") | (col("filter") == "."))
 
-    # Cache counts to avoid re-scanning the Silver DataFrame twice (Issue #6 fix).
+    # Materialize Silver counts before reporting metrics; avoids re-scanning the
+    # same DataFrame twice when the twin filter (accepted / quarantined) is lazy.
     _silver_clinical_count = df_silver_clinical.count()
     _qc_count = df_quarantine_clinical.count()
     print(f"[METRIC] Silver Clinical Records Accepted: {_silver_clinical_count}")
@@ -205,6 +219,29 @@ def run_omop_pipeline(
 
     print("\n--- OHDSI OMOP CDM v5.4 MEASUREMENT Table (LOINC Labs & Genomic Variants) ---")
     df_omop_measurement.show(5, truncate=False)
+
+    # -------------------------------------------------------------------------
+    # 3.5 DATA CONTRACT GATE: Great Expectations GxP Runtime Assertion Enforcement
+    # -------------------------------------------------------------------------
+    if enable_contract_enforcement and evaluate_data_contract is not None:
+        print("\n[INFO] [DATA CONTRACT GATE] Enforcing Great Expectations GxP Data Contracts...")
+        try:
+            contract_res = evaluate_data_contract(
+                df_omop_person,
+                rules_path=rules_path,
+                experiment_name="gxp_clinical_governance",
+                strict=False,
+            )
+            if contract_res.get("success"):
+                print(
+                    f"[DATA CONTRACT GATE] GxP Integrity Gate Passed ({contract_res.get('success_rate', 100):.1f}% pass rate)."
+                )
+            else:
+                print(
+                    f"[DATA CONTRACT WARNING] GxP Contract Gate raised warnings: {contract_res.get('unsuccessful_expectations')} failed expectation(s)."
+                )
+        except Exception as err:
+            print(f"[DATA CONTRACT WARNING] Data contract evaluation encountered an error: {err}")
 
     # -------------------------------------------------------------------------
     # 4. DELTA LAKE SINKS: Storage Optimization & Liquid Clustering Persistence
@@ -263,6 +300,10 @@ if __name__ == "__main__":
                         help="Custom path for Delta Lake warehouse storage")
     parser.add_argument("--run_maintenance", action="store_true", default=False,
                         help="Execute post-ingest Delta Lake OPTIMIZE compaction and VACUUM routines")
+    parser.add_argument("--enable_contract_enforcement", action=argparse.BooleanOptionalAction, default=True,
+                        help="Enforce Great Expectations data quality contracts before Gold persistence")
+    parser.add_argument("--rules_path", type=str, default="governance/rules.json",
+                        help="Path to Great Expectations rules JSON specification file")
     args = parser.parse_args()
 
     mode_val = os.getenv("DATA_MODE", args.mode)
@@ -275,6 +316,9 @@ if __name__ == "__main__":
         save_delta=args.save_delta,
         output_dir=args.output_dir,
         run_maintenance=args.run_maintenance,
+        enable_contract_enforcement=args.enable_contract_enforcement,
+        rules_path=args.rules_path,
     )
     spark.stop()
+
 

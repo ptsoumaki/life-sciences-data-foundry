@@ -12,6 +12,13 @@ import argparse
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, current_timestamp, expr, lit, to_date, to_timestamp
 
+# Ensure repository root and analytical-layer directory are in sys.path for direct script execution
+_base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_analytical_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in [_base_dir, _analytical_dir]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 try:
     from delta import configure_spark_with_delta_pip
     HAS_DELTA = True
@@ -19,19 +26,18 @@ except ImportError:
     HAS_DELTA = False
 
 try:
-    from .connectors import (
+    from omop_cdm_v54.connectors import (
         configure_s3a_anonymous_access,
         load_demographics_data,
         load_diagnoses_data,
         load_labs_data,
         load_genomics_data,
     )
-    from .person import transform_person
-    from .measurement import transform_measurement
-    from .condition_occurrence import transform_condition_occurrence
-    from .genomic_variants import transform_genomic_variants
+    from omop_cdm_v54.person import transform_person
+    from omop_cdm_v54.measurement import transform_measurement
+    from omop_cdm_v54.condition_occurrence import transform_condition_occurrence
+    from omop_cdm_v54.genomic_variants import transform_genomic_variants
 except ImportError:
-    # Fallback for direct script execution (e.g. python pipeline.py)
     from connectors import (
         configure_s3a_anonymous_access,
         load_demographics_data,
@@ -47,22 +53,12 @@ except ImportError:
 try:
     from medallion.writer import DeltaMedallionWriter
 except ImportError:
-    try:
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from medallion.writer import DeltaMedallionWriter
-    except ImportError:
-        DeltaMedallionWriter = None
+    DeltaMedallionWriter = None
 
 try:
     from governance.mlflow_tracker import evaluate_data_contract
 except ImportError:
-    try:
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if base_dir not in sys.path:
-            sys.path.insert(0, base_dir)
-        from governance.mlflow_tracker import evaluate_data_contract
-    except ImportError:
-        evaluate_data_contract = None
+    evaluate_data_contract = None
 
 
 

@@ -99,5 +99,6 @@ Thumbs.db
 .vscode/
 !.vscode/settings.json
 analytical-layer/hadoop/
+hadoop/
 .idea/
 .databricks

@@ -22,7 +22,7 @@ This document tracks active development phases and engineering priorities for th
 
 ## 🧪 Phase 5: Automated Testing & Quality Assurance Suite
 
-- [ ] **PySpark Unit Testing Suite (`tests/unit/`)**
+- [x] **PySpark Unit Testing Suite (`tests/unit/`)**
   - Construct isolated `pytest` unit tests for each domain transformer (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`).
   - Validate string normalization, ICD-10 code mapping, LOINC code resolution, and explicit OMOP CDM v5.4 type casting.
 - [ ] **End-to-End Integration Testing Suite (`tests/integration/`)**

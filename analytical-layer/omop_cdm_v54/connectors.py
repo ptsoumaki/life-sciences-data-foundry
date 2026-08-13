@@ -7,6 +7,7 @@ Description: Data ingestion connectors for the Medallion OMOP CDM pipeline.
                            1000 Genomes via AWS Open Data S3A).
 
 Public API:
+    resolve_data_dir               -- Resolves input data directory from arg or LSDF_DATA_DIR.
     configure_s3a_anonymous_access -- SparkSession builder config for anonymous S3A.
     read_http_csv                  -- Buffered HTTP CSV reader with local fallback.
     parse_vcf_to_dataframe         -- VCF v4.2 tab-delimited parser to PySpark DataFrame.
@@ -28,10 +29,33 @@ CLINVAR_VCF_REMOTE_URL = "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/cl
 SYNTHEA_REMOTE_PATIENTS_URL = "https://raw.githubusercontent.com/OHDSI/ETL-Synthea/main/inst/csv/patients.csv"
 SYNTHEA_REMOTE_DIAGNOSES_URL = "https://raw.githubusercontent.com/OHDSI/ETL-Synthea/main/inst/csv/conditions.csv"
 SYNTHEA_REMOTE_LABS_URL = "https://raw.githubusercontent.com/OHDSI/ETL-Synthea/main/inst/csv/observations.csv"
+GENOMES_1000_REMOTE_S3_PATH = "s3a://1000genomes/release/20130502/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz"
 
 # Maximum allowed HTTP response body size buffered into driver memory.
 # Synthea observations can reach several hundred MB; raise early rather than OOM-ing the driver.
 MAX_HTTP_RESPONSE_BYTES = 256 * 1024 * 1024  # 256 MB
+
+
+def resolve_data_dir(data_dir: Optional[str] = None) -> str:
+    """Resolves the default data directory path from argument, environment variable, or repo layout.
+
+    Prioritizes an explicitly supplied data_dir argument; falls back to the
+    LSDF_DATA_DIR environment variable if set and existing; otherwise resolves
+    to the canonical analytical-layer/data/ directory relative to this package.
+
+    Args:
+        data_dir: Optional explicit directory path.
+
+    Returns:
+        Absolute or canonical path to the data directory.
+    """
+    if data_dir is not None:
+        return data_dir
+    env_data_dir = os.getenv("LSDF_DATA_DIR")
+    if env_data_dir and os.path.exists(env_data_dir):
+        return env_data_dir
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+
 
 def configure_s3a_anonymous_access(spark_builder: SparkSession.builder) -> SparkSession.builder:
     """Adds anonymous AWS S3A credentials to a SparkSession builder.
@@ -112,14 +136,8 @@ def load_demographics_data(spark: SparkSession, mode: str = "demo", data_dir: Op
         DataFrame with columns: raw_patient_id, gender, birth_datetime, race,
         ethnicity, ingestion_timestamp.
     """
-    env_data_dir = os.getenv("LSDF_DATA_DIR")
-    if data_dir is None:
-        if env_data_dir and os.path.exists(env_data_dir):
-            data_dir = env_data_dir
-        else:
-            data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-            
-    file_path = os.path.join(data_dir, "clinical_patients.csv")
+    resolved_dir = resolve_data_dir(data_dir)
+    file_path = os.path.join(resolved_dir, "clinical_patients.csv")
     if mode.lower() == "remote":
         print(f"[CONNECTOR] Streaming remote open demographics from: {SYNTHEA_REMOTE_PATIENTS_URL}")
         return read_http_csv(spark, SYNTHEA_REMOTE_PATIENTS_URL, fallback_path=file_path) \
@@ -151,7 +169,8 @@ def load_diagnoses_data(spark: SparkSession, mode: str = "demo", data_dir: Optio
         DataFrame with columns: encounter_id, raw_patient_id, diagnosis_date,
         icd10_code, diagnosis_description, ingestion_timestamp.
     """
-    file_path = os.path.join(data_dir, "clinical_diagnoses.csv") if data_dir else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "clinical_diagnoses.csv")
+    resolved_dir = resolve_data_dir(data_dir)
+    file_path = os.path.join(resolved_dir, "clinical_diagnoses.csv")
     if mode.lower() == "remote":
         print(f"[CONNECTOR] Streaming remote open diagnoses from: {SYNTHEA_REMOTE_DIAGNOSES_URL}")
         return read_http_csv(spark, SYNTHEA_REMOTE_DIAGNOSES_URL, fallback_path=file_path) \
@@ -183,14 +202,8 @@ def load_labs_data(spark: SparkSession, mode: str = "demo", data_dir: Optional[s
         DataFrame with columns: lab_event_id, raw_patient_id, lab_datetime,
         loinc_code, test_name, numeric_value, unit_value, ingestion_timestamp.
     """
-    env_data_dir = os.getenv("LSDF_DATA_DIR")
-    if data_dir is None:
-        if env_data_dir and os.path.exists(env_data_dir):
-            data_dir = env_data_dir
-        else:
-            data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-            
-    file_path = os.path.join(data_dir, "lab_measurements.csv")
+    resolved_dir = resolve_data_dir(data_dir)
+    file_path = os.path.join(resolved_dir, "lab_measurements.csv")
     if mode.lower() == "remote":
         print(f"[CONNECTOR] Streaming remote open lab measurements from: {SYNTHEA_REMOTE_LABS_URL}")
         return read_http_csv(spark, SYNTHEA_REMOTE_LABS_URL, fallback_path=file_path) \
@@ -264,22 +277,20 @@ def load_genomics_data(spark: SparkSession, mode: str = "demo", data_dir: Option
         DataFrame with VCF columns (chrom, pos, id, ref, alt, qual, filter, info, …)
         plus ingestion_timestamp.
     """
-    env_data_dir = os.getenv("LSDF_DATA_DIR")
-    if data_dir is None:
-        if env_data_dir and os.path.exists(env_data_dir):
-            data_dir = env_data_dir
-        else:
-            data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-            
-    file_path = os.path.join(data_dir, "genomic_variants.vcf")
+    resolved_dir = resolve_data_dir(data_dir)
+    file_path = os.path.join(resolved_dir, "genomic_variants.vcf")
     if mode.lower() == "remote":
         print("[CONNECTOR] Accessing remote AWS Open Data 1000 Genomes / ClinVar public S3 bucket...")
-        s3_vcf_path = "s3a://1000genomes/release/20130502/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz"
-        print(f"[CONNECTOR] Streaming remote genomic variants sample from: {s3_vcf_path}")
+        print(f"[CONNECTOR] Streaming remote genomic variants sample from: {GENOMES_1000_REMOTE_S3_PATH}")
         try:
-            return parse_vcf_to_dataframe(spark, s3_vcf_path, max_rows=1000)
+            return parse_vcf_to_dataframe(spark, GENOMES_1000_REMOTE_S3_PATH, max_rows=1000)
         except Exception as e:
-            print(f"[CONNECTOR WARNING] Remote S3A fetch from {s3_vcf_path} failed ({e}). Falling back to dataset at {file_path}.")
+            if not file_path or not os.path.exists(file_path):
+                raise FileNotFoundError(
+                    f"Remote S3A fetch from {GENOMES_1000_REMOTE_S3_PATH} failed and no local fallback exists: {e}"
+                ) from e
+            print(f"[CONNECTOR WARNING] Remote S3A fetch from {GENOMES_1000_REMOTE_S3_PATH} failed ({e}). Falling back to dataset at {file_path}.")
             return parse_vcf_to_dataframe(spark, file_path)
     else:
         return parse_vcf_to_dataframe(spark, file_path)
+

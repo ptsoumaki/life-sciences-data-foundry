@@ -22,6 +22,7 @@ try:
         load_diagnoses_data,
         load_labs_data,
         load_genomics_data,
+        resolve_data_dir,
     )
     from omop_cdm_v54.person import transform_person
     from omop_cdm_v54.measurement import transform_measurement
@@ -34,6 +35,7 @@ except ImportError:
         load_diagnoses_data,
         load_labs_data,
         load_genomics_data,
+        resolve_data_dir,
     )
     from person import transform_person
     from measurement import transform_measurement
@@ -153,13 +155,7 @@ def run_omop_pipeline(
         Dict with Gold-tier DataFrames keyed by "person", "condition_occurrence", and
         "measurement".
     """
-    if data_dir is None:
-        env_data_dir = os.getenv("LSDF_DATA_DIR")
-        if env_data_dir and os.path.exists(env_data_dir):
-            data_dir = env_data_dir
-        else:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            data_dir = os.path.join(base_dir, "data")
+    data_dir = resolve_data_dir(data_dir)
 
     print("==========================================================================")
     print(" OHDSI OMOP CDM v5.4 Clinical & Genomic Normalization Engine")

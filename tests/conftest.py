@@ -7,12 +7,7 @@ import sys
 import pytest
 from pyspark.sql import SparkSession
 from omop_cdm_v54.pipeline import configure_windows_hadoop_environment
-
-try:
-    from delta import configure_spark_with_delta_pip
-    HAS_DELTA = True
-except ImportError:
-    HAS_DELTA = False
+from omop_cdm_v54.compat import HAS_DELTA, configure_spark_with_delta_pip
 
 # Add the repository root to sys.path so that governance/ is importable.
 # governance/ is not yet included in the setuptools package; remove this

@@ -12,12 +12,6 @@ import argparse
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, coalesce, current_timestamp, expr, lit, to_date, to_timestamp, upper, trim
 
-# Ensure repository root and analytical-layer directory are in sys.path for direct script execution
-_base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_analytical_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for _p in [_base_dir, _analytical_dir]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
 try:
     from delta import configure_spark_with_delta_pip
@@ -63,7 +57,13 @@ except ImportError:
 
 
 def configure_windows_hadoop_environment():
-    """Sets valid dummy winutils binary on Windows returning exit code 0 for Hadoop checks."""
+    """Provisions a minimal winutils.exe stub required by PySpark on Windows.
+
+    Compiles a no-op C# binary that exits with code 0, satisfying Hadoop's native
+    filesystem permission checks without requiring a full Hadoop distribution.
+    Sets HADOOP_HOME and hadoop.home.dir environment variables accordingly.
+    No-op on non-Windows platforms.
+    """
     if os.name == 'nt':
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         hadoop_dir = os.path.join(base_dir, "hadoop")
@@ -91,7 +91,18 @@ def configure_windows_hadoop_environment():
 
 
 def create_spark_session(mode: str = "demo") -> SparkSession:
-    """Initializes Spark session configured for Delta Lake extensions & S3A open data streaming."""
+    """Creates a local PySpark SparkSession for Medallion pipeline execution.
+
+    Enables Delta Lake SQL extensions and the Liquid Clustering catalog. In "remote"
+    mode, configures S3A anonymous credentials for AWS Open Data streaming.
+
+    Args:
+        mode: "remote" adds S3A anonymous access configuration; all other values use
+              local filesystem ingestion only.
+
+    Returns:
+        Configured SparkSession bound to localhost (127.0.0.1).
+    """
     os.environ["PYSPARK_PYTHON"] = sys.executable
     os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
     configure_windows_hadoop_environment()
@@ -125,8 +136,26 @@ def run_omop_pipeline(
     enable_contract_enforcement: bool = True,
     rules_path: str = "governance/rules.json",
 ) -> dict:
-    """
-    Executes the end-to-end Medallion OMOP CDM v5.4 pipeline.
+    """Executes the Bronze → Silver → Gold Medallion OMOP CDM v5.4 pipeline.
+
+    Ingests raw clinical and genomic data (Bronze), applies GxP timestamp normalisation
+    and quality filters (Silver), transforms to OMOP CDM v5.4 relational structures
+    (Gold), and optionally enforces a Great Expectations data contract gate before
+    persisting Delta Lake sinks.
+
+    Args:
+        spark: Active SparkSession.
+        mode: "demo" uses local synthetic data; "remote" streams from public open datasets.
+        data_dir: Input data directory. Defaults to analytical-layer/data/.
+        save_delta: Persist Medallion tiers as Delta Lake tables when True.
+        output_dir: Delta warehouse root. Defaults to data/delta_warehouse/.
+        run_maintenance: Execute OPTIMIZE and VACUUM after Gold table writes when True.
+        enable_contract_enforcement: Run Great Expectations GxP contract gate when True.
+        rules_path: Path to the Great Expectations rules JSON specification.
+
+    Returns:
+        Dict with Gold-tier DataFrames keyed by "person", "condition_occurrence", and
+        "measurement".
     """
     if data_dir is None:
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -152,16 +181,17 @@ def run_omop_pipeline(
     # -------------------------------------------------------------------------
     print("\n[INFO] [SILVER TIER] Enforcing GxP Data Quality Contracts & Timestamp Parsing...")
 
-    # Filter Demographics — apply OMOP CDM v5.4 timestamp normalization convention.
-    # Attempts full timestamp cast first to preserve birth time if available;
-    # falls back to date-only cast promoted to midnight timestamp per OMOP §3.1 specification.
+    # Normalise birth_datetime per OMOP CDM v5.4: prefer full timestamp precision;
+    # fall back to date-only cast (midnight) when time component is absent.
+    # Cache before the twin accept/quarantine filter so both count() calls read from
+    # memory rather than re-evaluating the Bronze source read.
     df_clinical_parsed = df_raw_patients.withColumn(
         "parsed_birth_dt",
         coalesce(
             to_timestamp(expr("try_cast(birth_datetime as timestamp)")),
             to_timestamp(expr("try_cast(birth_datetime as date)"))
         )
-    )
+    ).cache()
 
     valid_gender_expr = upper(trim(col("gender"))).isin("MALE", "FEMALE", "M", "F", "UNKNOWN")
     df_silver_clinical = df_clinical_parsed.filter(

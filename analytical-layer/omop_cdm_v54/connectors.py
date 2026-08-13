@@ -112,7 +112,14 @@ def load_demographics_data(spark: SparkSession, mode: str = "demo", data_dir: Op
         DataFrame with columns: raw_patient_id, gender, birth_datetime, race,
         ethnicity, ingestion_timestamp.
     """
-    file_path = os.path.join(data_dir, "clinical_patients.csv") if data_dir else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "clinical_patients.csv")
+    env_data_dir = os.getenv("LSDF_DATA_DIR")
+    if data_dir is None:
+        if env_data_dir and os.path.exists(env_data_dir):
+            data_dir = env_data_dir
+        else:
+            data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+            
+    file_path = os.path.join(data_dir, "clinical_patients.csv")
     if mode.lower() == "remote":
         print(f"[CONNECTOR] Streaming remote open demographics from: {SYNTHEA_REMOTE_PATIENTS_URL}")
         return read_http_csv(spark, SYNTHEA_REMOTE_PATIENTS_URL, fallback_path=file_path) \
@@ -176,7 +183,14 @@ def load_labs_data(spark: SparkSession, mode: str = "demo", data_dir: Optional[s
         DataFrame with columns: lab_event_id, raw_patient_id, lab_datetime,
         loinc_code, test_name, numeric_value, unit_value, ingestion_timestamp.
     """
-    file_path = os.path.join(data_dir, "lab_measurements.csv") if data_dir else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "lab_measurements.csv")
+    env_data_dir = os.getenv("LSDF_DATA_DIR")
+    if data_dir is None:
+        if env_data_dir and os.path.exists(env_data_dir):
+            data_dir = env_data_dir
+        else:
+            data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+            
+    file_path = os.path.join(data_dir, "lab_measurements.csv")
     if mode.lower() == "remote":
         print(f"[CONNECTOR] Streaming remote open lab measurements from: {SYNTHEA_REMOTE_LABS_URL}")
         return read_http_csv(spark, SYNTHEA_REMOTE_LABS_URL, fallback_path=file_path) \
@@ -250,7 +264,14 @@ def load_genomics_data(spark: SparkSession, mode: str = "demo", data_dir: Option
         DataFrame with VCF columns (chrom, pos, id, ref, alt, qual, filter, info, …)
         plus ingestion_timestamp.
     """
-    vcf_file = os.path.join(data_dir, "genomic_variants.vcf") if data_dir else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "genomic_variants.vcf")
+    env_data_dir = os.getenv("LSDF_DATA_DIR")
+    if data_dir is None:
+        if env_data_dir and os.path.exists(env_data_dir):
+            data_dir = env_data_dir
+        else:
+            data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+            
+    file_path = os.path.join(data_dir, "genomic_variants.vcf")
     if mode.lower() == "remote":
         print("[CONNECTOR] Accessing remote AWS Open Data 1000 Genomes / ClinVar public S3 bucket...")
         s3_vcf_path = "s3a://1000genomes/release/20130502/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz"
@@ -258,7 +279,7 @@ def load_genomics_data(spark: SparkSession, mode: str = "demo", data_dir: Option
         try:
             return parse_vcf_to_dataframe(spark, s3_vcf_path, max_rows=1000)
         except Exception as e:
-            print(f"[CONNECTOR WARNING] Remote S3A fetch from {s3_vcf_path} failed ({e}). Falling back to dataset at {vcf_file}.")
-            return parse_vcf_to_dataframe(spark, vcf_file)
+            print(f"[CONNECTOR WARNING] Remote S3A fetch from {s3_vcf_path} failed ({e}). Falling back to dataset at {file_path}.")
+            return parse_vcf_to_dataframe(spark, file_path)
     else:
-        return parse_vcf_to_dataframe(spark, vcf_file)
+        return parse_vcf_to_dataframe(spark, file_path)

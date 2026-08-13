@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "Enterprise GxP-compliant multi-omics foundry & clinical normalization engine"
 authors = [{ name = "Vivi Tsoumaki", email = "ptsoumaki@gmail.com" }]
 readme = "README.md"
-requires-python = ">=3.10, <3.12"
+requires-python = ">=3.10, <3.13"
 
 dependencies = [
     "pyspark>=3.5.0",
@@ -36,6 +36,6 @@ agentic = [
 # Look inside analytical-layer/ where the actual Python packages (with __init__.py) live.
 # Note: directories with hyphens (analytical-layer, agentic-ai) are not valid Python package
 # names and cannot be imported directly; only their underscore-named sub-packages are exposed.
-where = ["analytical-layer"]
-include = ["omop_cdm_v54*", "medallion*"]
+where = ["analytical-layer", "."]
+include = ["omop_cdm_v54*", "medallion*", "governance*"]
 exclude = ["tests*"]

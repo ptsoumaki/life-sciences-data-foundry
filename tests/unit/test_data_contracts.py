@@ -3,17 +3,14 @@ Unit tests for Great Expectations Data Contract Enforcement gate and MLflow line
 """
 
 import os
+
 import pandas as pd
-try:
-    import pytest
-    HAS_PYTEST = True
-except ImportError:
-    HAS_PYTEST = False
+import pytest
 
 from governance.mlflow_tracker import evaluate_data_contract
 
 
-def test_evaluate_data_contract_valid_data(tmp_path=None):
+def test_evaluate_data_contract_valid_data():
     """Verifies that compliant OMOP clinical DataFrames pass data contract validation."""
     valid_data = {
         "person_id": [101, 102],
@@ -34,7 +31,7 @@ def test_evaluate_data_contract_valid_data(tmp_path=None):
     assert res["success_rate"] == 100.0
 
 
-def test_evaluate_data_contract_invalid_data_strict_mode(tmp_path=None):
+def test_evaluate_data_contract_invalid_data_strict_mode():
     """Verifies that non-compliant DataFrames raise RuntimeError when strict=True."""
     invalid_data = {
         "person_id": [None, 102],  # Null primary key violates expect_column_values_to_not_be_null
@@ -47,29 +44,6 @@ def test_evaluate_data_contract_invalid_data_strict_mode(tmp_path=None):
     df = pd.DataFrame(invalid_data)
     rules_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "governance", "rules.json")
 
-    if HAS_PYTEST:
-        with pytest.raises(RuntimeError, match="GxP Data Contract Validation failed"):
-            evaluate_data_contract(df, rules_path=rules_path, experiment_name="test_gxp_governance", strict=True)
-    else:
-        raised = False
-        try:
-            evaluate_data_contract(df, rules_path=rules_path, experiment_name="test_gxp_governance", strict=True)
-        except RuntimeError:
-            raised = True
-        assert raised, "Expected RuntimeError on strict contract violation"
-
-
-if __name__ == "__main__":
-    print("[TEST] Running test_evaluate_data_contract_valid_data...")
-    test_evaluate_data_contract_valid_data(None)
-    print("[PASS] test_evaluate_data_contract_valid_data passed!")
-
-    print("[TEST] Running test_evaluate_data_contract_invalid_data_strict_mode...")
-    try:
-        test_evaluate_data_contract_invalid_data_strict_mode(None)
-        print("[PASS] test_evaluate_data_contract_invalid_data_strict_mode passed!")
-    except Exception as e:
-        print(f"[FAIL] {e}")
-        raise e
-    print("\n[ALL TESTS PASSED SUCCESSFULLY]")
+    with pytest.raises(RuntimeError, match="GxP Data Contract Validation failed"):
+        evaluate_data_contract(df, rules_path=rules_path, experiment_name="test_gxp_governance", strict=True)
 

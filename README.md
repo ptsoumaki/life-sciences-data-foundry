@@ -33,7 +33,7 @@ To run the analytical pipelines, validation suites, and IaC deployment engines, 
 
 | Tool | Required Version | Strategic Purpose |
 | --- | --- | --- |
-| **Python** | `3.11` (`>=3.10, <3.12`) | Core PySpark transformations, MLflow lineage tracking, and data contract engines |
+| **Python** | `3.11` (`>=3.10, <3.13`) | Core PySpark transformations, MLflow lineage tracking, and data contract engines |
 | **Apache Spark / PySpark** | `>=3.5.0` | Distributed data engine for OMOP CDM mapping and Delta Lake persistence |
 | **Delta Lake** | `>=3.1.0` | ACID storage engine enforcing Liquid Clustering and Z-Ordering |
 | **Nextflow** | `>=23.04.0` | Episodic containerized workflow orchestration for data pipeline execution |
@@ -55,21 +55,22 @@ To run the analytical pipelines, validation suites, and IaC deployment engines, 
   - Automated execution lineage, SHA-256 cryptographic file tracking, and metric logging via MLflow (`governance/mlflow_tracker.py`).
 - [x] **Phase 3: Base Clinical Normalization Ring (OMOP CDM)**
   - PySpark semantic mapping package (`analytical-layer/omop_cdm_v54/`) translating unstructured genomic and clinical fields into standard OHDSI OMOP CDM v5.4 `PERSON`, `CONDITION_OCCURRENCE`, and `MEASUREMENT` structures.
-- [x] **Phase 4: Data Lakehouse & Clinical Normalization Engine** (🚀 *Active Sprint*)
+- [x] **Phase 4: Data Lakehouse & Clinical Normalization Engine** 
   - Refactored monolithic mapping script into modular domain packages (`analytical-layer/omop_cdm_v54/` with `person.py`, `measurement.py`, `condition_occurrence.py`, `genomic_variants.py`, `connectors.py`).
   - Dual Ingestion Open Data Connectors (`--mode demo`, `--mode remote`, `--data_dir`).
+  - Externalized GxP Concept Mappings (`governance/concept_mappings.json`) & dynamic PySpark vocabulary mapping engine (`analytical-layer/omop_cdm_v54/vocabularies.py`).
   - PySpark write streams with Delta Lake Liquid Clustering (`CLUSTER BY (person_id, concept_id)`), schema evolution merge contracts (`option("mergeSchema", "true")`), and idempotent MERGE upsert (`DeltaTable.merge()`).
   - Provisioned Databricks workspace storage, secret scopes (`life-sciences-vault`), and job orchestration via Terraform (`terraform/databricks_medallion.tf`).
   - Runtime assertion hooks connecting Great Expectations rules (`governance/rules.json`) directly to Silver-to-Gold tier persistence.
-- [ ] **Phase 5: Automated Testing & Data Contract Quality Suite** (🧪 *Upcoming Target*)
+- [x] **Phase 5: Automated Testing & Data Contract Quality Suite**
   - Inline Data Contract Runtime Assertion Enforcement hooks connecting Great Expectations rules (`governance/rules.json`) directly to PySpark Silver-to-Gold write streams.
-  - Unit test suite (`tests/unit/`) with `pytest` covering PySpark domain transformers (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`).
+  - Unit test suite (`tests/unit/`) with `pytest` covering PySpark domain transformers (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`, `vocabularies.py`).
   - Integration test suite (`tests/integration/`) with `pytest-spark` covering end-to-end Medallion pipeline execution, Open Data Connectors, and MLflow lineage tracking.
-- [ ] **Phase 6: Agentic Lineage & MLOps Infrastructure** (🤖 *Planned*)
+- [ ] **Phase 6: Production DataOps & CI/CD Pipeline Automation** (⚡ *Active Sprint*)
+  - DataOps CI workflow expansion (`.github/workflows/tf-lint.yml`) running `ruff`, `mypy`, and automated test suites on PRs.
+- [ ] **Phase 7: Agentic Lineage & MLOps Infrastructure** (🤖 *Backlog*)
   - LangGraph state graph evaluator (`agentic-ai/graph_auditor.py`) auditing MLflow lineage trees (`governance/mlflow_tracker.py`) and Delta Lake transaction commit logs (`_delta_log/`) against GxP regulatory parameters.
   - Model Context Protocol (MCP) clinical server (`agentic-ai/mcp_server.py`) exposing FastMCP tools for OMOP CDM concept hierarchies and pipeline state.
-- [ ] **Phase 7: Production DataOps & CI/CD Pipeline Automation** (⚡ *Backlog*)
-  - DataOps CI workflow expansion (`.github/workflows/tf-lint.yml`) running `ruff`, `mypy`, and automated test suites on PRs.
 
 > 💡 For detailed upcoming tasks, security hardening items, and component backlogs, see **[TODO.md](TODO.md)**.
 
@@ -147,16 +148,23 @@ life-sciences-data-foundry/
 │   │   ├── clinical_patients.csv     # Patient demographics (Synthea / MIMIC-IV format)
 │   │   ├── genomic_variants.vcf      # VCF v4.2 variant annotations (ClinVar / 1000 Genomes)
 │   │   └── lab_measurements.csv      # LOINC lab biomarker observations
+│   ├── medallion/                    # DELTA LAKE MEDALLION LAKEHOUSE STORAGE TIER
+│   │   ├── __init__.py               # Medallion package exports
+│   │   └── writer.py                 # Delta Lake writer with Liquid Clustering & SCD Type 1 MERGE
 │   ├── omop_cdm_v54/                 # MODULAR PYSPARK OMOP CDM v5.4 DOMAIN PACKAGE
 │   │   ├── __init__.py               # Package exports & versioning
+│   │   ├── compat.py                 # Delta Lake & PySpark runtime compatibility layer
 │   │   ├── condition_occurrence.py   # ICD-10 to SNOMED CT concept transformer
 │   │   ├── connectors.py             # Open Data ingestion connector (demo vs remote mode)
 │   │   ├── genomic_variants.py       # VCF parser & variant measurement transformer
 │   │   ├── measurement.py            # LOINC lab biomarker transformer
 │   │   ├── person.py                 # Demographics to OMOP PERSON transformer
-│   │   └── pipeline.py               # Production Medallion pipeline orchestrator
+│   │   ├── pipeline.py               # Production Medallion pipeline orchestrator
+│   │   └── vocabularies.py           # Dynamic concept mapping & PySpark lookup engine
 │   └── README.md                     # Analytical layer architecture specification
 ├── governance/                       # DATA GOVERNANCE & GxP COMPLIANCE LAYER
+│   ├── __init__.py                   # Governance package exports
+│   ├── concept_mappings.json         # GxP clinical concept mappings specification
 │   ├── mlflow_tracker.py             # MLflow lineage logging & SHA-256 audit tracking
 │   ├── rules.json                    # Great Expectations GxP clinical validation suite
 │   ├── sample_clinical.csv           # Synthetic OMOP CDM v5.4 test dataset
@@ -173,16 +181,30 @@ life-sciences-data-foundry/
 │   ├── bootstrap.ps1                 # Windows PowerShell environment initializer
 │   └── bootstrap.sh                  # POSIX shell environment initializer
 ├── terraform/                        # [BACKGROUND UTILITY: Supporting Cloud Infrastructure]
+│   ├── databricks_medallion.tf       # Databricks workspace storage & serverless job orchestration
 │   ├── github_governance.tf          # GitHub repo governance, branch protection, & envs
 │   ├── main.tf                       # Root module entry point & account/region discovery
 │   ├── providers.tf                  # AWS/GitHub provider settings & default tags
 │   ├── storage_and_compute.tf        # S3 WORM storage, KMS encryption, & AWS Batch topology
 │   ├── variables.tf                  # Environment variable validations & defaults
 │   └── terraform.tfvars.example      # Example environment inputs template
+├── tests/                            # AUTOMATED TESTING SUITE
+│   ├── integration/                  # End-to-end Medallion pipeline integration tests
+│   │   ├── test_governance_integration.py
+│   │   └── test_pipeline_execution.py
+│   ├── unit/                         # PySpark domain transformer unit tests
+│   │   ├── test_condition_occurrence.py
+│   │   ├── test_data_contracts.py
+│   │   ├── test_genomic_variants.py
+│   │   ├── test_measurement.py
+│   │   ├── test_person.py
+│   │   └── test_vocabularies.py
+│   └── conftest.py                   # Pytest session fixtures & SparkSession configuration
 ├── .env.example                      # Environment variable template
 ├── .gitignore                        # Git exclusion rules
 ├── CHANGELOG.md                      # Platform version release history
 ├── CONTRIBUTING.md                   # Development workflow & commit standards
+├── databricks.yml                    # Databricks Asset Bundles (DABs) configuration
 ├── LICENSE                           # Repository license
 ├── pyproject.toml                    # Python build backend & project dependencies
 ├── README.md                         # Main platform blueprint specification
@@ -338,13 +360,19 @@ terraform apply -auto-approve "-target=databricks_directory.project_dir" "-targe
 ### 🛠️ DataOps Validation & Audit Commands
 
 ```bash
-# 1. Run GxP Data Quality Contract & Lineage Audit Gate
+# 1. Run PySpark Unit Testing Suite (Domain Transformers & Vocabularies)
+pytest tests/unit/ -v
+
+# 2. Run End-to-End Medallion Pipeline Integration Tests
+pytest tests/integration/ -v
+
+# 3. Run GxP Data Quality Contract & Lineage Audit Gate
 python governance/mlflow_tracker.py
 
-# 2. Run Nextflow Dry-Run Pipeline Orchestration
+# 4. Run Nextflow Dry-Run Pipeline Orchestration
 nextflow run pipelines/main.nf -profile local_dev -stub
 
-# 3. Run Terraform IaC Infrastructure Validation
+# 5. Run Terraform IaC Infrastructure Validation
 terraform -chdir=terraform init -backend=false
 terraform -chdir=terraform validate
 ```

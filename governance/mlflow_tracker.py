@@ -1,8 +1,15 @@
 """
 Module: mlflow_tracker.py
-Description: Native Great Expectations & MLflow lineage tracker for 21 CFR Part 11 compliance.
-             Evaluates rules.json dynamically, computes SHA-256 cryptographic hashes,
-             and logs complete audit metrology to MLflow.
+Description: GxP governance module providing Great Expectations data contract evaluation
+             and MLflow audit lineage for 21 CFR Part 11 compliance. Computes SHA-256
+             checksums for both input datasets and rule specifications to guarantee
+             immutable provenance records.
+
+Public API:
+    compute_sha256          -- File integrity checksum for audit records.
+    load_dataset            -- Multi-format dataset loader (CSV/TSV/Parquet/JSON).
+    evaluate_data_contract  -- GxP contract gate with MLflow lineage logging.
+    run_governance_pipeline -- End-to-end governance pipeline entry point.
 """
 
 import hashlib
@@ -24,7 +31,11 @@ def compute_sha256(file_path: str) -> str:
 
 
 def generate_default_clinical_sample(target_path: str) -> pd.DataFrame:
-    """Generates synthetic OMOP CDM v5.4 test dataset if no data file is provided."""
+    """Writes a minimal synthetic OMOP CDM v5.4 PERSON dataset to disk and returns it.
+
+    Used as a fallback by load_dataset when the requested path does not exist,
+    allowing smoke-tests and demos to run without external data files.
+    """
     sample_data = {
         "person_id": [1001, 1002, 1003, 1004],
         "gender_concept_id": [8507, 8532, 8507, 8532],
@@ -71,21 +82,28 @@ def evaluate_data_contract(
     dataset_source_path: str | None = None,
     strict: bool = False,
 ) -> dict:
-    """
-    Evaluates Great Expectations data contract rules against a Pandas or PySpark DataFrame
-    and logs GxP compliance metrics & cryptographic audit lineage to MLflow.
+    """Evaluates a Great Expectations data contract and logs the audit trail to MLflow.
+
+    Converts the input DataFrame to Pandas, builds an ephemeral GE context from the
+    rules JSON specification, runs all configured expectations, and records GxP metrics
+    and SHA-256 checksums to the active (or newly started) MLflow run.
 
     Args:
-        df: Pandas DataFrame or PySpark DataFrame to validate.
-        rules_path: Path to Great Expectations JSON contract specification (rules.json).
+        df: Pandas or PySpark DataFrame to validate.
+        rules_path: Path to the Great Expectations JSON contract specification.
         experiment_name: MLflow experiment name for GxP audit tracking.
-        dataset_source_path: Optional path to input file for SHA-256 cryptographic provenance.
-        strict: If True, raises RuntimeError when contract validation fails.
+        dataset_source_path: Optional path to the source data file; when provided,
+            a SHA-256 checksum is computed and logged for immutable provenance.
+        strict: When True, raises RuntimeError if any expectation fails.
 
     Returns:
-        dict containing validation outcome and statistics.
+        dict with keys:
+            success (bool), total_records (int), evaluated_expectations (int),
+            successful_expectations (int), unsuccessful_expectations (int),
+            success_rate (float, 0–100), run_id (str).
     """
-    # Normalize rules_path location if relative
+    # Resolve relative paths against the repository root so the function works
+    # regardless of the working directory the caller was launched from.
     resolved_rules_path = rules_path
     if not os.path.exists(resolved_rules_path):
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -95,7 +113,7 @@ def evaluate_data_contract(
         else:
             raise FileNotFoundError(f"Data contract rules not found at: {rules_path}")
 
-    # Convert PySpark DataFrame to Pandas if necessary
+    # GE 1.x operates on Pandas; convert PySpark DataFrames before validation.
     if hasattr(df, "toPandas"):
         pdf = df.toPandas()
     elif isinstance(df, pd.DataFrame):
@@ -103,7 +121,8 @@ def evaluate_data_contract(
     else:
         pdf = pd.DataFrame(df)
 
-    # Format datetime / timestamp / date columns to ISO string format so regex expectations work predictably
+    # Normalise temporal columns to ISO-8601 strings; GE regex expectations
+    # require consistent string representations across all datetime dtypes.
     for col_name in pdf.columns:
         if pd.api.types.is_datetime64_any_dtype(pdf[col_name]):
             pdf[col_name] = pdf[col_name].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -123,19 +142,24 @@ def evaluate_data_contract(
         else "in_memory_dataframe"
     )
 
-    # Parse Governance Metadata
+    # Load the full suite configuration; `meta` block carries compliance metadata
+    # (standard, schema version) that is logged as MLflow run params below.
     with open(resolved_rules_path, "r") as f:
         suite_config = json.load(f)
 
     meta = suite_config.get("meta", {})
 
     active_run = mlflow.active_run()
-    # If active_run already exists, do not use `with active_run:` because exiting `with` closes active runs.
     is_nested_run = active_run is not None
-    run_context = active_run if is_nested_run else mlflow.start_run(run_name="gxp_data_contract_gate")
-    run_id = active_run.info.run_id if is_nested_run else "active_run"
+    # Start a new MLflow run only when no run is already active.
+    # Do NOT wrap an existing active_run in a context manager: exiting `with active_run:`
+    # calls active_run.__exit__() which ends the run, closing any outer caller's context.
+    if is_nested_run:
+        run = active_run
+    else:
+        run = mlflow.start_run(run_name="gxp_data_contract_gate")
 
-    with run_context as run:
+    try:
         mlflow.log_param("data_input_path", dataset_source_path or "in_memory_dataframe")
         mlflow.log_param("data_sha256", data_checksum)
         mlflow.log_param("rules_sha256", rules_checksum)
@@ -143,7 +167,9 @@ def evaluate_data_contract(
         mlflow.log_param("compliance_standard", meta.get("compliance_standard", "FDA_21_CFR_Part_11"))
         mlflow.log_param("target_schema", meta.get("target_schema", "OMOP_CDM_v5.4"))
 
-        # Dynamic Great Expectations 1.x Suite Execution
+        # Build an ephemeral GE context from the rules JSON and run all expectations.
+        # Each add_* call falls back to get_* to handle repeated invocations within
+        # the same Python process without raising DuplicateKeyError.
         try:
             context = ge.get_context(mode="ephemeral")
             try:
@@ -175,6 +201,8 @@ def evaluate_data_contract(
                     exp_cls = getattr(ge.expectations, pascal_name)
                     suite.add_expectation(exp_cls(**kwargs))
 
+            # Hash-derived name satisfies GE's uniqueness requirement across repeated
+            # calls with the same suite name in a single ephemeral context.
             val_def_name = f"gxp_val_def_{abs(hash(suite_name))}"
             try:
                 val_def = context.validation_definitions.add(
@@ -200,13 +228,13 @@ def evaluate_data_contract(
                 },
             }
         except Exception as e:
-            print(f"[CONNECTOR WARNING] GE 1.x suite execution fallback: {e}")
+            print(f"[GxP WARNING] Great Expectations suite execution failed; contract metrics zeroed: {e}")
             evaluated_expectations, successful_expectations, unsuccessful_expectations = 0, 0, 0
             success_rate = 0.0
             validation_passed = False
             res_dict = {"success": False, "error": str(e)}
 
-        # Metric & Artifact Logging
+        # Log all GxP metrics and attach the rules file + validation result as MLflow artifacts.
         mlflow.log_metric("total_records_ingested", len(pdf))
         mlflow.log_metric("evaluated_expectations", evaluated_expectations)
         mlflow.log_metric("successful_expectations", successful_expectations)
@@ -232,6 +260,11 @@ def evaluate_data_contract(
             print(f"[SUCCESS] GxP Data Contract Gate Passed. Run ID: {run_id}")
         print(f"[METRIC] Evaluated: {evaluated_expectations} | Passed: {successful_expectations} | Pass Rate: {success_rate:.1f}%")
 
+    finally:
+        # Only end the run if we started it; leave the caller's outer run open.
+        if not is_nested_run:
+            mlflow.end_run()
+
     if strict and not validation_passed:
         raise RuntimeError(
             f"GxP Data Contract Validation failed! {unsuccessful_expectations} expectation(s) failed."
@@ -249,7 +282,11 @@ def evaluate_data_contract(
 
 
 def run_governance_pipeline(data_path: str, rules_path: str, experiment_name: str):
-    """Executes dynamic Great Expectations suites and logs audit lineage to MLflow."""
+    """Loads a dataset and evaluates the given data contract, logging results to MLflow.
+
+    Convenience wrapper around load_dataset + evaluate_data_contract for
+    CLI and scripted governance pipeline execution.
+    """
     df = load_dataset(data_path)
     return evaluate_data_contract(
         df,

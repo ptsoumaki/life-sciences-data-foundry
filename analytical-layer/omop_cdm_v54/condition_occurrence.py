@@ -51,8 +51,8 @@ def transform_condition_occurrence(df_silver_diagnoses: DataFrame) -> DataFrame:
         lit(None).cast("timestamp").alias("condition_end_datetime"),    # OMOP CDM v5.4 §5.3: NULL when source carries date only, not datetime
         lit(32817).cast("integer").alias("condition_type_concept_id"),  # Concept 32817 = EHR Primary Diagnosis
         lit(None).cast("string").alias("stop_reason"),                  # OMOP CDM v5.4: NULL when source does not record a stop reason
-        lit(None).cast("long").alias("provider_id"),           # OMOP CDM v5.4: NULL — no provider context in source; 0 is not a valid OMOP FK value.
-        lit(None).cast("long").alias("visit_occurrence_id"),   # OMOP CDM v5.4: NULL — no visit context in source; 0 is not a valid OMOP FK value.
+        lit(None).cast("long").alias("provider_id"),           # OMOP CDM v5.4: NULL — no provider context in source.
+        lit(None).cast("long").alias("visit_occurrence_id"),   # OMOP CDM v5.4: NULL — no visit context in source.
         concat_ws(":", col("icd10_code"), col("diagnosis_description")).cast("string").alias("condition_source_value"),
         lit(0).cast("integer").alias("condition_source_concept_id")     # OMOP CDM v5.4: INTEGER; 0 when no standard source concept mapping exists
     )

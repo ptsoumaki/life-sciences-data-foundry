@@ -207,10 +207,16 @@ def run_omop_pipeline(
         expr("try_cast(diagnosis_date as date)")
     ).filter(col("parsed_diag_dt").isNotNull())
 
-    # Filter Labs — parse to DateType directly (OMOP measurement_date is `date`, not `datetime`).
+    # Filter Labs — parse timestamp and date (OMOP measurement_date is `date`, measurement_datetime is `timestamp`).
     df_silver_labs = df_raw_labs.withColumn(
+        "parsed_lab_datetime",
+        coalesce(
+            to_timestamp(expr("try_cast(lab_datetime as timestamp)")),
+            to_timestamp(expr("try_cast(lab_datetime as date)"))
+        )
+    ).withColumn(
         "parsed_lab_dt",
-        expr("try_cast(lab_datetime as date)")
+        col("parsed_lab_datetime").cast("date")
     ).filter(col("parsed_lab_dt").isNotNull())
 
     # Filter Genomics

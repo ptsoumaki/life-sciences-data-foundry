@@ -65,11 +65,11 @@ To run the analytical pipelines, validation suites, and IaC deployment engines, 
   - Inline Data Contract Runtime Assertion Enforcement hooks connecting Great Expectations rules (`governance/rules.json`) directly to PySpark Silver-to-Gold write streams.
   - Unit test suite (`tests/unit/`) with `pytest` covering PySpark domain transformers (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`).
   - Integration test suite (`tests/integration/`) with `pytest-spark` covering end-to-end Medallion pipeline execution, Open Data Connectors, and MLflow lineage tracking.
-- [ ] **Phase 6: Agentic Lineage & MLOps Infrastructure** (🧪 *Coming Next*)
+- [ ] **Phase 6: Production DataOps & CI/CD Pipeline Automation** (⚡ *Coming Next*)
+  - DataOps CI workflow expansion (`.github/workflows/tf-lint.yml`) running `ruff`, `mypy`, and automated test suites on PRs.
+- [ ] **Phase 7: Agentic Lineage & MLOps Infrastructure** (🤖 *Backlog*)
   - LangGraph state graph evaluator (`agentic-ai/graph_auditor.py`) auditing MLflow lineage trees (`governance/mlflow_tracker.py`) and Delta Lake transaction commit logs (`_delta_log/`) against GxP regulatory parameters.
   - Model Context Protocol (MCP) clinical server (`agentic-ai/mcp_server.py`) exposing FastMCP tools for OMOP CDM concept hierarchies and pipeline state.
-- [ ] **Phase 7: Production DataOps & CI/CD Pipeline Automation** (⚡ *Backlog*)
-  - DataOps CI workflow expansion (`.github/workflows/tf-lint.yml`) running `ruff`, `mypy`, and automated test suites on PRs.
 
 > 💡 For detailed upcoming tasks, security hardening items, and component backlogs, see **[TODO.md](TODO.md)**.
 

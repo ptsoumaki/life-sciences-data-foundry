@@ -31,19 +31,19 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🤖 Phase 6: Agentic Lineage & MLOps Infrastructure
+## ⚡ Phase 6: Production DataOps & CI/CD Pipeline Automation
+
+- [ ] **DataOps CI/CD Gate Expansion (`.github/workflows/tf-lint.yml`)**
+  - Configure GitHub Actions to execute `ruff`, `mypy`, and PySpark unit/integration test suites on all feature branch pull requests.
+
+---
+
+## 🤖 Phase 7: Agentic Lineage & MLOps Infrastructure
 
 - [ ] **LangGraph Delta Lake Lineage Auditor (`agentic-ai/graph_auditor.py`)**
   - Build state graph evaluating MLflow lineage trees (`governance/mlflow_tracker.py`), Delta Lake transaction commit logs (`_delta_log/`), and schema integrity against FDA 21 CFR Part 11 parameters.
 - [ ] **Model Context Protocol (MCP) Clinical Data Server (`agentic-ai/mcp_server.py`)**
   - Expose FastMCP tools for querying OMOP CDM concept hierarchies, vocabulary relationships, and pipeline execution state.
-
----
-
-## ⚡ Phase 7: Production DataOps & CI/CD Pipeline Automation
-
-- [ ] **DataOps CI/CD Gate Expansion (`.github/workflows/tf-lint.yml`)**
-  - Configure GitHub Actions to execute `ruff`, `mypy`, and PySpark unit/integration test suites on all feature branch pull requests.
 
 ---
 

@@ -137,15 +137,22 @@ class DeltaMedallionWriter:
             writer = writer.option("mergeSchema", "true")
         if user_metadata:
             writer = writer.option("userMetadata", user_metadata)
-        if cluster_by and hasattr(writer, "clusterBy"):
-            writer = writer.clusterBy(*cluster_by)
-
         uc_table = self._get_uc_table_name(table_name)
         if uc_table:
+            if cluster_by and hasattr(writer, "clusterBy"):
+                writer = writer.clusterBy(*cluster_by)
             writer.option("path", path).saveAsTable(uc_table)
             print(f"[DELTA] Gold OMOP Table '{table_name}' saved to UC '{uc_table}' at {path} (clusterBy={cluster_by})")
         else:
-            writer.save(path)
+            try:
+                if cluster_by and hasattr(writer, "clusterBy"):
+                    writer_clustered = writer.clusterBy(*cluster_by)
+                    writer_clustered.save(path)
+                else:
+                    writer.save(path)
+            except Exception as e:
+                print(f"[DELTA NOTICE] Local Delta save with clusterBy API fallback ({e}). Persisting table standard Delta format.")
+                writer.save(path)
             print(f"[DELTA] Gold OMOP Table '{table_name}' saved to {path} (mode={mode}, clusterBy={cluster_by})")
 
         if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA:
@@ -179,10 +186,11 @@ class DeltaMedallionWriter:
             return self.write_gold_omop_table(df, table_name, cluster_by=cluster_by, mode="overwrite")
 
         target_table = DeltaTable.forPath(self.spark, path)
+        df_dedup = df.dropDuplicates(subset=merge_keys)
         merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in merge_keys])
 
         target_table.alias("target") \
-            .merge(df.alias("source"), merge_condition) \
+            .merge(df_dedup.alias("source"), merge_condition) \
             .whenMatchedUpdateAll() \
             .whenNotMatchedInsertAll() \
             .execute()

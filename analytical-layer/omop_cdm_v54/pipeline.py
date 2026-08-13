@@ -13,11 +13,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, coalesce, current_timestamp, expr, lit, to_date, to_timestamp, upper, trim
 
 
-try:
-    from delta import configure_spark_with_delta_pip
-    HAS_DELTA = True
-except ImportError:
-    HAS_DELTA = False
+from omop_cdm_v54.compat import HAS_DELTA, configure_spark_with_delta_pip
 
 try:
     from omop_cdm_v54.connectors import (
@@ -158,8 +154,12 @@ def run_omop_pipeline(
         "measurement".
     """
     if data_dir is None:
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        data_dir = os.path.join(base_dir, "data")
+        env_data_dir = os.getenv("LSDF_DATA_DIR")
+        if env_data_dir and os.path.exists(env_data_dir):
+            data_dir = env_data_dir
+        else:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            data_dir = os.path.join(base_dir, "data")
 
     print("==========================================================================")
     print(" OHDSI OMOP CDM v5.4 Clinical & Genomic Normalization Engine")

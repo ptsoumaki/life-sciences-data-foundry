@@ -103,10 +103,12 @@ def evaluate_data_contract(
     else:
         pdf = pd.DataFrame(df)
 
-    # Format datetime / timestamp columns to ISO string format so regex expectations work predictably
+    # Format datetime / timestamp / date columns to ISO string format so regex expectations work predictably
     for col_name in pdf.columns:
         if pd.api.types.is_datetime64_any_dtype(pdf[col_name]):
             pdf[col_name] = pdf[col_name].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        elif pdf[col_name].dtype == "object":
+            pdf[col_name] = pdf[col_name].apply(lambda val: val.isoformat() if hasattr(val, "isoformat") else val)
 
     clean_experiment_name = experiment_name.lstrip("/")
     try:
@@ -128,8 +130,10 @@ def evaluate_data_contract(
     meta = suite_config.get("meta", {})
 
     active_run = mlflow.active_run()
-    run_context = active_run if active_run else mlflow.start_run(run_name="gxp_data_contract_gate")
-    run_id = "active_run"  # Safe default; overwritten inside the context manager once the run is active.
+    # If active_run already exists, do not use `with active_run:` because exiting `with` closes active runs.
+    is_nested_run = active_run is not None
+    run_context = active_run if is_nested_run else mlflow.start_run(run_name="gxp_data_contract_gate")
+    run_id = active_run.info.run_id if is_nested_run else "active_run"
 
     with run_context as run:
         mlflow.log_param("data_input_path", dataset_source_path or "in_memory_dataframe")

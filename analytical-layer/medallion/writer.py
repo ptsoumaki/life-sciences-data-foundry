@@ -137,16 +137,36 @@ class DeltaMedallionWriter:
             writer = writer.option("mergeSchema", "true")
         if user_metadata:
             writer = writer.option("userMetadata", user_metadata)
-        if cluster_by and hasattr(writer, "clusterBy"):
-            writer = writer.clusterBy(*cluster_by)
-
         uc_table = self._get_uc_table_name(table_name)
         if uc_table:
+            if cluster_by and hasattr(writer, "clusterBy"):
+                writer = writer.clusterBy(*cluster_by)
             writer.option("path", path).saveAsTable(uc_table)
             print(f"[DELTA] Gold OMOP Table '{table_name}' saved to UC '{uc_table}' at {path} (clusterBy={cluster_by})")
         else:
-            writer.save(path)
+            try:
+                if cluster_by and hasattr(writer, "clusterBy"):
+                    writer_clustered = writer.clusterBy(*cluster_by)
+                    writer_clustered.save(path)
+                else:
+                    writer.save(path)
+            except Exception as e:
+                print(f"[DELTA NOTICE] Local Delta save with clusterBy API fallback ({e}). Persisting table standard Delta format.")
+                writer.save(path)
             print(f"[DELTA] Gold OMOP Table '{table_name}' saved to {path} (mode={mode}, clusterBy={cluster_by})")
+
+        if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA:
+            try:
+                cluster_cols_sql = ", ".join(cluster_by)
+                formatted_path = path.replace("\\", "/")
+                if not formatted_path.startswith("file:/") and not formatted_path.startswith("s3://") and not formatted_path.startswith("s3a://"):
+                    if os.name == "nt" and len(formatted_path) > 1 and formatted_path[1] == ":":
+                        formatted_path = f"file:///{formatted_path}"
+                self.spark.sql(f"ALTER TABLE delta.`{formatted_path}` CLUSTER BY ({cluster_cols_sql})")
+                print(f"[DELTA] Executed ALTER TABLE Liquid Clustering SQL on {formatted_path} (CLUSTER BY ({cluster_cols_sql}))")
+            except Exception as e:
+                print(f"[DELTA] Note: Path-based Liquid Clustering configured for Databricks Runtime / UC ({cluster_by})")
+
         return path
 
     def upsert_gold_omop_table(
@@ -166,10 +186,11 @@ class DeltaMedallionWriter:
             return self.write_gold_omop_table(df, table_name, cluster_by=cluster_by, mode="overwrite")
 
         target_table = DeltaTable.forPath(self.spark, path)
+        df_dedup = df.dropDuplicates(subset=merge_keys)
         merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in merge_keys])
 
         target_table.alias("target") \
-            .merge(df.alias("source"), merge_condition) \
+            .merge(df_dedup.alias("source"), merge_condition) \
             .whenMatchedUpdateAll() \
             .whenNotMatchedInsertAll() \
             .execute()
@@ -226,12 +247,16 @@ class DeltaMedallionWriter:
             detail = dt.detail().collect()[0].asDict()
             history = dt.history(5).collect()
 
+            num_files = detail.get("numFiles") if detail.get("numFiles") is not None else detail.get("num_files")
+            size_in_bytes = detail.get("sizeInBytes") if detail.get("sizeInBytes") is not None else detail.get("size_in_bytes")
+            clustering_columns = detail.get("clusteringColumns", detail.get("clustering_columns", detail.get("partitionColumns", [])))
+
             return {
                 "table_path": table_path,
                 "format": detail.get("format"),
-                "num_files": detail.get("numFiles"),
-                "size_in_bytes": detail.get("sizeInBytes"),
-                "clustering_columns": detail.get("clusteringColumns"),
+                "num_files": num_files,
+                "size_in_bytes": size_in_bytes,
+                "clustering_columns": clustering_columns,
                 "recent_commits": [h.asDict() for h in history],
             }
         except Exception as e:

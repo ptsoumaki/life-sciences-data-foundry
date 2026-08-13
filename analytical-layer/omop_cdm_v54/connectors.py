@@ -123,7 +123,8 @@ def parse_vcf_to_dataframe(spark: SparkSession, vcf_path: str, max_rows: Optiona
     df_data = df_raw.filter(~col("value").startswith("#CHROM"))
     if max_rows:
         df_data = df_data.limit(max_rows)
-    select_exprs = [split(col("value"), "\t").getItem(i).alias(col_name) for i, col_name in enumerate(vcf_columns)]
+    df_data = df_data.withColumn("_vcf_parts", split(col("value"), "\t"))
+    select_exprs = [col("_vcf_parts").getItem(i).alias(col_name) for i, col_name in enumerate(vcf_columns)]
 
     return df_data.select(*select_exprs).withColumn("ingestion_timestamp", current_timestamp())
 

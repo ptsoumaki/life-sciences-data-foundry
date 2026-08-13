@@ -10,7 +10,14 @@ import os
 import sys
 import argparse
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, expr, lit, to_date, to_timestamp
+from pyspark.sql.functions import col, current_timestamp, expr, lit, to_date, to_timestamp, upper, trim
+
+# Ensure repository root and analytical-layer directory are in sys.path for direct script execution
+_base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_analytical_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in [_base_dir, _analytical_dir]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 try:
     from delta import configure_spark_with_delta_pip
@@ -19,19 +26,18 @@ except ImportError:
     HAS_DELTA = False
 
 try:
-    from .connectors import (
+    from omop_cdm_v54.connectors import (
         configure_s3a_anonymous_access,
         load_demographics_data,
         load_diagnoses_data,
         load_labs_data,
         load_genomics_data,
     )
-    from .person import transform_person
-    from .measurement import transform_measurement
-    from .condition_occurrence import transform_condition_occurrence
-    from .genomic_variants import transform_genomic_variants
+    from omop_cdm_v54.person import transform_person
+    from omop_cdm_v54.measurement import transform_measurement
+    from omop_cdm_v54.condition_occurrence import transform_condition_occurrence
+    from omop_cdm_v54.genomic_variants import transform_genomic_variants
 except ImportError:
-    # Fallback for direct script execution (e.g. python pipeline.py)
     from connectors import (
         configure_s3a_anonymous_access,
         load_demographics_data,
@@ -47,22 +53,12 @@ except ImportError:
 try:
     from medallion.writer import DeltaMedallionWriter
 except ImportError:
-    try:
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from medallion.writer import DeltaMedallionWriter
-    except ImportError:
-        DeltaMedallionWriter = None
+    DeltaMedallionWriter = None
 
 try:
     from governance.mlflow_tracker import evaluate_data_contract
 except ImportError:
-    try:
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if base_dir not in sys.path:
-            sys.path.insert(0, base_dir)
-        from governance.mlflow_tracker import evaluate_data_contract
-    except ImportError:
-        evaluate_data_contract = None
+    evaluate_data_contract = None
 
 
 
@@ -156,21 +152,23 @@ def run_omop_pipeline(
     # -------------------------------------------------------------------------
     print("\n[INFO] [SILVER TIER] Enforcing GxP Data Quality Contracts & Timestamp Parsing...")
 
-    # Filter Demographics — apply OMOP CDM v5.4 midnight normalization convention.
-    # Per OMOP §3.1 PERSON: "For data sources with date only, the time is defaulted to midnight."
-    # to_date() handles any recognizable format (YYYY-MM-DD, YYYY-MM-DD HH:mm:ss, ISO 8601, etc.).
-    # to_timestamp() promotes the date to 00:00:00, explicitly implementing the OMOP convention
-    # rather than treating date-only values as a parse error.
+    # Filter Demographics — apply OMOP CDM v5.4 timestamp normalization convention.
+    # Attempts full timestamp cast first to preserve birth time if available;
+    # falls back to date-only cast promoted to midnight timestamp per OMOP §3.1 specification.
     df_clinical_parsed = df_raw_patients.withColumn(
         "parsed_birth_dt",
-        to_timestamp(expr("try_cast(birth_datetime as date)"))
+        coalesce(
+            to_timestamp(expr("try_cast(birth_datetime as timestamp)")),
+            to_timestamp(expr("try_cast(birth_datetime as date)"))
+        )
     )
 
+    valid_gender_expr = upper(trim(col("gender"))).isin("MALE", "FEMALE", "M", "F", "UNKNOWN")
     df_silver_clinical = df_clinical_parsed.filter(
-        col("parsed_birth_dt").isNotNull() & col("gender").isin("MALE", "FEMALE", "UNKNOWN")
+        col("parsed_birth_dt").isNotNull() & valid_gender_expr
     )
     df_quarantine_clinical = df_clinical_parsed.filter(
-        col("parsed_birth_dt").isNull() | ~col("gender").isin("MALE", "FEMALE", "UNKNOWN")
+        col("parsed_birth_dt").isNull() | ~valid_gender_expr
     )
 
     # Filter Diagnoses — parse to DateType directly (OMOP condition_start_date is `date`, not `datetime`).

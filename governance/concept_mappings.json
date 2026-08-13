@@ -1,0 +1,78 @@
+{
+  "_metadata": {
+    "standard": "OHDSI OMOP CDM v5.4",
+    "description": "Standard vocabulary concept ID cross-references for GxP clinical and genomic normalisation",
+    "author": "Vivi Tsoumaki"
+  },
+  "icd10_to_snomed": {
+    "_description": "ICD-10-CM clinical diagnosis codes mapped to standard SNOMED CT concept IDs (CONDITION_OCCURRENCE.condition_concept_id)",
+    "E11.9": 201826,
+    "_comment_E11.9": "Type 2 diabetes mellitus without complications -> SNOMED 201826",
+    "E119": 201826,
+    "I10": 316866,
+    "_comment_I10": "Essential (primary) hypertension -> SNOMED 316866",
+    "I10.0": 316866,
+    "I100": 316866,
+    "J45.909": 195080,
+    "_comment_J45.909": "Unspecified asthma, uncomplicated -> SNOMED 195080",
+    "J45909": 195080,
+    "I21.9": 4329847,
+    "_comment_I21.9": "Acute myocardial infarction, unspecified -> SNOMED 4329847",
+    "I219": 4329847,
+    "C34.90": 254637,
+    "_comment_C34.90": "Malignant neoplasm of unspecified part of bronchus/lung -> SNOMED 254637",
+    "C3490": 254637
+  },
+  "loinc_to_concept": {
+    "_description": "LOINC laboratory biomarker observation codes mapped to OMOP Measurement standard concepts (MEASUREMENT.measurement_concept_id)",
+    "4548-4": 3004410,
+    "_comment_4548-4": "Hemoglobin A1c / HbA1c in Blood Panel -> OMOP Concept 3004410",
+    "2345-7": 3000483,
+    "_comment_2345-7": "Glucose in Serum or Plasma -> OMOP Concept 3000483",
+    "2093-3": 3004249,
+    "_comment_2093-3": "Cholesterol in Serum or Plasma -> OMOP Concept 3004249",
+    "2160-0": 3016723,
+    "_comment_2160-0": "Creatinine in Serum or Plasma -> OMOP Concept 3016723",
+    "33959-8": 3006923,
+    "_comment_33959-8": "Alanine aminotransferase (ALT) in Serum or Plasma -> OMOP Concept 3006923"
+  },
+  "gender_to_concept": {
+    "_description": "Gender source strings normalized and mapped to OMOP Gender concepts (PERSON.gender_concept_id)",
+    "MALE": 8507,
+    "M": 8507,
+    "_comment_MALE": "Concept 8507 = Male",
+    "FEMALE": 8532,
+    "F": 8532,
+    "_comment_FEMALE": "Concept 8532 = Female"
+  },
+  "race_to_concept": {
+    "_description": "Race source strings mapped to OMOP Race concepts (PERSON.race_concept_id)",
+    "WHITE": 8527,
+    "_comment_WHITE": "Concept 8527 = White",
+    "ASIAN": 8515,
+    "_comment_ASIAN": "Concept 8515 = Asian",
+    "BLACK": 8516,
+    "_comment_BLACK": "Concept 8516 = Black or African American"
+  },
+  "ethnicity_to_concept": {
+    "_description": "Ethnicity source strings mapped to OMOP Ethnicity concepts (PERSON.ethnicity_concept_id)",
+    "HISPANIC": 38003563,
+    "_comment_HISPANIC": "Concept 38003563 = Hispanic or Latino",
+    "NOT_HISPANIC": 38003564,
+    "NON_HISPANIC": 38003564,
+    "_comment_NOT_HISPANIC": "Concept 38003564 = Not Hispanic or Latino"
+  },
+  "clinvar_to_concept": {
+    "_description": "ClinVar CLNSIG variant annotations mapped to OMOP Meas Value standard concepts (MEASUREMENT.value_as_concept_id)",
+    "Pathogenic": 4181412,
+    "_comment_Pathogenic": "Concept 4181412 = Pathogenic (SNOMED)",
+    "Likely_pathogenic": 36768280,
+    "_comment_Likely_pathogenic": "Concept 36768280 = Likely pathogenic",
+    "Benign": 4049393,
+    "_comment_Benign": "Concept 4049393 = Benign",
+    "Likely_benign": 36768279,
+    "_comment_Likely_benign": "Concept 36768279 = Likely benign",
+    "Uncertain_significance": 4078249,
+    "_comment_Uncertain_significance": "Concept 4078249 = Uncertain significance"
+  }
+}

@@ -50,3 +50,22 @@ def test_transform_measurement_values_and_units(spark):
     assert row["measurement_id"] > 0
     assert isinstance(row["person_id"], int)
     assert row["person_id"] > 0
+
+
+def test_transform_measurement_datetime_preservation(spark):
+    """Verifies that measurement_datetime preserves full timestamp precision when provided."""
+    data = [
+        ("LAB200", "PAT_15", "4548-4", "HbA1c Panel", 6.1, "%", "2023-03-15 11:30:00"),
+    ]
+    df = spark.createDataFrame(
+        data,
+        ["lab_event_id", "raw_patient_id", "loinc_code", "test_name", "numeric_value", "unit_value", "lab_datetime"]
+    )
+
+    row = transform_measurement(df).first()
+
+    assert row["measurement_date"] is not None
+    assert str(row["measurement_date"]) == "2023-03-15"
+    assert row["measurement_datetime"] is not None
+    assert "2023-03-15 11:30:00" in str(row["measurement_datetime"])
+

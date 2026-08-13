@@ -1,53 +1,27 @@
 """
-Pytest configuration and shared session-scoped PySpark fixtures.
+Pytest configuration and shared session-scoped PySpark fixtures for the OMOP CDM pipeline test suite.
 """
 
 import os
 import sys
 import pytest
 from pyspark.sql import SparkSession
-
-try:
-    from delta import configure_spark_with_delta_pip
-    HAS_DELTA = True
-except ImportError:
-    HAS_DELTA = False
-
-# Ensure repository root and analytical-layer directories are in sys.path
-base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-analytical_dir = os.path.join(base_dir, "analytical-layer")
-for p in [base_dir, analytical_dir]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+from omop_cdm_v54.compat import HAS_DELTA, configure_spark_with_delta_pip
+from omop_cdm_v54.pipeline import configure_windows_hadoop_environment
 
 
 @pytest.fixture(scope="session")
 def spark():
-    """
-    Provides a lightweight, session-scoped PySpark SparkSession configured with Delta Lake for fast local unit and integration testing.
+    """Session-scoped SparkSession with Delta Lake extensions for unit and integration tests.
+
+    Configured for minimal resource usage (2 local threads, Spark UI disabled).
+    Delegates Windows Hadoop environment setup to configure_windows_hadoop_environment()
+    from pipeline.py to keep that logic in a single canonical location.
     """
     os.environ["PYSPARK_PYTHON"] = sys.executable
     os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
 
-    # Configure dummy Hadoop environment on Windows to avoid winutils warnings
-    if os.name == 'nt':
-        hadoop_dir = os.path.join(base_dir, "hadoop")
-        bin_dir = os.path.join(hadoop_dir, "bin")
-        os.makedirs(bin_dir, exist_ok=True)
-        winutils_path = os.path.join(bin_dir, "winutils.exe")
-        if not os.path.exists(winutils_path) or os.path.getsize(winutils_path) < 100:
-            csc = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-            cs_path = os.path.join(bin_dir, "dummy.cs")
-            if os.path.exists(csc):
-                try:
-                    import subprocess
-                    with open(cs_path, "w") as f:
-                        f.write("class Program { static int Main(string[] args) { return 0; } }\n")
-                    subprocess.run([csc, "/nologo", f"/out:{winutils_path}", cs_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except Exception:
-                    pass
-        os.environ["HADOOP_HOME"] = hadoop_dir
-        os.environ["hadoop.home.dir"] = hadoop_dir
+    configure_windows_hadoop_environment()
 
     builder = (
         SparkSession.builder

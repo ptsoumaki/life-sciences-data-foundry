@@ -11,11 +11,12 @@ import os
 from typing import List, Optional, Dict, Any
 from pyspark.sql import DataFrame, SparkSession
 
+from omop_cdm_v54.compat import HAS_DELTA
+
 try:
     from delta.tables import DeltaTable
-    HAS_DELTA = True
 except ImportError:
-    HAS_DELTA = False
+    pass
 
 
 class DeltaMedallionWriter:
@@ -47,7 +48,7 @@ class DeltaMedallionWriter:
 
     def _get_table_path(self, tier: str, table_name: str) -> str:
         """Constructs canonical file path for a Medallion table tier."""
-        return os.path.join(self.base_output_dir, tier.lower(), table_name.lower())
+        return os.path.join(self.base_output_dir, tier.lower(), table_name.lower()).replace("\\", "/")
 
     def _get_uc_table_name(self, table_name: str) -> Optional[str]:
         """Constructs Unity Catalog 3-level namespace identifier if configured."""
@@ -143,6 +144,17 @@ class DeltaMedallionWriter:
                 writer = writer.clusterBy(*cluster_by)
             writer.option("path", path).saveAsTable(uc_table)
             print(f"[DELTA] Gold OMOP Table '{table_name}' saved to UC '{uc_table}' at {path} (clusterBy={cluster_by})")
+            # If the Spark version doesn't support the DataFrameWriter.clusterBy API,
+            # execute the ALTER TABLE SQL on the UC table directly.
+            if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA:
+                try:
+                    cluster_cols_sql = ", ".join(cluster_by)
+                    self.spark.sql(f"ALTER TABLE {uc_table} CLUSTER BY ({cluster_cols_sql})")
+                    print(f"[DELTA] Executed ALTER TABLE Liquid Clustering SQL on {uc_table} (CLUSTER BY ({cluster_cols_sql}))")
+                except Exception as e:
+                    print(f"[DELTA] Note: UC Liquid Clustering fallback failed ({e})")
+            
+            return path
         else:
             try:
                 if cluster_by and hasattr(writer, "clusterBy"):
@@ -155,7 +167,8 @@ class DeltaMedallionWriter:
                 writer.save(path)
             print(f"[DELTA] Gold OMOP Table '{table_name}' saved to {path} (mode={mode}, clusterBy={cluster_by})")
 
-        if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA and self.catalog:
+        # Fallback SQL for path-based non-UC clustering if DataFrameWriter API wasn't available
+        if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA:
             try:
                 cluster_cols_sql = ", ".join(cluster_by)
                 formatted_path = path.replace("\\", "/")
@@ -181,11 +194,12 @@ class DeltaMedallionWriter:
         Prevents duplicate patient records during incremental loads.
         """
         path = self._get_table_path("gold", table_name)
+        formatted_path = path.replace("\\", "/")
 
         if not HAS_DELTA or not os.path.exists(os.path.join(path, "_delta_log")):
             return self.write_gold_omop_table(df, table_name, cluster_by=cluster_by, mode="overwrite")
 
-        target_table = DeltaTable.forPath(self.spark, path)
+        target_table = DeltaTable.forPath(self.spark, formatted_path)
         df_dedup = df.dropDuplicates(subset=merge_keys)
         merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in merge_keys])
 

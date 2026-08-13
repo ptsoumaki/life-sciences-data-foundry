@@ -1,9 +1,19 @@
 """
 Module: connectors.py
-Description: Open Data Ingestion Connector supporting dual execution modes:
-             - 'demo': Instant local synthetic dataset ingestion for offline testing & demos.
-             - 'remote': Direct streaming ingestion from public open datasets (AWS Open Data S3 buckets & NCBI HTTP endpoints).
-Author: Vivi Tsoumaki
+Description: Data ingestion connectors for the Medallion OMOP CDM pipeline.
+             Supports two execution modes:
+               'demo'   -- reads local synthetic CSV/VCF files from analytical-layer/data/.
+               'remote' -- streams from public open datasets (Synthea via GitHub HTTP,
+                           1000 Genomes via AWS Open Data S3A).
+
+Public API:
+    configure_s3a_anonymous_access -- SparkSession builder config for anonymous S3A.
+    read_http_csv                  -- Buffered HTTP CSV reader with local fallback.
+    parse_vcf_to_dataframe         -- VCF v4.2 tab-delimited parser to PySpark DataFrame.
+    load_demographics_data         -- Patient demographics ingestion (PERSON source).
+    load_diagnoses_data            -- Clinical diagnosis ingestion (CONDITION_OCCURRENCE source).
+    load_labs_data                 -- Lab observation ingestion (MEASUREMENT source).
+    load_genomics_data             -- Genomic variant ingestion (VCF -> MEASUREMENT source).
 """
 
 import os
@@ -24,7 +34,18 @@ SYNTHEA_REMOTE_LABS_URL = "https://raw.githubusercontent.com/OHDSI/ETL-Synthea/m
 MAX_HTTP_RESPONSE_BYTES = 256 * 1024 * 1024  # 256 MB
 
 def configure_s3a_anonymous_access(spark_builder: SparkSession.builder) -> SparkSession.builder:
-    """Configures SparkSession builder for anonymous AWS S3A open dataset streaming."""
+    """Adds anonymous AWS S3A credentials to a SparkSession builder.
+
+    Configures the Hadoop AWS and AWS SDK JARs, selects the anonymous
+    credentials provider, and registers the S3AFileSystem implementation.
+    Must be called before getOrCreate() to take effect.
+
+    Args:
+        spark_builder: An in-progress SparkSession.Builder instance.
+
+    Returns:
+        The same builder with S3A anonymous access configuration applied.
+    """
     return spark_builder \
         .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262") \
         .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.AnonymousAWSCredentialsProvider") \
@@ -32,10 +53,25 @@ def configure_s3a_anonymous_access(spark_builder: SparkSession.builder) -> Spark
 
 
 def read_http_csv(spark: SparkSession, url: str, fallback_path: Optional[str] = None) -> DataFrame:
-    """Reads a remote HTTP/HTTPS CSV URL into PySpark DataFrame via Python HTTP buffer with fallback.
+    """Fetches a CSV from an HTTP/HTTPS URL and returns it as a PySpark DataFrame.
 
-    Raises if the response body exceeds MAX_HTTP_RESPONSE_BYTES to protect driver memory;
-    falls back to the local file path on any error.
+    Buffers the response body in driver memory via Pandas to avoid requiring
+    distributed file access for small public datasets. Raises before buffering
+    if the response would exceed MAX_HTTP_RESPONSE_BYTES to prevent OOM.
+    Falls back to a local file when the remote fetch fails.
+
+    Args:
+        spark: Active SparkSession.
+        url: HTTP/HTTPS URL of the CSV resource.
+        fallback_path: Absolute path to a local CSV file used when the remote
+            fetch fails. Must exist if provided; raises FileNotFoundError otherwise.
+
+    Returns:
+        PySpark DataFrame with all columns typed as string.
+
+    Raises:
+        ValueError: Response body exceeds MAX_HTTP_RESPONSE_BYTES.
+        FileNotFoundError: Remote fetch failed and no usable fallback path was given.
     """
     import io
     import pandas as pd
@@ -51,12 +87,31 @@ def read_http_csv(spark: SparkSession, url: str, fallback_path: Optional[str] = 
         pdf = pd.read_csv(io.BytesIO(content), dtype=str)
         return spark.createDataFrame(pdf)
     except Exception as e:
-        print(f"[CONNECTOR WARNING] Remote HTTP fetch from {url} failed ({e}). Falling back to dataset at {fallback_path}.")
+        if not fallback_path or not os.path.exists(fallback_path):
+            raise FileNotFoundError(
+                f"Remote fetch from {url} failed and no local fallback is available: {e}"
+            ) from e
+        print(f"[CONNECTOR WARNING] Remote fetch from {url} failed ({e}). Using local fallback: {fallback_path}")
         return spark.read.option("header", "true").csv(fallback_path)
 
 
 def load_demographics_data(spark: SparkSession, mode: str = "demo", data_dir: Optional[str] = None) -> DataFrame:
-    """Ingests patient demographics in either demo or remote open dataset mode."""
+    """Loads patient demographics into a standardised PERSON-source DataFrame.
+
+    Demo mode reads clinical_patients.csv (columns: raw_patient_id, gender,
+    birth_datetime, race, ethnicity). Remote mode streams the Synthea ETL
+    patients.csv from GitHub and renames Synthea columns to the pipeline schema.
+
+    Args:
+        spark: Active SparkSession.
+        mode: "remote" streams from SYNTHEA_REMOTE_PATIENTS_URL; any other value
+            reads the local demo file.
+        data_dir: Directory containing input files. Defaults to analytical-layer/data/.
+
+    Returns:
+        DataFrame with columns: raw_patient_id, gender, birth_datetime, race,
+        ethnicity, ingestion_timestamp.
+    """
     file_path = os.path.join(data_dir, "clinical_patients.csv") if data_dir else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "clinical_patients.csv")
     if mode.lower() == "remote":
         print(f"[CONNECTOR] Streaming remote open demographics from: {SYNTHEA_REMOTE_PATIENTS_URL}")
@@ -73,7 +128,22 @@ def load_demographics_data(spark: SparkSession, mode: str = "demo", data_dir: Op
 
 
 def load_diagnoses_data(spark: SparkSession, mode: str = "demo", data_dir: Optional[str] = None) -> DataFrame:
-    """Ingests clinical diagnoses in either demo or remote open dataset mode."""
+    """Loads clinical diagnoses into a standardised CONDITION_OCCURRENCE-source DataFrame.
+
+    Demo mode reads clinical_diagnoses.csv (columns: encounter_id, raw_patient_id,
+    diagnosis_date, icd10_code, diagnosis_description). Remote mode streams the
+    Synthea ETL conditions.csv from GitHub and renames Synthea columns.
+
+    Args:
+        spark: Active SparkSession.
+        mode: "remote" streams from SYNTHEA_REMOTE_DIAGNOSES_URL; any other value
+            reads the local demo file.
+        data_dir: Directory containing input files. Defaults to analytical-layer/data/.
+
+    Returns:
+        DataFrame with columns: encounter_id, raw_patient_id, diagnosis_date,
+        icd10_code, diagnosis_description, ingestion_timestamp.
+    """
     file_path = os.path.join(data_dir, "clinical_diagnoses.csv") if data_dir else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "clinical_diagnoses.csv")
     if mode.lower() == "remote":
         print(f"[CONNECTOR] Streaming remote open diagnoses from: {SYNTHEA_REMOTE_DIAGNOSES_URL}")
@@ -90,7 +160,22 @@ def load_diagnoses_data(spark: SparkSession, mode: str = "demo", data_dir: Optio
 
 
 def load_labs_data(spark: SparkSession, mode: str = "demo", data_dir: Optional[str] = None) -> DataFrame:
-    """Ingests lab observations in either demo or remote open dataset mode."""
+    """Loads lab observations into a standardised MEASUREMENT-source DataFrame.
+
+    Demo mode reads lab_measurements.csv (columns: lab_event_id, raw_patient_id,
+    lab_datetime, loinc_code, test_name, numeric_value, unit_value). Remote mode
+    streams the Synthea ETL observations.csv from GitHub and renames columns.
+
+    Args:
+        spark: Active SparkSession.
+        mode: "remote" streams from SYNTHEA_REMOTE_LABS_URL; any other value
+            reads the local demo file.
+        data_dir: Directory containing input files. Defaults to analytical-layer/data/.
+
+    Returns:
+        DataFrame with columns: lab_event_id, raw_patient_id, lab_datetime,
+        loinc_code, test_name, numeric_value, unit_value, ingestion_timestamp.
+    """
     file_path = os.path.join(data_dir, "lab_measurements.csv") if data_dir else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "lab_measurements.csv")
     if mode.lower() == "remote":
         print(f"[CONNECTOR] Streaming remote open lab measurements from: {SYNTHEA_REMOTE_LABS_URL}")
@@ -109,7 +194,25 @@ def load_labs_data(spark: SparkSession, mode: str = "demo", data_dir: Optional[s
 
 
 def parse_vcf_to_dataframe(spark: SparkSession, vcf_path: str, max_rows: Optional[int] = None) -> DataFrame:
-    """Parses VCF file into a PySpark DataFrame using pure JVM DataFrame SQL operations."""
+    """Parses a VCF v4.2 file into a PySpark DataFrame with one row per variant call.
+
+    Reads the file as plain text, strips meta-information lines (##), resolves
+    the #CHROM column header independently of partition order, then splits each
+    data row on tab boundaries and projects the resulting array into named columns.
+
+    Args:
+        spark: Active SparkSession.
+        vcf_path: Local filesystem path or S3A URI to the VCF file.
+        max_rows: Optional row cap applied after header extraction; useful for
+            limiting large remote VCF files during development.
+
+    Returns:
+        DataFrame with columns derived from the VCF #CHROM header (lowercased,
+        # stripped) plus ingestion_timestamp.
+
+    Raises:
+        ValueError: No #CHROM header line found in the file.
+    """
     from pyspark.sql.functions import split
     df_raw = spark.read.text(vcf_path).filter(~col("value").startswith("##"))
 
@@ -130,7 +233,23 @@ def parse_vcf_to_dataframe(spark: SparkSession, vcf_path: str, max_rows: Optiona
 
 
 def load_genomics_data(spark: SparkSession, mode: str = "demo", data_dir: Optional[str] = None) -> DataFrame:
-    """Ingests VCF genomic variant calls in either demo or remote open dataset mode."""
+    """Loads genomic variant calls into a MEASUREMENT-source DataFrame from a VCF file.
+
+    Demo mode reads genomic_variants.vcf from the local data directory. Remote
+    mode streams up to 1 000 rows from the 1000 Genomes Phase 3 whole-genome
+    sites VCF on AWS Open Data (s3a://1000genomes), falling back to the local
+    file on any S3A error.
+
+    Args:
+        spark: Active SparkSession configured with S3A when mode="remote".
+        mode: "remote" streams from the 1000 Genomes S3A bucket; any other value
+            reads the local demo VCF file.
+        data_dir: Directory containing genomic_variants.vcf. Defaults to analytical-layer/data/.
+
+    Returns:
+        DataFrame with VCF columns (chrom, pos, id, ref, alt, qual, filter, info, …)
+        plus ingestion_timestamp.
+    """
     vcf_file = os.path.join(data_dir, "genomic_variants.vcf") if data_dir else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "genomic_variants.vcf")
     if mode.lower() == "remote":
         print("[CONNECTOR] Accessing remote AWS Open Data 1000 Genomes / ClinVar public S3 bucket...")

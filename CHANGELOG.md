@@ -5,6 +5,22 @@ All notable changes to the Life Sciences Data Foundry project are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Production DataOps CI/CD Gate Expansion (`.github/workflows/tf-lint.yml`)**:
+  - Multi-tier GitHub Actions continuous integration workflow executing on all `main` and `dev` branch pushes and pull requests.
+  - Dedicated `infrastructure-validation` job verifying Terraform 1.5.0 IaC (`fmt -check`, `validate`) and Nextflow DSL2 dry-run stub execution.
+  - Dedicated `python-quality-gate` job running `ruff check .`, `ruff format --check .`, and `mypy` strict static type verification.
+  - Dedicated `pyspark-dataops-test-suite` job running `pytest` with OpenJDK 17 + Python 3.11, generating comprehensive `pytest-cov` terminal and XML coverage reports, and archiving build artifacts.
+- **Standardized Toolchain Configuration (`pyproject.toml`)**:
+  - Integrated explicit configurations for `[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]`, and `[tool.coverage]`.
+
+### Changed
+- **Static Typing & Code Quality Hardening**:
+  - Refined type hints across `analytical-layer/omop_cdm_v54/` (`connectors.py`, `pipeline.py`, `compat.py`, `vocabularies.py`) and `governance/mlflow_tracker.py` to achieve 100% clean validation under `mypy` and `ruff`.
+  - Added explicit non-null assertions across unit test suites to guarantee robust type safety on PySpark `Row` projections.
+
 ## [0.2.7] - 2026-08-14
 
 ### Added

@@ -3,6 +3,7 @@ Integration tests for end-to-end Medallion OMOP CDM v5.4 pipeline execution.
 """
 
 import os
+
 from omop_cdm_v54.pipeline import run_omop_pipeline
 
 

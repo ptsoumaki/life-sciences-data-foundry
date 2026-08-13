@@ -3,6 +3,7 @@ Unit tests for omop_cdm_v54.person domain transformer.
 """
 
 from pyspark.sql.functions import to_date
+
 from omop_cdm_v54.person import transform_person
 
 
@@ -17,8 +18,7 @@ def test_transform_person_gender_mapping(spark):
         ("P6", None, "WHITE", "NOT_HISPANIC", "1995-06-06"),
     ]
     df = spark.createDataFrame(
-        data,
-        ["raw_patient_id", "gender", "race", "ethnicity", "parsed_birth_dt_str"]
+        data, ["raw_patient_id", "gender", "race", "ethnicity", "parsed_birth_dt_str"]
     ).withColumn("parsed_birth_dt", to_date("parsed_birth_dt_str"))
 
     res = transform_person(df).collect()
@@ -28,8 +28,8 @@ def test_transform_person_gender_mapping(spark):
     assert res_dict["P2"] == 8507  # Male
     assert res_dict["P3"] == 8532  # Female
     assert res_dict["P4"] == 8532  # Female
-    assert res_dict["P5"] == 0     # Unknown
-    assert res_dict["P6"] == 0     # Unknown
+    assert res_dict["P5"] == 0  # Unknown
+    assert res_dict["P6"] == 0  # Unknown
 
 
 def test_transform_person_race_ethnicity_mapping(spark):
@@ -41,8 +41,7 @@ def test_transform_person_race_ethnicity_mapping(spark):
         ("P4", "F", "OTHER", "UNKNOWN", "1995-12-12"),
     ]
     df = spark.createDataFrame(
-        data,
-        ["raw_patient_id", "gender", "race", "ethnicity", "parsed_birth_dt_str"]
+        data, ["raw_patient_id", "gender", "race", "ethnicity", "parsed_birth_dt_str"]
     ).withColumn("parsed_birth_dt", to_date("parsed_birth_dt_str"))
 
     res = transform_person(df).collect()
@@ -52,23 +51,23 @@ def test_transform_person_race_ethnicity_mapping(spark):
     assert race_dict["P1"] == 8527  # White
     assert race_dict["P2"] == 8515  # Asian
     assert race_dict["P3"] == 8516  # Black
-    assert race_dict["P4"] == 0     # Unknown/Other
+    assert race_dict["P4"] == 0  # Unknown/Other
 
     assert ethnicity_dict["P1"] == 38003563  # Hispanic
     assert ethnicity_dict["P2"] == 38003564  # Not Hispanic
     assert ethnicity_dict["P3"] == 38003564  # Non-Hispanic
-    assert ethnicity_dict["P4"] == 0         # Unknown
+    assert ethnicity_dict["P4"] == 0  # Unknown
 
 
 def test_transform_person_birth_date_decomposition(spark):
     """Verifies parsing and component extraction of birth dates into year, month, and day fields."""
     data = [("P100", "MALE", "WHITE", "NOT_HISPANIC", "1988-11-23")]
     df = spark.createDataFrame(
-        data,
-        ["raw_patient_id", "gender", "race", "ethnicity", "parsed_birth_dt_str"]
+        data, ["raw_patient_id", "gender", "race", "ethnicity", "parsed_birth_dt_str"]
     ).withColumn("parsed_birth_dt", to_date("parsed_birth_dt_str"))
 
     row = transform_person(df).first()
+    assert row is not None
 
     assert row["year_of_birth"] == 1988
     assert row["month_of_birth"] == 11
@@ -79,11 +78,11 @@ def test_transform_person_hash_id_and_source_values(spark):
     """Verifies deterministic xxhash64 person_id generation and source value preservation."""
     data = [("PAT_999", "Female", "Asian", "Non_Hispanic", "1999-09-09")]
     df = spark.createDataFrame(
-        data,
-        ["raw_patient_id", "gender", "race", "ethnicity", "parsed_birth_dt_str"]
+        data, ["raw_patient_id", "gender", "race", "ethnicity", "parsed_birth_dt_str"]
     ).withColumn("parsed_birth_dt", to_date("parsed_birth_dt_str"))
 
     row = transform_person(df).first()
+    assert row is not None
 
     assert isinstance(row["person_id"], int)
     assert row["person_id"] > 0

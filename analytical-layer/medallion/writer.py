@@ -8,7 +8,8 @@ Author: Vivi Tsoumaki
 """
 
 import os
-from typing import List, Optional, Dict, Any
+from typing import Any
+
 from pyspark.sql import DataFrame, SparkSession
 
 from omop_cdm_v54.compat import HAS_DELTA
@@ -33,9 +34,9 @@ class DeltaMedallionWriter:
     def __init__(
         self,
         spark: SparkSession,
-        base_output_dir: Optional[str] = None,
-        catalog: Optional[str] = None,
-        schema: Optional[str] = None,
+        base_output_dir: str | None = None,
+        catalog: str | None = None,
+        schema: str | None = None,
     ):
         self.spark = spark
         self.catalog = catalog
@@ -48,9 +49,11 @@ class DeltaMedallionWriter:
 
     def _get_table_path(self, tier: str, table_name: str) -> str:
         """Constructs canonical file path for a Medallion table tier."""
-        return os.path.join(self.base_output_dir, tier.lower(), table_name.lower()).replace("\\", "/")
+        return os.path.join(self.base_output_dir, tier.lower(), table_name.lower()).replace(
+            "\\", "/"
+        )
 
-    def _get_uc_table_name(self, table_name: str) -> Optional[str]:
+    def _get_uc_table_name(self, table_name: str) -> str | None:
         """Constructs Unity Catalog 3-level namespace identifier if configured."""
         if self.catalog and self.schema:
             return f"{self.catalog}.{self.schema}.{table_name}"
@@ -70,14 +73,16 @@ class DeltaMedallionWriter:
         writer = df.write.format("delta").mode(mode)
         if merge_schema:
             writer = writer.option("mergeSchema", "true")
-        
+
         uc_table = self._get_uc_table_name(f"silver_{table_name}")
         if uc_table:
             writer.option("path", path).saveAsTable(uc_table)
             print(f"[DELTA] Silver table '{table_name}' saved to UC '{uc_table}' at {path}")
         else:
             writer.save(path)
-            print(f"[DELTA] Silver table '{table_name}' saved to {path} (mode={mode}, mergeSchema={merge_schema})")
+            print(
+                f"[DELTA] Silver table '{table_name}' saved to {path} (mode={mode}, mergeSchema={merge_schema})"
+            )
         return path
 
     def write_quarantine_table(
@@ -90,9 +95,7 @@ class DeltaMedallionWriter:
         Writes rejected/quarantined records to the Silver Quarantine Delta table with schema evolution.
         """
         path = self._get_table_path("silver", table_name)
-        writer = df.write.format("delta") \
-            .mode(mode) \
-            .option("mergeSchema", "true")
+        writer = df.write.format("delta").mode(mode).option("mergeSchema", "true")
 
         uc_table = self._get_uc_table_name(table_name)
         if uc_table:
@@ -107,10 +110,10 @@ class DeltaMedallionWriter:
         self,
         df: DataFrame,
         table_name: str,
-        cluster_by: Optional[List[str]] = None,
+        cluster_by: list[str] | None = None,
         mode: str = "overwrite",
         merge_schema: bool = True,
-        user_metadata: Optional[str] = None,
+        user_metadata: str | None = None,
     ) -> str:
         """
         Writes a Gold OMOP CDM v5.4 relational table to Delta Lake format with Liquid Clustering,
@@ -127,9 +130,7 @@ class DeltaMedallionWriter:
             elif "person_id" in df.columns:
                 cluster_by = ["person_id"]
 
-        writer = df.write.format("delta") \
-            .mode(mode) \
-            .option("delta.enableChangeDataFeed", "true")
+        writer = df.write.format("delta").mode(mode).option("delta.enableChangeDataFeed", "true")
 
         if os.name != "nt":
             writer = writer.option("delta.enableDeletionVectors", "true")
@@ -143,17 +144,21 @@ class DeltaMedallionWriter:
             if cluster_by and hasattr(writer, "clusterBy"):
                 writer = writer.clusterBy(*cluster_by)
             writer.option("path", path).saveAsTable(uc_table)
-            print(f"[DELTA] Gold OMOP Table '{table_name}' saved to UC '{uc_table}' at {path} (clusterBy={cluster_by})")
+            print(
+                f"[DELTA] Gold OMOP Table '{table_name}' saved to UC '{uc_table}' at {path} (clusterBy={cluster_by})"
+            )
             # If the Spark version doesn't support the DataFrameWriter.clusterBy API,
             # execute the ALTER TABLE SQL on the UC table directly.
             if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA:
                 try:
                     cluster_cols_sql = ", ".join(cluster_by)
                     self.spark.sql(f"ALTER TABLE {uc_table} CLUSTER BY ({cluster_cols_sql})")
-                    print(f"[DELTA] Executed ALTER TABLE Liquid Clustering SQL on {uc_table} (CLUSTER BY ({cluster_cols_sql}))")
+                    print(
+                        f"[DELTA] Executed ALTER TABLE Liquid Clustering SQL on {uc_table} (CLUSTER BY ({cluster_cols_sql}))"
+                    )
                 except Exception as e:
                     print(f"[DELTA] Note: UC Liquid Clustering fallback failed ({e})")
-            
+
             return path
         else:
             try:
@@ -163,22 +168,36 @@ class DeltaMedallionWriter:
                 else:
                     writer.save(path)
             except Exception as e:
-                print(f"[DELTA NOTICE] Local Delta save with clusterBy API fallback ({e}). Persisting table standard Delta format.")
+                print(
+                    f"[DELTA NOTICE] Local Delta save with clusterBy API fallback ({e}). Persisting table standard Delta format."
+                )
                 writer.save(path)
-            print(f"[DELTA] Gold OMOP Table '{table_name}' saved to {path} (mode={mode}, clusterBy={cluster_by})")
+            print(
+                f"[DELTA] Gold OMOP Table '{table_name}' saved to {path} (mode={mode}, clusterBy={cluster_by})"
+            )
 
         # Fallback SQL for path-based non-UC clustering if DataFrameWriter API wasn't available
         if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA:
             try:
                 cluster_cols_sql = ", ".join(cluster_by)
                 formatted_path = path.replace("\\", "/")
-                if not formatted_path.startswith("file:/") and not formatted_path.startswith("s3://") and not formatted_path.startswith("s3a://"):
+                if (
+                    not formatted_path.startswith("file:/")
+                    and not formatted_path.startswith("s3://")
+                    and not formatted_path.startswith("s3a://")
+                ):
                     if os.name == "nt" and len(formatted_path) > 1 and formatted_path[1] == ":":
                         formatted_path = f"file:///{formatted_path}"
-                self.spark.sql(f"ALTER TABLE delta.`{formatted_path}` CLUSTER BY ({cluster_cols_sql})")
-                print(f"[DELTA] Executed ALTER TABLE Liquid Clustering SQL on {formatted_path} (CLUSTER BY ({cluster_cols_sql}))")
-            except Exception as e:
-                print(f"[DELTA] Note: Path-based Liquid Clustering configured for Databricks Runtime / UC ({cluster_by})")
+                self.spark.sql(
+                    f"ALTER TABLE delta.`{formatted_path}` CLUSTER BY ({cluster_cols_sql})"
+                )
+                print(
+                    f"[DELTA] Executed ALTER TABLE Liquid Clustering SQL on {formatted_path} (CLUSTER BY ({cluster_cols_sql}))"
+                )
+            except Exception:
+                print(
+                    f"[DELTA] Note: Path-based Liquid Clustering configured for Databricks Runtime / UC ({cluster_by})"
+                )
 
         return path
 
@@ -186,8 +205,8 @@ class DeltaMedallionWriter:
         self,
         df: DataFrame,
         table_name: str,
-        merge_keys: List[str],
-        cluster_by: Optional[List[str]] = None,
+        merge_keys: list[str],
+        cluster_by: list[str] | None = None,
     ) -> str:
         """
         Executes Idempotent Upsert (Delta MERGE INTO / SCD Type 1) into Gold OMOP CDM tables.
@@ -197,22 +216,24 @@ class DeltaMedallionWriter:
         formatted_path = path.replace("\\", "/")
 
         if not HAS_DELTA or not os.path.exists(os.path.join(path, "_delta_log")):
-            return self.write_gold_omop_table(df, table_name, cluster_by=cluster_by, mode="overwrite")
+            return self.write_gold_omop_table(
+                df, table_name, cluster_by=cluster_by, mode="overwrite"
+            )
 
         target_table = DeltaTable.forPath(self.spark, formatted_path)
         df_dedup = df.dropDuplicates(subset=merge_keys)
         merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in merge_keys])
 
-        target_table.alias("target") \
-            .merge(df_dedup.alias("source"), merge_condition) \
-            .whenMatchedUpdateAll() \
-            .whenNotMatchedInsertAll() \
-            .execute()
+        target_table.alias("target").merge(
+            df_dedup.alias("source"), merge_condition
+        ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
 
-        print(f"[DELTA MERGE] Gold Table '{table_name}' updated via Delta MERGE on keys={merge_keys}")
+        print(
+            f"[DELTA MERGE] Gold Table '{table_name}' updated via Delta MERGE on keys={merge_keys}"
+        )
         return path
 
-    def optimize_table(self, table_path: str, zorder_by: Optional[List[str]] = None) -> None:
+    def optimize_table(self, table_path: str, zorder_by: list[str] | None = None) -> None:
         """
         Executes Delta Lake compaction and optimization (OPTIMIZE).
         """
@@ -231,7 +252,7 @@ class DeltaMedallionWriter:
         except Exception as e:
             print(f"[WARN] OPTIMIZE notice: {e}")
 
-    def vacuum_table(self, table_path: str, retention_hours: Optional[float] = 168.0) -> None:
+    def vacuum_table(self, table_path: str, retention_hours: float | None = 168.0) -> None:
         """
         Cleans up outdated data files (VACUUM).
         """
@@ -249,7 +270,7 @@ class DeltaMedallionWriter:
         except Exception as e:
             print(f"[WARN] VACUUM notice: {e}")
 
-    def get_table_telemetry(self, table_path: str) -> Dict[str, Any]:
+    def get_table_telemetry(self, table_path: str) -> dict[str, Any]:
         """
         Extracts GxP metrology and operational telemetry from Delta Lake transaction log.
         """
@@ -261,9 +282,20 @@ class DeltaMedallionWriter:
             detail = dt.detail().collect()[0].asDict()
             history = dt.history(5).collect()
 
-            num_files = detail.get("numFiles") if detail.get("numFiles") is not None else detail.get("num_files")
-            size_in_bytes = detail.get("sizeInBytes") if detail.get("sizeInBytes") is not None else detail.get("size_in_bytes")
-            clustering_columns = detail.get("clusteringColumns", detail.get("clustering_columns", detail.get("partitionColumns", [])))
+            num_files = (
+                detail.get("numFiles")
+                if detail.get("numFiles") is not None
+                else detail.get("num_files")
+            )
+            size_in_bytes = (
+                detail.get("sizeInBytes")
+                if detail.get("sizeInBytes") is not None
+                else detail.get("size_in_bytes")
+            )
+            clustering_columns = detail.get(
+                "clusteringColumns",
+                detail.get("clustering_columns", detail.get("partitionColumns", [])),
+            )
 
             return {
                 "table_path": table_path,
@@ -274,8 +306,4 @@ class DeltaMedallionWriter:
                 "recent_commits": [h.asDict() for h in history],
             }
         except Exception as e:
-            return {
-                "table_path": table_path,
-                "status": "TELEMETRY_UNAVAILABLE",
-                "notice": str(e)
-            }
+            return {"table_path": table_path, "status": "TELEMETRY_UNAVAILABLE", "notice": str(e)}

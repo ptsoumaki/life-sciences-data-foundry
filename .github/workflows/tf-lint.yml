@@ -12,19 +12,17 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  dataops-spec-validation:
-    name: "Lint & Validate Structural Blueprint"
+  infrastructure-validation:
+    name: "Lint & Validate Infrastructure Blueprint"
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Source Code
-        # Pinning to v4.2.2 resolves Node 20 deprecation warnings on Node 24 runners
         uses: actions/checkout@v4.2.2
 
       # GxP Compliance: Resolve environment inputs with audit trail logging
       - name: Verify and Resolve Deployment Secrets
         run: |
-          # Use secrets if present; otherwise, fall back to non-sensitive defaults for testing
           ENV_NAME="${{ secrets.ENVIRONMENT }}"
           REG_NAME="${{ secrets.AWS_REGION }}"
           
@@ -37,7 +35,6 @@ jobs:
             REG_NAME="eu-west-1"
           fi
           
-          # Export to environment file for subsequent steps
           echo "RESOLVED_ENV=$ENV_NAME" >> $GITHUB_ENV
           echo "RESOLVED_REG=$REG_NAME" >> $GITHUB_ENV
 
@@ -50,7 +47,6 @@ jobs:
 
       # Infrastructure Validation Tier (Terraform IaC)
       - name: Setup Terraform Binary
-        # Pinning to v3.1.2 forces Node 24 execution compatibility
         uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: 1.5.0
@@ -67,7 +63,6 @@ jobs:
       # Pipeline Validation Tier (Nextflow DSL2)
       - name: Cache Nextflow Engine Binaries
         id: cache-nextflow
-        # Pinning to v4.2.0 ensures Node 24 compatibility for cache retrieval
         uses: actions/cache@v4.2.0
         with:
           path: ~/.nextflow
@@ -86,7 +81,6 @@ jobs:
         run: nextflow config pipelines/main.nf -profile local_dev
 
       - name: Dry-Run Stub Execution Gate
-        # -stub compiles processes and channel graphs without running container microservices
         run: |
           mkdir -p mock_data
           touch mock_data/sample_1.fastq
@@ -95,3 +89,68 @@ jobs:
             -stub \
             --raw_input "mock_data/*.fastq" \
             --outdir "mock_data/out"
+
+  python-quality-gate:
+    name: "Static Analysis & Type Safety Gate (Ruff & Mypy)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Python 3.11 Environment
+        uses: actions/setup-python@v5.4.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Development Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Execute Ruff Linter Gate
+        run: ruff check .
+
+      - name: Execute Ruff Formatting Gate
+        run: ruff format --check .
+
+      - name: Execute Mypy Static Type Verification
+        run: mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 governance tests
+
+  pyspark-dataops-test-suite:
+    name: "PySpark DataOps & Contract Quality Gate"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup OpenJDK 17 (PySpark JVM Runtime)
+        uses: actions/setup-java@v4.7.0
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Python 3.11 Environment
+        uses: actions/setup-python@v5.4.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Platform & Test Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Execute PySpark Unit & Integration Test Suite
+        run: |
+          pytest --cov=analytical-layer --cov=governance --cov-report=term-missing --cov-report=xml tests/
+
+      - name: Upload Test Coverage Artifact
+        uses: actions/upload-artifact@v4.6.1
+        if: always()
+        with:
+          name: code-coverage-report
+          path: coverage.xml
+          retention-days: 14

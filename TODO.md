@@ -34,14 +34,15 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## ⚡ Phase 6: Production DataOps & CI/CD Pipeline Automation (Active Sprint)
+## ⚡ Phase 6: Production DataOps & CI/CD Pipeline Automation
 
-- [ ] **DataOps CI/CD Gate Expansion (`.github/workflows/tf-lint.yml`)**
-  - Configure GitHub Actions to execute `ruff`, `mypy`, and PySpark unit/integration test suites on all feature branch pull requests.
+- [x] **DataOps CI/CD Gate Expansion (`.github/workflows/tf-lint.yml`)**
+  - Configured multi-job GitHub Actions workflow to execute Terraform IaC syntax checks, Nextflow stub evaluation, `ruff` linter/formatter, `mypy` strict static type verification, and PySpark unit/integration test suites with `pytest-cov` reporting on all feature branch pull requests.
+  - Standardized toolchain configurations in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]`, `[tool.coverage]`).
 
 ---
 
-## 🤖 Phase 7: Agentic Lineage & MLOps Infrastructure
+## 🤖 Phase 7: Agentic Lineage & MLOps Infrastructure (Coming Next)
 
 - [ ] **LangGraph Delta Lake Lineage Auditor (`agentic-ai/graph_auditor.py`)**
   - Build state graph evaluating MLflow lineage trees (`governance/mlflow_tracker.py`), Delta Lake transaction commit logs (`_delta_log/`), and schema integrity against FDA 21 CFR Part 11 parameters.

@@ -17,6 +17,7 @@ Public API:
 
 import json
 import os
+from typing import Any
 
 from pyspark.sql.functions import Column, coalesce, create_map, lit
 
@@ -36,10 +37,10 @@ DEFAULT_ICD10_MAPPINGS: dict[str, int] = {
 }
 
 DEFAULT_LOINC_MAPPINGS: dict[str, int] = {
-    "4548-4": 3004410,   # HbA1c Blood Panel
-    "2345-7": 3000483,   # Glucose in Serum/Plasma
-    "2093-3": 3004249,   # Cholesterol in Serum/Plasma
-    "2160-0": 3016723,   # Creatinine in Serum/Plasma
+    "4548-4": 3004410,  # HbA1c Blood Panel
+    "2345-7": 3000483,  # Glucose in Serum/Plasma
+    "2093-3": 3004249,  # Cholesterol in Serum/Plasma
+    "2160-0": 3016723,  # Creatinine in Serum/Plasma
     "33959-8": 3006923,  # ALT Serum
 }
 
@@ -105,18 +106,22 @@ def load_concept_mappings(mapping_file: str | None = None) -> dict[str, dict[str
     resolved_path = _resolve_mappings_file_path(mapping_file)
     if resolved_path and os.path.exists(resolved_path):
         try:
-            with open(resolved_path, "r", encoding="utf-8") as f:
+            with open(resolved_path, encoding="utf-8") as f:
                 data = json.load(f)
                 return {
                     "icd10_to_snomed": data.get("icd10_to_snomed", DEFAULT_ICD10_MAPPINGS),
                     "loinc_to_concept": data.get("loinc_to_concept", DEFAULT_LOINC_MAPPINGS),
                     "gender_to_concept": data.get("gender_to_concept", DEFAULT_GENDER_MAPPINGS),
                     "race_to_concept": data.get("race_to_concept", DEFAULT_RACE_MAPPINGS),
-                    "ethnicity_to_concept": data.get("ethnicity_to_concept", DEFAULT_ETHNICITY_MAPPINGS),
+                    "ethnicity_to_concept": data.get(
+                        "ethnicity_to_concept", DEFAULT_ETHNICITY_MAPPINGS
+                    ),
                     "clinvar_to_concept": data.get("clinvar_to_concept", DEFAULT_CLINVAR_MAPPINGS),
                 }
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
-            print(f"[VOCABULARY WARNING] Failed to load {resolved_path} ({e}); using built-in defaults.")
+            print(
+                f"[VOCABULARY WARNING] Failed to load {resolved_path} ({e}); using built-in defaults."
+            )
 
     return {
         "icd10_to_snomed": DEFAULT_ICD10_MAPPINGS,
@@ -158,7 +163,9 @@ def get_clinvar_concept_mappings(mapping_file: str | None = None) -> dict[str, i
     return load_concept_mappings(mapping_file)["clinvar_to_concept"]
 
 
-def build_concept_lookup(lookup_col: Column, mapping_dict: dict[str, int], default_val: int = 0) -> Column:
+def build_concept_lookup(
+    lookup_col: Column, mapping_dict: dict[str, Any], default_val: int = 0
+) -> Column:
     """Constructs a native PySpark map expression for dictionary-based concept lookup.
 
     Filters out metadata/comment keys starting with '_' and non-integer values.

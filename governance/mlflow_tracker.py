@@ -17,6 +17,8 @@ import json
 import os
 import sys
 import tempfile
+from typing import Any
+
 import great_expectations as ge
 import mlflow
 import pandas as pd
@@ -77,12 +79,12 @@ def load_dataset(data_path: str) -> pd.DataFrame:
 
 
 def evaluate_data_contract(
-    df,
+    df: Any,
     rules_path: str = "governance/rules.json",
     experiment_name: str = "gxp_clinical_governance",
     dataset_source_path: str | None = None,
     strict: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Evaluates a Great Expectations data contract and logs the audit trail to MLflow.
 
     Converts the input DataFrame to Pandas, builds an ephemeral GE context from the
@@ -101,7 +103,7 @@ def evaluate_data_contract(
         dict with keys:
             success (bool), total_records (int), evaluated_expectations (int),
             successful_expectations (int), unsuccessful_expectations (int),
-            success_rate (float, 0–100), run_id (str).
+            success_rate (float, 0-100), run_id (str).
     """
     # Resolve relative paths against the repository root so the function works
     # regardless of the working directory the caller was launched from.
@@ -128,7 +130,9 @@ def evaluate_data_contract(
         if pd.api.types.is_datetime64_any_dtype(pdf[col_name]):
             pdf[col_name] = pdf[col_name].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         elif pdf[col_name].dtype == "object":
-            pdf[col_name] = pdf[col_name].apply(lambda val: val.isoformat() if hasattr(val, "isoformat") else val)
+            pdf[col_name] = pdf[col_name].apply(
+                lambda val: val.isoformat() if hasattr(val, "isoformat") else val
+            )
 
     clean_experiment_name = experiment_name.lstrip("/")
     try:
@@ -136,7 +140,9 @@ def evaluate_data_contract(
     except Exception:
         pass
 
-    rules_checksum = compute_sha256(resolved_rules_path) if os.path.exists(resolved_rules_path) else "N/A"
+    rules_checksum = (
+        compute_sha256(resolved_rules_path) if os.path.exists(resolved_rules_path) else "N/A"
+    )
     data_checksum = (
         compute_sha256(dataset_source_path)
         if (dataset_source_path and os.path.exists(dataset_source_path))
@@ -145,7 +151,7 @@ def evaluate_data_contract(
 
     # Load the full suite configuration; `meta` block carries compliance metadata
     # (standard, schema version) that is logged as MLflow run params below.
-    with open(resolved_rules_path, "r") as f:
+    with open(resolved_rules_path) as f:
         suite_config = json.load(f)
 
     meta = suite_config.get("meta", {})
@@ -155,6 +161,7 @@ def evaluate_data_contract(
     # Start a new MLflow run only when no run is already active.
     # Do NOT wrap an existing active_run in a context manager: exiting `with active_run:`
     # calls active_run.__exit__() which ends the run, closing any outer caller's context.
+    run: Any
     if is_nested_run:
         run = active_run
     else:
@@ -165,7 +172,9 @@ def evaluate_data_contract(
         mlflow.log_param("data_sha256", data_checksum)
         mlflow.log_param("rules_sha256", rules_checksum)
         mlflow.log_param("execution_environment", os.getenv("ENVIRONMENT", "dev"))
-        mlflow.log_param("compliance_standard", meta.get("compliance_standard", "FDA_21_CFR_Part_11"))
+        mlflow.log_param(
+            "compliance_standard", meta.get("compliance_standard", "FDA_21_CFR_Part_11")
+        )
         mlflow.log_param("target_schema", meta.get("target_schema", "OMOP_CDM_v5.4"))
 
         # Build an ephemeral GE context from the rules JSON and run all expectations.
@@ -173,6 +182,7 @@ def evaluate_data_contract(
         # the same Python process without raising DuplicateKeyError.
         try:
             context = ge.get_context(mode="ephemeral")
+            ds: Any
             try:
                 ds = context.data_sources.add_pandas("gxp_pandas_source")
             except Exception:
@@ -202,10 +212,14 @@ def evaluate_data_contract(
                     exp_cls = getattr(ge.expectations, pascal_name)
                     suite.add_expectation(exp_cls(**kwargs))
                 else:
-                    print(f"[GxP WARNING] Unknown expectation type '{exp_type}' (class {pascal_name}) skipped.")
+                    print(
+                        f"[GxP WARNING] Unknown expectation type '{exp_type}' (class {pascal_name}) skipped."
+                    )
 
             if len(suite.expectations) == 0 and len(suite_config.get("expectations", [])) > 0:
-                print(f"[GxP WARNING] Rules config contained {len(suite_config.get('expectations', []))} expectations but 0 were valid.")
+                print(
+                    f"[GxP WARNING] Rules config contained {len(suite_config.get('expectations', []))} expectations but 0 were valid."
+                )
 
             # Hash-derived name satisfies GE's uniqueness requirement across repeated
             # calls with the same suite name in a single ephemeral context.
@@ -222,7 +236,11 @@ def evaluate_data_contract(
             evaluated_expectations = len(results.results)
             successful_expectations = sum(1 for r in results.results if r.success)
             unsuccessful_expectations = evaluated_expectations - successful_expectations
-            success_rate = (successful_expectations / evaluated_expectations * 100.0) if evaluated_expectations > 0 else 0.0
+            success_rate = (
+                (successful_expectations / evaluated_expectations * 100.0)
+                if evaluated_expectations > 0
+                else 0.0
+            )
             validation_passed = results.success
             res_dict = {
                 "success": validation_passed,
@@ -234,7 +252,9 @@ def evaluate_data_contract(
                 },
             }
         except Exception as e:
-            print(f"[GxP WARNING] Great Expectations suite execution failed; contract metrics zeroed: {e}")
+            print(
+                f"[GxP WARNING] Great Expectations suite execution failed; contract metrics zeroed: {e}"
+            )
             evaluated_expectations, successful_expectations, unsuccessful_expectations = 0, 0, 0
             success_rate = 0.0
             validation_passed = False
@@ -258,12 +278,16 @@ def evaluate_data_contract(
         except Exception as art_err:
             print(f"[MLFLOW WARNING] Could not log audit artifact: {art_err}")
 
-        run_id = run.info.run_id if hasattr(run, "info") else "active_run"
+        run_id = getattr(getattr(run, "info", None), "run_id", "active_run")
         if not validation_passed:
-            print(f"[WARNING] GxP Data Contract Gate: {unsuccessful_expectations} expectations evaluated for review. Run ID: {run_id}")
+            print(
+                f"[WARNING] GxP Data Contract Gate: {unsuccessful_expectations} expectations evaluated for review. Run ID: {run_id}"
+            )
         else:
             print(f"[SUCCESS] GxP Data Contract Gate Passed. Run ID: {run_id}")
-        print(f"[METRIC] Evaluated: {evaluated_expectations} | Passed: {successful_expectations} | Pass Rate: {success_rate:.1f}%")
+        print(
+            f"[METRIC] Evaluated: {evaluated_expectations} | Passed: {successful_expectations} | Pass Rate: {success_rate:.1f}%"
+        )
 
     finally:
         # Only end the run if we started it; leave the caller's outer run open.
@@ -308,4 +332,4 @@ def run_governance_pipeline(data_path: str, rules_path: str, experiment_name: st
 if __name__ == "__main__":
     data_target = sys.argv[1] if len(sys.argv) > 1 else "governance/sample_clinical.csv"
     rules_target = sys.argv[2] if len(sys.argv) > 2 else "governance/rules.json"
-    run_governance_pipeline(data_target, rules_target, "gxp_clinical_governance")
+    run_governance_pipeline(data_target, rules_target, "gxp_clinical_governance")

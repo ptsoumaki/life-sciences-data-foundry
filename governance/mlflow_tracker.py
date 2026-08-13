@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 import great_expectations as ge
 import mlflow
 import pandas as pd
@@ -249,12 +250,11 @@ def evaluate_data_contract(
 
         try:
             mlflow.log_artifact(resolved_rules_path, artifact_path="governance_contracts")
-            results_output_path = os.path.abspath("validation_results.json")
-            with open(results_output_path, "w", encoding="utf-8") as f:
-                json.dump(res_dict, f, indent=2)
-            mlflow.log_artifact(results_output_path, artifact_path="audit_reports")
-            if os.path.exists(results_output_path):
-                os.remove(results_output_path)
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                results_output_path = os.path.join(tmp_dir, "validation_results.json")
+                with open(results_output_path, "w", encoding="utf-8") as f:
+                    json.dump(res_dict, f, indent=2)
+                mlflow.log_artifact(results_output_path, artifact_path="audit_reports")
         except Exception as art_err:
             print(f"[MLFLOW WARNING] Could not log audit artifact: {art_err}")
 

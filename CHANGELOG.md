@@ -5,6 +5,41 @@ All notable changes to the Life Sciences Data Foundry project are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-08-14
+
+### Added
+- **Dynamic Vocabulary & Concept Mapping Engine (`analytical-layer/omop_cdm_v54/vocabularies.py`)**:
+  - Externalized hardcoded ICD-10, LOINC, demographic, and ClinVar concept mappings into structured GxP-governed JSON specification (`governance/concept_mappings.json`) with full clinical descriptions.
+  - Native PySpark `create_map` dynamic expression generator (`build_concept_lookup`) with automatic caching and zero-overhead column lookups.
+  - Unit test suite (`tests/unit/test_vocabularies.py`) validating JSON vocabulary loading, metadata filtering, and PySpark map expressions.
+- **Agentic Infrastructure Typed Interfaces (`agentic-ai/`)**:
+  - Scaffolding of `GxPGraphAuditor` in `agentic-ai/graph_auditor.py` for Phase 6 LangGraph lineage evaluation.
+  - Scaffolding of `FoundryMCPServer` in `agentic-ai/mcp_server.py` for Phase 6 FastMCP tool exposure.
+
+### Changed
+- **Package Configuration & Tooling (`pyproject.toml`)**:
+  - Widened Python version support to `requires-python = ">=3.10, <3.13"`, supporting Python 3.12 environments.
+  - Registered `governance` package in setuptools package discovery, eliminating ad-hoc `sys.path` test fixture hacks.
+- **Silver Quality Filtering (`pipeline.py`)**:
+  - Refactored clinical record filtering to use canonical complementary condition expressions (`valid_clinical_condition` and `~valid_clinical_condition`) with `df_clinical_parsed.cache()` for strictly mutually exclusive quarantine partitioning.
+- **Centralized Path Resolution (`connectors.py` & `pipeline.py`)**:
+  - Standardized dataset resolution via `resolve_data_dir()` helper with `LSDF_DATA_DIR` environment variable override support.
+
+### Fixed
+- **MLflow Lineage Tracker Hardening (`governance/mlflow_tracker.py`)**:
+  - Isolated temporary validation artifact writes within `tempfile.TemporaryDirectory()`, eliminating working tree clutter and concurrent race conditions.
+  - Prevented nested `with mlflow.start_run()` contexts from prematurely closing parent experiment runs.
+  - Added logging for unhandled Great Expectations assertion classes and exposed evaluation failure error states.
+- **OMOP CDM v5.4 Specification Compliance**:
+  - Standardized foreign key fields (`provider_id`, `visit_occurrence_id`, `stop_reason`) to `NULL` instead of `0` in `condition_occurrence.py`.
+  - Preserved full timestamp precision in `measurement_datetime` across `measurement.py`.
+  - Prevented multi-allelic variant hash collisions in `genomic_variants.py` by incorporating `col("alt")` into deterministic 64-bit surrogate keys.
+- **Delta Lake Storage Multi-Platform Compatibility (`analytical-layer/medallion/writer.py`)**:
+  - Normalized all Delta Lake table paths to forward slashes, preventing Windows Hadoop path parsing issues.
+  - Prevented redundant liquid clustering fallback attempts when Unity Catalog is disabled.
+
+---
+
 ## [0.2.6] - 2026-08-13
 
 ### Added

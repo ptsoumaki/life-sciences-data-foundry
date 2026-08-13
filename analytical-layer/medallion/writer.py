@@ -48,7 +48,7 @@ class DeltaMedallionWriter:
 
     def _get_table_path(self, tier: str, table_name: str) -> str:
         """Constructs canonical file path for a Medallion table tier."""
-        return os.path.join(self.base_output_dir, tier.lower(), table_name.lower())
+        return os.path.join(self.base_output_dir, tier.lower(), table_name.lower()).replace("\\", "/")
 
     def _get_uc_table_name(self, table_name: str) -> Optional[str]:
         """Constructs Unity Catalog 3-level namespace identifier if configured."""

@@ -189,13 +189,12 @@ def run_omop_pipeline(
         )
     ).cache()
 
+    # Quality Gate: Valid clinical record requires parseable birth date and recognized gender.
+    # Define single canonical condition and invert for quarantine to guarantee mutual exclusivity.
     valid_gender_expr = upper(trim(col("gender"))).isin("MALE", "FEMALE", "M", "F", "UNKNOWN")
-    df_silver_clinical = df_clinical_parsed.filter(
-        col("parsed_birth_dt").isNotNull() & valid_gender_expr
-    )
-    df_quarantine_clinical = df_clinical_parsed.filter(
-        col("parsed_birth_dt").isNull() | ~valid_gender_expr
-    )
+    valid_clinical_condition = col("parsed_birth_dt").isNotNull() & valid_gender_expr
+    df_silver_clinical = df_clinical_parsed.filter(valid_clinical_condition)
+    df_quarantine_clinical = df_clinical_parsed.filter(~valid_clinical_condition)
 
     # Filter Diagnoses — parse to DateType directly (OMOP condition_start_date is `date`, not `datetime`).
     df_silver_diagnoses = df_raw_diagnoses.withColumn(
@@ -215,8 +214,8 @@ def run_omop_pipeline(
         col("parsed_lab_datetime").cast("date")
     ).filter(col("parsed_lab_dt").isNotNull())
 
-    # Filter Genomics
-    df_silver_genomics = df_raw_genomics.filter((col("filter") == "PASS") | (col("filter") == "."))
+    # Filter Genomics — include standard PASS and uncomputed '.' variant quality filters.
+    df_silver_genomics = df_raw_genomics.filter(col("filter").isin("PASS", "."))
 
     # Materialize Silver counts before reporting metrics; avoids re-scanning the
     # same DataFrame twice when the twin filter (accepted / quarantined) is lazy.

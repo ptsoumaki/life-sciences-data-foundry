@@ -10,7 +10,7 @@ import os
 import sys
 import argparse
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, expr, lit, to_date, to_timestamp, upper, trim
+from pyspark.sql.functions import col, coalesce, current_timestamp, expr, lit, to_date, to_timestamp, upper, trim
 
 # Ensure repository root and analytical-layer directory are in sys.path for direct script execution
 _base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

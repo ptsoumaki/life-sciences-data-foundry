@@ -25,7 +25,7 @@ This document tracks active development phases and engineering priorities for th
 - [x] **PySpark Unit Testing Suite (`tests/unit/`)**
   - Construct isolated `pytest` unit tests for each domain transformer (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`).
   - Validate string normalization, ICD-10 code mapping, LOINC code resolution, and explicit OMOP CDM v5.4 type casting.
-- [ ] **End-to-End Integration Testing Suite (`tests/integration/`)**
+- [x] **End-to-End Integration Testing Suite (`tests/integration/`)**
   - Construct `pytest-spark` integration tests verifying full Medallion pipeline execution (`--mode demo` and `--mode remote`).
   - Validate Great Expectations rule enforcement and MLflow SHA-256 cryptographic lineage tracking (`governance/mlflow_tracker.py`).
 

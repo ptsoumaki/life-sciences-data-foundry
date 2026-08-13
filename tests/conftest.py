@@ -7,6 +7,12 @@ import sys
 import pytest
 from pyspark.sql import SparkSession
 
+try:
+    from delta import configure_spark_with_delta_pip
+    HAS_DELTA = True
+except ImportError:
+    HAS_DELTA = False
+
 # Ensure repository root and analytical-layer directories are in sys.path
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 analytical_dir = os.path.join(base_dir, "analytical-layer")
@@ -18,7 +24,7 @@ for p in [base_dir, analytical_dir]:
 @pytest.fixture(scope="session")
 def spark():
     """
-    Provides a lightweight, session-scoped PySpark SparkSession for fast local unit testing.
+    Provides a lightweight, session-scoped PySpark SparkSession configured with Delta Lake for fast local unit and integration testing.
     """
     os.environ["PYSPARK_PYTHON"] = sys.executable
     os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
@@ -43,16 +49,25 @@ def spark():
         os.environ["HADOOP_HOME"] = hadoop_dir
         os.environ["hadoop.home.dir"] = hadoop_dir
 
-    session = (
+    builder = (
         SparkSession.builder
         .master("local[2]")
         .appName("PySpark-OMOP-Unit-Tests")
         .config("spark.sql.shuffle.partitions", "2")
         .config("spark.default.parallelism", "2")
         .config("spark.ui.enabled", "false")
-        .config("spark.driver.host", "localhost")
-        .getOrCreate()
+        .config("spark.driver.host", "127.0.0.1")
+        .config("spark.driver.bindAddress", "127.0.0.1")
     )
+
+    if HAS_DELTA:
+        builder = builder \
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+            .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        session = configure_spark_with_delta_pip(builder).getOrCreate()
+    else:
+        session = builder.getOrCreate()
+
     session.sparkContext.setLogLevel("WARN")
 
     yield session

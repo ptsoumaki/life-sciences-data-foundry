@@ -152,14 +152,15 @@ def run_omop_pipeline(
     # -------------------------------------------------------------------------
     print("\n[INFO] [SILVER TIER] Enforcing GxP Data Quality Contracts & Timestamp Parsing...")
 
-    # Filter Demographics — apply OMOP CDM v5.4 midnight normalization convention.
-    # Per OMOP §3.1 PERSON: "For data sources with date only, the time is defaulted to midnight."
-    # to_date() handles any recognizable format (YYYY-MM-DD, YYYY-MM-DD HH:mm:ss, ISO 8601, etc.).
-    # to_timestamp() promotes the date to 00:00:00, explicitly implementing the OMOP convention
-    # rather than treating date-only values as a parse error.
+    # Filter Demographics — apply OMOP CDM v5.4 timestamp normalization convention.
+    # Attempts full timestamp cast first to preserve birth time if available;
+    # falls back to date-only cast promoted to midnight timestamp per OMOP §3.1 specification.
     df_clinical_parsed = df_raw_patients.withColumn(
         "parsed_birth_dt",
-        to_timestamp(expr("try_cast(birth_datetime as date)"))
+        coalesce(
+            to_timestamp(expr("try_cast(birth_datetime as timestamp)")),
+            to_timestamp(expr("try_cast(birth_datetime as date)"))
+        )
     )
 
     valid_gender_expr = upper(trim(col("gender"))).isin("MALE", "FEMALE", "M", "F", "UNKNOWN")

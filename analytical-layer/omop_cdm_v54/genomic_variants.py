@@ -4,8 +4,7 @@ Description: PySpark domain transformer mapping VCF genomic variant annotations 
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, expr, lit, concat_ws, regexp_extract, when, coalesce
-
+from pyspark.sql.functions import col, expr, lit, concat_ws, regexp_extract, when, coalesce, xxhash64, abs
 
 def transform_genomic_variants(df_silver_genomics: DataFrame) -> DataFrame:
     """
@@ -32,9 +31,12 @@ def transform_genomic_variants(df_silver_genomics: DataFrame) -> DataFrame:
       - value_source_value preserves the raw ClinVar CLNSIG string for full source lineage.
     """
     # Safely handle patient_id and sample_id if present in input VCF DataFrame
-    cols = df_silver_genomics.columns
-    patient_col = col("patient_id") if "patient_id" in cols else lit("PAT_GENOMIC")
-    sample_col = col("sample_id") if "sample_id" in cols else lit("VCF_SAMPLE")
+    cols_map = {c.lower(): c for c in df_silver_genomics.columns}
+    patient_col_name = cols_map.get("patient_id", cols_map.get("patient", None))
+    sample_col_name = cols_map.get("sample_id", cols_map.get("sample", None))
+
+    patient_col = col(patient_col_name) if patient_col_name else lit("PAT_1001")
+    sample_col = col(sample_col_name) if sample_col_name else lit("SAMPLE_01")
 
     # Extract ClinVar clinical significance and gene symbol from VCF INFO field
     df_annotated = df_silver_genomics.withColumn(
@@ -42,14 +44,14 @@ def transform_genomic_variants(df_silver_genomics: DataFrame) -> DataFrame:
     ).withColumn(
         "clinvar_sig", regexp_extract(col("info"), r"CLNSIG=([^;]+)", 1)
     ).withColumn(
-        "_patient_id_ref", patient_col
+        "patient_id_ref", patient_col
     ).withColumn(
-        "_sample_id_ref", sample_col
+        "sample_id_ref", sample_col
     )
 
     return df_annotated.select(
-        expr("abs(hash(concat(_patient_id_ref, _sample_id_ref, chrom, pos, ref, alt)))").cast("long").alias("measurement_id"),
-        expr("abs(hash(_patient_id_ref))").cast("long").alias("person_id"),
+        abs(xxhash64(concat_ws(":", col("patient_id_ref"), col("sample_id_ref"), col("chrom"), col("pos"), col("ref"), col("alt")))).cast("long").alias("measurement_id"),
+        abs(xxhash64(col("patient_id_ref"))).cast("long").alias("person_id"),
         lit(35917873).cast("integer").alias("measurement_concept_id"),
         lit(None).cast("date").alias("measurement_date"),       # NULL: VCF fileDate is a global header field, not per-variant; see docstring.
         lit(None).cast("timestamp").alias("measurement_datetime"),# NULL: per OMOP CDM when per-variant call date is unavailable.
@@ -64,6 +66,6 @@ def transform_genomic_variants(df_silver_genomics: DataFrame) -> DataFrame:
         .when(col("clinvar_sig") == "Uncertain_significance", 4078249)
         .otherwise(0).cast("integer").alias("value_as_concept_id"),
         lit("VCF_QUAL").cast("string").alias("unit_source_value"),
-        concat_ws(":", col("_sample_id_ref"), col("filter")).cast("string").alias("measurement_source_value"),
+        concat_ws(":", col("sample_id_ref"), col("filter")).cast("string").alias("measurement_source_value"),
         concat_ws(":", col("chrom"), col("pos"), col("ref"), col("alt"), col("id"), col("gene_symbol"), col("clinvar_sig")).cast("string").alias("value_source_value")
     )

@@ -4,8 +4,7 @@ Description: PySpark domain transformer mapping clinical patient demographics in
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, expr, when, year, month, dayofmonth, upper, trim
-
+from pyspark.sql.functions import col, expr, when, year, month, dayofmonth, upper, trim, xxhash64, abs
 
 def transform_person(df_silver_clinical: DataFrame) -> DataFrame:
     """
@@ -21,7 +20,7 @@ def transform_person(df_silver_clinical: DataFrame) -> DataFrame:
     normalized_ethnicity = upper(trim(col("ethnicity")))
 
     return df_silver_clinical.select(
-        expr("abs(hash(raw_patient_id))").cast("long").alias("person_id"),
+        abs(xxhash64(col("raw_patient_id"))).cast("long").alias("person_id"),
         when(normalized_gender.isin("MALE", "M"), 8507)
         .when(normalized_gender.isin("FEMALE", "F"), 8532)
         .otherwise(0).cast("integer").alias("gender_concept_id"),

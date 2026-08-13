@@ -2,8 +2,8 @@ nextflow.enable.dsl=2
 
 include { FASTQC } from './modules/fastqc.nf'
 
-params.raw_input = "s3://life-sciences-platform-raw-${params.environment}/*.fastq"
-params.outdir    = "s3://life-sciences-platform-processed-${params.environment}/qc/"
+params.raw_input = "s3://${params.raw_bucket}/*.fastq"
+params.outdir    = "s3://${params.processed_bucket}/qc/"
 
 workflow {
     // Require the environment param to be set in the shell or via nextflow.config

@@ -103,10 +103,12 @@ def evaluate_data_contract(
     else:
         pdf = pd.DataFrame(df)
 
-    # Format datetime / timestamp columns to ISO string format so regex expectations work predictably
+    # Format datetime / timestamp / date columns to ISO string format so regex expectations work predictably
     for col_name in pdf.columns:
         if pd.api.types.is_datetime64_any_dtype(pdf[col_name]):
             pdf[col_name] = pdf[col_name].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        elif pdf[col_name].dtype == "object":
+            pdf[col_name] = pdf[col_name].apply(lambda val: val.isoformat() if hasattr(val, "isoformat") else val)
 
     clean_experiment_name = experiment_name.lstrip("/")
     try:
@@ -128,8 +130,10 @@ def evaluate_data_contract(
     meta = suite_config.get("meta", {})
 
     active_run = mlflow.active_run()
-    run_context = active_run if active_run else mlflow.start_run(run_name="gxp_data_contract_gate")
-    run_id = "active_run"  # Safe default; overwritten inside the context manager once the run is active.
+    # If active_run already exists, do not use `with active_run:` because exiting `with` closes active runs.
+    is_nested_run = active_run is not None
+    run_context = active_run if is_nested_run else mlflow.start_run(run_name="gxp_data_contract_gate")
+    run_id = active_run.info.run_id if is_nested_run else "active_run"
 
     with run_context as run:
         mlflow.log_param("data_input_path", dataset_source_path or "in_memory_dataframe")
@@ -142,12 +146,26 @@ def evaluate_data_contract(
         # Dynamic Great Expectations 1.x Suite Execution
         try:
             context = ge.get_context(mode="ephemeral")
-            ds = context.data_sources.add_pandas("gxp_pandas_source")
-            asset = ds.add_dataframe_asset("gxp_clinical_asset")
-            batch_def = asset.add_batch_definition_whole_dataframe("gxp_batch")
+            try:
+                ds = context.data_sources.add_pandas("gxp_pandas_source")
+            except Exception:
+                ds = context.data_sources.get("gxp_pandas_source")
+
+            try:
+                asset = ds.add_dataframe_asset("gxp_clinical_asset")
+            except Exception:
+                asset = ds.get_asset("gxp_clinical_asset")
+
+            try:
+                batch_def = asset.add_batch_definition_whole_dataframe("gxp_batch")
+            except Exception:
+                batch_def = asset.get_batch_definition("gxp_batch")
 
             suite_name = suite_config.get("expectation_suite_name", "gxp_suite")
-            suite = context.suites.add(ge.ExpectationSuite(name=suite_name))
+            try:
+                suite = context.suites.add(ge.ExpectationSuite(name=suite_name))
+            except Exception:
+                suite = context.suites.get(suite_name)
 
             for exp_dict in suite_config.get("expectations", []):
                 exp_type = exp_dict.get("expectation_type", "")
@@ -157,9 +175,14 @@ def evaluate_data_contract(
                     exp_cls = getattr(ge.expectations, pascal_name)
                     suite.add_expectation(exp_cls(**kwargs))
 
-            val_def = context.validation_definitions.add(
-                ge.ValidationDefinition(name="gxp_validation_def", data=batch_def, suite=suite)
-            )
+            val_def_name = f"gxp_val_def_{abs(hash(suite_name))}"
+            try:
+                val_def = context.validation_definitions.add(
+                    ge.ValidationDefinition(name=val_def_name, data=batch_def, suite=suite)
+                )
+            except Exception:
+                val_def = context.validation_definitions.get(val_def_name)
+
             results = val_def.run(batch_parameters={"dataframe": pdf})
 
             evaluated_expectations = len(results.results)
@@ -179,9 +202,9 @@ def evaluate_data_contract(
         except Exception as e:
             print(f"[CONNECTOR WARNING] GE 1.x suite execution fallback: {e}")
             evaluated_expectations, successful_expectations, unsuccessful_expectations = 0, 0, 0
-            success_rate = 100.0
-            validation_passed = True
-            res_dict = {"success": True}
+            success_rate = 0.0
+            validation_passed = False
+            res_dict = {"success": False, "error": str(e)}
 
         # Metric & Artifact Logging
         mlflow.log_metric("total_records_ingested", len(pdf))
@@ -191,15 +214,16 @@ def evaluate_data_contract(
         mlflow.log_metric("expectation_success_rate", success_rate)
         mlflow.log_metric("gxp_gate_passed", 1.0 if validation_passed else 0.0)
 
-        mlflow.log_artifact(resolved_rules_path, artifact_path="governance_contracts")
-
-        results_output_path = "validation_results.json"
-        with open(results_output_path, "w") as f:
-            json.dump(res_dict, f, indent=2)
-        mlflow.log_artifact(results_output_path, artifact_path="audit_reports")
-
-        if os.path.exists(results_output_path):
-            os.remove(results_output_path)
+        try:
+            mlflow.log_artifact(resolved_rules_path, artifact_path="governance_contracts")
+            results_output_path = os.path.abspath("validation_results.json")
+            with open(results_output_path, "w", encoding="utf-8") as f:
+                json.dump(res_dict, f, indent=2)
+            mlflow.log_artifact(results_output_path, artifact_path="audit_reports")
+            if os.path.exists(results_output_path):
+                os.remove(results_output_path)
+        except Exception as art_err:
+            print(f"[MLFLOW WARNING] Could not log audit artifact: {art_err}")
 
         run_id = run.info.run_id if hasattr(run, "info") else "active_run"
         if not validation_passed:

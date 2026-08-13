@@ -3,6 +3,7 @@ Unit tests for omop_cdm_v54.measurement domain transformer.
 """
 
 from pyspark.sql.functions import to_date
+
 from omop_cdm_v54.measurement import transform_measurement
 
 
@@ -18,11 +19,21 @@ def test_transform_measurement_loinc_mapping(spark):
     ]
     df = spark.createDataFrame(
         data,
-        ["lab_event_id", "raw_patient_id", "loinc_code", "test_name", "numeric_value", "unit_value", "parsed_lab_dt_str"]
+        [
+            "lab_event_id",
+            "raw_patient_id",
+            "loinc_code",
+            "test_name",
+            "numeric_value",
+            "unit_value",
+            "parsed_lab_dt_str",
+        ],
     ).withColumn("parsed_lab_dt", to_date("parsed_lab_dt_str"))
 
     res = transform_measurement(df).collect()
-    concept_map = {row["measurement_source_value"].split(":")[0]: row["measurement_concept_id"] for row in res}
+    concept_map = {
+        row["measurement_source_value"].split(":")[0]: row["measurement_concept_id"] for row in res
+    }
 
     assert concept_map["4548-4"] == 3004410
     assert concept_map["2345-7"] == 3000483
@@ -37,10 +48,19 @@ def test_transform_measurement_values_and_units(spark):
     data = [("LAB100", "PAT_12", "4548-4", "HbA1c Panel", 5.8, "%", "2023-04-10")]
     df = spark.createDataFrame(
         data,
-        ["lab_event_id", "raw_patient_id", "loinc_code", "test_name", "numeric_value", "unit_value", "parsed_lab_dt_str"]
+        [
+            "lab_event_id",
+            "raw_patient_id",
+            "loinc_code",
+            "test_name",
+            "numeric_value",
+            "unit_value",
+            "parsed_lab_dt_str",
+        ],
     ).withColumn("parsed_lab_dt", to_date("parsed_lab_dt_str"))
 
     row = transform_measurement(df).first()
+    assert row is not None
 
     assert row["measurement_type_concept_id"] == 45754907  # Lab Result Concept
     assert row["value_as_number"] == 5.8
@@ -59,13 +79,21 @@ def test_transform_measurement_datetime_preservation(spark):
     ]
     df = spark.createDataFrame(
         data,
-        ["lab_event_id", "raw_patient_id", "loinc_code", "test_name", "numeric_value", "unit_value", "lab_datetime"]
+        [
+            "lab_event_id",
+            "raw_patient_id",
+            "loinc_code",
+            "test_name",
+            "numeric_value",
+            "unit_value",
+            "lab_datetime",
+        ],
     )
 
     row = transform_measurement(df).first()
+    assert row is not None
 
     assert row["measurement_date"] is not None
     assert str(row["measurement_date"]) == "2023-03-15"
     assert row["measurement_datetime"] is not None
     assert "2023-03-15 11:30:00" in str(row["measurement_datetime"])
-

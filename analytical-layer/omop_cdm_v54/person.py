@@ -3,7 +3,6 @@ Module: person.py
 Description: PySpark domain transformer mapping clinical patient demographics into OHDSI OMOP CDM v5.4 PERSON table.
 """
 
-
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
     abs,
@@ -16,20 +15,12 @@ from pyspark.sql.functions import (
     year,
 )
 
-try:
-    from omop_cdm_v54.vocabularies import (
-        build_concept_lookup,
-        get_ethnicity_concept_mappings,
-        get_gender_concept_mappings,
-        get_race_concept_mappings,
-    )
-except ImportError:
-    from vocabularies import (
-        build_concept_lookup,
-        get_ethnicity_concept_mappings,
-        get_gender_concept_mappings,
-        get_race_concept_mappings,
-    )
+from omop_cdm_v54.vocabularies import (
+    build_concept_lookup,
+    get_ethnicity_concept_mappings,
+    get_gender_concept_mappings,
+    get_race_concept_mappings,
+)
 
 
 def transform_person(
@@ -54,7 +45,9 @@ def transform_person(
     """
     g_map = gender_mappings if gender_mappings is not None else get_gender_concept_mappings()
     r_map = race_mappings if race_mappings is not None else get_race_concept_mappings()
-    e_map = ethnicity_mappings if ethnicity_mappings is not None else get_ethnicity_concept_mappings()
+    e_map = (
+        ethnicity_mappings if ethnicity_mappings is not None else get_ethnicity_concept_mappings()
+    )
 
     normalized_gender = upper(trim(col("gender")))
     normalized_race = upper(trim(col("race")))
@@ -76,5 +69,5 @@ def transform_person(
         col("raw_patient_id").cast("string").alias("person_source_value"),
         col("gender").cast("string").alias("gender_source_value"),
         col("race").cast("string").alias("race_source_value"),
-        col("ethnicity").cast("string").alias("ethnicity_source_value")
+        col("ethnicity").cast("string").alias("ethnicity_source_value"),
     )

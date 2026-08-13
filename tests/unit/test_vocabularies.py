@@ -2,6 +2,8 @@
 Unit tests for omop_cdm_v54.vocabularies concept mappings and PySpark dynamic expression engine.
 """
 
+from pyspark.sql.functions import col
+
 from omop_cdm_v54.vocabularies import (
     build_concept_lookup,
     get_clinvar_concept_mappings,
@@ -12,7 +14,6 @@ from omop_cdm_v54.vocabularies import (
     get_race_concept_mappings,
     load_concept_mappings,
 )
-from pyspark.sql.functions import col
 
 
 def test_load_concept_mappings_structure():

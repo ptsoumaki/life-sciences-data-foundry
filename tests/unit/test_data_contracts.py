@@ -21,9 +21,13 @@ def test_evaluate_data_contract_valid_data():
         "ethnicity_concept_id": [38003564, 38003564],
     }
     df = pd.DataFrame(valid_data)
-    rules_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "governance", "rules.json")
+    rules_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "governance", "rules.json"
+    )
 
-    res = evaluate_data_contract(df, rules_path=rules_path, experiment_name="test_gxp_governance", strict=False)
+    res = evaluate_data_contract(
+        df, rules_path=rules_path, experiment_name="test_gxp_governance", strict=False
+    )
 
     assert res["success"] is True
     assert res["evaluated_expectations"] > 0
@@ -42,8 +46,11 @@ def test_evaluate_data_contract_invalid_data_strict_mode():
         "ethnicity_concept_id": [38003564, 38003564],
     }
     df = pd.DataFrame(invalid_data)
-    rules_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "governance", "rules.json")
+    rules_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "governance", "rules.json"
+    )
 
     with pytest.raises(RuntimeError, match="GxP Data Contract Validation failed"):
-        evaluate_data_contract(df, rules_path=rules_path, experiment_name="test_gxp_governance", strict=True)
-
+        evaluate_data_contract(
+            df, rules_path=rules_path, experiment_name="test_gxp_governance", strict=True
+        )

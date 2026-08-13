@@ -3,7 +3,6 @@ Module: measurement.py
 Description: PySpark domain transformer mapping LOINC lab biomarkers and genomic quality metrics into OMOP CDM v5.4 MEASUREMENT table.
 """
 
-
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
     abs,
@@ -18,13 +17,10 @@ from pyspark.sql.functions import (
     xxhash64,
 )
 
-try:
-    from omop_cdm_v54.vocabularies import (
-        build_concept_lookup,
-        get_loinc_concept_mappings,
-    )
-except ImportError:
-    from vocabularies import build_concept_lookup, get_loinc_concept_mappings
+from omop_cdm_v54.vocabularies import (
+    build_concept_lookup,
+    get_loinc_concept_mappings,
+)
 
 
 def transform_measurement(
@@ -47,7 +43,9 @@ def transform_measurement(
     Returns:
         OMOP CDM v5.4 MEASUREMENT DataFrame.
     """
-    mapping_dict = concept_mappings if concept_mappings is not None else get_loinc_concept_mappings()
+    mapping_dict = (
+        concept_mappings if concept_mappings is not None else get_loinc_concept_mappings()
+    )
     normalized_loinc = upper(trim(col("loinc_code")))
     meas_concept_expr = build_concept_lookup(normalized_loinc, mapping_dict, default_val=0)
 
@@ -76,11 +74,15 @@ def transform_measurement(
         abs(xxhash64(col("raw_patient_id"))).cast("long").alias("person_id"),
         meas_concept_expr.cast("integer").alias("measurement_concept_id"),
         meas_date.alias("measurement_date"),
-        meas_datetime.alias("measurement_datetime"),  # OMOP CDM v5.4: timestamp when present in source; NULL when source has date only
+        meas_datetime.alias(
+            "measurement_datetime"
+        ),  # OMOP CDM v5.4: timestamp when present in source; NULL when source has date only
         lit(45754907).cast("integer").alias("measurement_type_concept_id"),  # Lab Result Concept
         col("numeric_value").cast("double").alias("value_as_number"),
         lit(0).cast("integer").alias("value_as_concept_id"),
         col("unit_value").cast("string").alias("unit_source_value"),
-        concat_ws(":", col("loinc_code"), col("test_name")).cast("string").alias("measurement_source_value"),
-        lit(None).cast("string").alias("value_source_value")
+        concat_ws(":", col("loinc_code"), col("test_name"))
+        .cast("string")
+        .alias("measurement_source_value"),
+        lit(None).cast("string").alias("value_source_value"),
     )

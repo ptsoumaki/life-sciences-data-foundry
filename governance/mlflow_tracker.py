@@ -200,6 +200,11 @@ def evaluate_data_contract(
                 if hasattr(ge.expectations, pascal_name):
                     exp_cls = getattr(ge.expectations, pascal_name)
                     suite.add_expectation(exp_cls(**kwargs))
+                else:
+                    print(f"[GxP WARNING] Unknown expectation type '{exp_type}' (class {pascal_name}) skipped.")
+
+            if len(suite.expectations) == 0 and len(suite_config.get("expectations", [])) > 0:
+                print(f"[GxP WARNING] Rules config contained {len(suite_config.get('expectations', []))} expectations but 0 were valid.")
 
             # Hash-derived name satisfies GE's uniqueness requirement across repeated
             # calls with the same suite name in a single ephemeral context.
@@ -270,7 +275,7 @@ def evaluate_data_contract(
             f"GxP Data Contract Validation failed! {unsuccessful_expectations} expectation(s) failed."
         )
 
-    return {
+    result_dict = {
         "success": validation_passed,
         "total_records": len(pdf),
         "evaluated_expectations": evaluated_expectations,
@@ -279,6 +284,10 @@ def evaluate_data_contract(
         "success_rate": success_rate,
         "run_id": run_id,
     }
+    if "error" in res_dict:
+        result_dict["error"] = res_dict["error"]
+
+    return result_dict
 
 
 def run_governance_pipeline(data_path: str, rules_path: str, experiment_name: str):

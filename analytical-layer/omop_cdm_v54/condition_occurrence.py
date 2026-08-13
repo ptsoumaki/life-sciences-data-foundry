@@ -4,7 +4,7 @@ Description: PySpark domain transformer mapping ICD-10-CM clinical diagnoses to 
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, expr, lit, when, concat_ws, upper, trim, regexp_replace
+from pyspark.sql.functions import col, expr, lit, when, concat_ws, upper, trim, regexp_replace, xxhash64, abs
 
 
 def transform_condition_occurrence(df_silver_diagnoses: DataFrame) -> DataFrame:
@@ -22,8 +22,8 @@ def transform_condition_occurrence(df_silver_diagnoses: DataFrame) -> DataFrame:
     dotless_icd = regexp_replace(normalized_icd, "\\.", "")
 
     return df_silver_diagnoses.select(
-        expr("abs(hash(encounter_id))").cast("long").alias("condition_occurrence_id"),
-        expr("abs(hash(raw_patient_id))").cast("long").alias("person_id"),
+        abs(xxhash64(col("encounter_id"))).cast("long").alias("condition_occurrence_id"),
+        abs(xxhash64(col("raw_patient_id"))).cast("long").alias("person_id"),
         when(normalized_icd.isin("E11.9", "E119") | (dotless_icd == "E119"), 201826)
         .when(normalized_icd.isin("I10", "I10.0") | (dotless_icd == "I10"), 316866)
         .when(normalized_icd.isin("J45.909", "J45909") | (dotless_icd == "J45909"), 195080)

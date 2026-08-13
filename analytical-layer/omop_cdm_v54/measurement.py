@@ -4,7 +4,7 @@ Description: PySpark domain transformer mapping LOINC lab biomarkers and genomic
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, expr, lit, when, concat_ws, upper, trim
+from pyspark.sql.functions import col, expr, lit, when, concat_ws, upper, trim, xxhash64, abs
 
 
 def transform_measurement(df_silver_labs: DataFrame) -> DataFrame:
@@ -21,8 +21,8 @@ def transform_measurement(df_silver_labs: DataFrame) -> DataFrame:
     normalized_loinc = upper(trim(col("loinc_code")))
 
     return df_silver_labs.select(
-        expr("abs(hash(lab_event_id))").cast("long").alias("measurement_id"),
-        expr("abs(hash(raw_patient_id))").cast("long").alias("person_id"),
+        abs(xxhash64(col("lab_event_id"))).cast("long").alias("measurement_id"),
+        abs(xxhash64(col("raw_patient_id"))).cast("long").alias("person_id"),
         when(normalized_loinc == "4548-4", 3004410)
         .when(normalized_loinc == "2345-7", 3000483)
         .when(normalized_loinc == "2093-3", 3004249)

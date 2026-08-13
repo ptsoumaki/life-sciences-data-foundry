@@ -4,8 +4,7 @@ Description: PySpark domain transformer mapping VCF genomic variant annotations 
 """
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, expr, lit, concat_ws, regexp_extract, when, coalesce
-
+from pyspark.sql.functions import col, expr, lit, concat_ws, regexp_extract, when, coalesce, xxhash64, abs
 
 def transform_genomic_variants(df_silver_genomics: DataFrame) -> DataFrame:
     """
@@ -51,8 +50,8 @@ def transform_genomic_variants(df_silver_genomics: DataFrame) -> DataFrame:
     )
 
     return df_annotated.select(
-        expr("abs(hash(concat(patient_id_ref, sample_id_ref, chrom, pos, ref, alt)))").cast("long").alias("measurement_id"),
-        expr("abs(hash(patient_id_ref))").cast("long").alias("person_id"),
+        abs(xxhash64(concat_ws(":", col("patient_id_ref"), col("sample_id_ref"), col("chrom"), col("pos"), col("ref"), col("alt")))).cast("long").alias("measurement_id"),
+        abs(xxhash64(col("patient_id_ref"))).cast("long").alias("person_id"),
         lit(35917873).cast("integer").alias("measurement_concept_id"),
         lit(None).cast("date").alias("measurement_date"),       # NULL: VCF fileDate is a global header field, not per-variant; see docstring.
         lit(None).cast("timestamp").alias("measurement_datetime"),# NULL: per OMOP CDM when per-variant call date is unavailable.

@@ -155,7 +155,7 @@ class DeltaMedallionWriter:
                 writer.save(path)
             print(f"[DELTA] Gold OMOP Table '{table_name}' saved to {path} (mode={mode}, clusterBy={cluster_by})")
 
-        if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA:
+        if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA and self.catalog:
             try:
                 cluster_cols_sql = ", ".join(cluster_by)
                 formatted_path = path.replace("\\", "/")

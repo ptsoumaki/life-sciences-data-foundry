@@ -61,7 +61,7 @@ To run the analytical pipelines, validation suites, and IaC deployment engines, 
   - PySpark write streams with Delta Lake Liquid Clustering (`CLUSTER BY (person_id, concept_id)`), schema evolution merge contracts (`option("mergeSchema", "true")`), and idempotent MERGE upsert (`DeltaTable.merge()`).
   - Provisioned Databricks workspace storage, secret scopes (`life-sciences-vault`), and job orchestration via Terraform (`terraform/databricks_medallion.tf`).
   - Runtime assertion hooks connecting Great Expectations rules (`governance/rules.json`) directly to Silver-to-Gold tier persistence.
-- [ ] **Phase 5: Automated Testing & Data Contract Quality Suite** (🚀 *Active Sprint*)
+- [x] **Phase 5: Automated Testing & Data Contract Quality Suite**
   - Inline Data Contract Runtime Assertion Enforcement hooks connecting Great Expectations rules (`governance/rules.json`) directly to PySpark Silver-to-Gold write streams.
   - Unit test suite (`tests/unit/`) with `pytest` covering PySpark domain transformers (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`).
   - Integration test suite (`tests/integration/`) with `pytest-spark` covering end-to-end Medallion pipeline execution, Open Data Connectors, and MLflow lineage tracking.

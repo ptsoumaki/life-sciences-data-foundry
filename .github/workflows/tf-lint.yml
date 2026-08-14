@@ -7,10 +7,6 @@ on:
   pull_request:
     branches: [ main, dev ]
 
-# Force the runner execution environment to prioritize the Node.js 24 engine
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
   infrastructure-validation:
     name: "Lint & Validate Infrastructure Blueprint"

@@ -16,7 +16,6 @@ from pyspark.sql.functions import (
     regexp_replace,
     trim,
     upper,
-    when,
     xxhash64,
 )
 
@@ -50,15 +49,31 @@ def transform_condition_occurrence(
         concept_mappings if concept_mappings is not None else get_icd10_concept_mappings()
     )
 
+    # Normalize ICD-10 source codes
     normalized_icd = upper(trim(col("icd10_code")))
     dotless_icd = regexp_replace(normalized_icd, "\\.", "")
 
-    mapped_concept = build_concept_lookup(normalized_icd, mapping_dict, default_val=0)
-    dotless_concept = build_concept_lookup(dotless_icd, mapping_dict, default_val=0)
-    concept_id_expr = when(mapped_concept != 0, mapped_concept).otherwise(dotless_concept)
+    # Build unified mapping covering both dotted and dotless variants to prevent redundant map generation in Catalyst
+    unified_mapping: dict[str, int] = {}
+    for k, v in mapping_dict.items():
+        if not str(k).startswith("_"):
+            try:
+                int_v = int(v)
+                str_k = str(k).upper().strip()
+                unified_mapping[str_k] = int_v
+                unified_mapping[str_k.replace(".", "")] = int_v
+            except (ValueError, TypeError):
+                continue
+
+    concept_id_expr = build_concept_lookup(dotless_icd, unified_mapping, default_val=0)
+
+    # Composite primary key: encounter_id + icd10_code + parsed_diag_dt ensures uniqueness across multi-diagnosis encounters
+    pk_expr = abs(
+        xxhash64(concat_ws(":", col("encounter_id"), normalized_icd, col("parsed_diag_dt")))
+    ).cast("long")
 
     return df_silver_diagnoses.select(
-        abs(xxhash64(col("encounter_id"))).cast("long").alias("condition_occurrence_id"),
+        pk_expr.alias("condition_occurrence_id"),
         abs(xxhash64(col("raw_patient_id"))).cast("long").alias("person_id"),
         concept_id_expr.cast("integer").alias("condition_concept_id"),
         col("parsed_diag_dt").alias("condition_start_date"),

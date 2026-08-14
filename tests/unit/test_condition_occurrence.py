@@ -87,3 +87,27 @@ def test_transform_condition_occurrence_types_and_source_values(spark):
     assert row["condition_occurrence_id"] > 0
     assert isinstance(row["person_id"], int)
     assert row["person_id"] > 0
+
+
+def test_transform_condition_occurrence_composite_pk_uniqueness(spark):
+    """Verifies primary key uniqueness for multiple diagnoses within the same encounter."""
+    data = [
+        ("ENC_MULTI", "PAT_1", "E11.9", "Type 2 Diabetes", "2023-01-01"),
+        ("ENC_MULTI", "PAT_1", "I10", "Essential Hypertension", "2023-01-01"),
+    ]
+    df = spark.createDataFrame(
+        data,
+        [
+            "encounter_id",
+            "raw_patient_id",
+            "icd10_code",
+            "diagnosis_description",
+            "parsed_diag_dt_str",
+        ],
+    ).withColumn("parsed_diag_dt", to_date("parsed_diag_dt_str"))
+
+    rows = transform_condition_occurrence(df).collect()
+    assert len(rows) == 2
+    assert rows[0]["condition_occurrence_id"] != rows[1]["condition_occurrence_id"]
+    assert rows[0]["person_id"] == rows[1]["person_id"]
+

@@ -7,10 +7,6 @@ on:
   pull_request:
     branches: [ main, dev ]
 
-# Force the runner execution environment to prioritize the Node.js 24 engine
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
   infrastructure-validation:
     name: "Lint & Validate Infrastructure Blueprint"
@@ -18,7 +14,7 @@ jobs:
 
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       # GxP Compliance: Resolve environment inputs with audit trail logging
       - name: Verify and Resolve Deployment Secrets
@@ -47,7 +43,7 @@ jobs:
 
       # Infrastructure Validation Tier (Terraform IaC)
       - name: Setup Terraform Binary
-        uses: hashicorp/setup-terraform@v3.1.2
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: 1.5.0
 
@@ -63,7 +59,7 @@ jobs:
       # Pipeline Validation Tier (Nextflow DSL2)
       - name: Cache Nextflow Engine Binaries
         id: cache-nextflow
-        uses: actions/cache@v4.2.0
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
         with:
           path: ~/.nextflow
           key: ${{ runner.os }}-nextflow-23.04.0
@@ -96,10 +92,10 @@ jobs:
 
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Python 3.11 Environment
-        uses: actions/setup-python@v5.4.0
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: "3.11"
           cache: "pip"
@@ -124,16 +120,16 @@ jobs:
 
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup OpenJDK 17 (PySpark JVM Runtime)
-        uses: actions/setup-java@v4.7.0
+        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
         with:
           distribution: "temurin"
           java-version: "17"
 
       - name: Setup Python 3.11 Environment
-        uses: actions/setup-python@v5.4.0
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: "3.11"
           cache: "pip"
@@ -148,7 +144,7 @@ jobs:
           pytest --cov=analytical-layer --cov=governance --cov-report=term-missing --cov-report=xml tests/
 
       - name: Upload Test Coverage Artifact
-        uses: actions/upload-artifact@v4.6.1
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         if: always()
         with:
           name: code-coverage-report

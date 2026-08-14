@@ -201,6 +201,15 @@ class DeltaMedallionWriter:
 
         return path
 
+    def _is_delta_table(self, table_path: str) -> bool:
+        """Checks whether a given path or table identifier is an existing Delta table."""
+        if not HAS_DELTA:
+            return False
+        try:
+            return DeltaTable.isDeltaTable(self.spark, table_path)
+        except Exception:
+            return False
+
     def upsert_gold_omop_table(
         self,
         df: DataFrame,
@@ -215,7 +224,7 @@ class DeltaMedallionWriter:
         path = self._get_table_path("gold", table_name)
         formatted_path = path.replace("\\", "/")
 
-        if not HAS_DELTA or not os.path.exists(os.path.join(path, "_delta_log")):
+        if not self._is_delta_table(formatted_path):
             return self.write_gold_omop_table(
                 df, table_name, cluster_by=cluster_by, mode="overwrite"
             )
@@ -237,14 +246,14 @@ class DeltaMedallionWriter:
         """
         Executes Delta Lake compaction and optimization (OPTIMIZE).
         """
-        if not HAS_DELTA or not os.path.exists(table_path):
+        if not self._is_delta_table(table_path):
             print(f"[WARN] Skipping OPTIMIZE for {table_path}")
             return
 
         try:
             dt = DeltaTable.forPath(self.spark, table_path)
             if zorder_by:
-                dt.optimize().executeZOrder(zorder_by)
+                dt.optimize().executeZOrderBy(*zorder_by)
                 print(f"[DELTA OPTIMIZE] Executed OPTIMIZE Z-ORDER BY {zorder_by} on {table_path}")
             else:
                 dt.optimize().executeCompaction()
@@ -256,7 +265,7 @@ class DeltaMedallionWriter:
         """
         Cleans up outdated data files (VACUUM).
         """
-        if not HAS_DELTA or not os.path.exists(table_path):
+        if not self._is_delta_table(table_path):
             print(f"[WARN] Skipping VACUUM for {table_path}")
             return
 
@@ -274,7 +283,7 @@ class DeltaMedallionWriter:
         """
         Extracts GxP metrology and operational telemetry from Delta Lake transaction log.
         """
-        if not HAS_DELTA or not os.path.exists(table_path):
+        if not self._is_delta_table(table_path):
             return {"status": "NOT_FOUND"}
 
         try:

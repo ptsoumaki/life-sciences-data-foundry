@@ -78,11 +78,11 @@ def transform_measurement(
             "measurement_datetime"
         ),  # OMOP CDM v5.4: timestamp when present in source; NULL when source has date only
         lit(45754907).cast("integer").alias("measurement_type_concept_id"),  # Lab Result Concept
-        col("numeric_value").cast("double").alias("value_as_number"),
+        expr("try_cast(numeric_value as double)").alias("value_as_number"),
         lit(0).cast("integer").alias("value_as_concept_id"),
         col("unit_value").cast("string").alias("unit_source_value"),
         concat_ws(":", col("loinc_code"), col("test_name"))
         .cast("string")
         .alias("measurement_source_value"),
-        lit(None).cast("string").alias("value_source_value"),
+        col("numeric_value").cast("string").alias("value_source_value"),
     )

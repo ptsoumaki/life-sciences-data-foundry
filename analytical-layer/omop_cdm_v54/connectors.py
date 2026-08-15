@@ -25,7 +25,6 @@ from pyspark.sql.functions import col, current_timestamp
 from pyspark.sql.session import SparkSession as PySparkSession
 
 # Public Open Data Remote URLs
-CLINVAR_VCF_REMOTE_URL = "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz"
 SYNTHEA_REMOTE_PATIENTS_URL = (
     "https://raw.githubusercontent.com/OHDSI/ETL-Synthea/main/inst/csv/patients.csv"
 )

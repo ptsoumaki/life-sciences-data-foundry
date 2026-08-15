@@ -64,6 +64,7 @@ def test_transform_measurement_values_and_units(spark):
 
     assert row["measurement_type_concept_id"] == 45754907  # Lab Result Concept
     assert row["value_as_number"] == 5.8
+    assert row["value_source_value"] == "5.8"
     assert row["unit_source_value"] == "%"
     assert row["measurement_source_value"] == "4548-4:HbA1c Panel"
     assert isinstance(row["measurement_id"], int)
@@ -97,3 +98,27 @@ def test_transform_measurement_datetime_preservation(spark):
     assert str(row["measurement_date"]) == "2023-03-15"
     assert row["measurement_datetime"] is not None
     assert "2023-03-15 11:30:00" in str(row["measurement_datetime"])
+
+
+def test_transform_measurement_qualitative_observations(spark):
+    """Verifies that qualitative/categorical observation strings are preserved in value_source_value."""
+    data = [
+        ("LAB300", "PAT_20", "2345-7", "Rapid Covid Ag", "Positive", "qual", "2023-08-01"),
+    ]
+    df = spark.createDataFrame(
+        data,
+        [
+            "lab_event_id",
+            "raw_patient_id",
+            "loinc_code",
+            "test_name",
+            "numeric_value",
+            "unit_value",
+            "parsed_lab_dt_str",
+        ],
+    ).withColumn("parsed_lab_dt", to_date("parsed_diag_dt_str" if False else "parsed_lab_dt_str"))
+
+    row = transform_measurement(df).first()
+    assert row is not None
+    assert row["value_as_number"] is None  # Non-numeric string casts to NULL in value_as_number
+    assert row["value_source_value"] == "Positive"  # Verbatim qualitative payload preserved

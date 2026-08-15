@@ -110,4 +110,3 @@ def test_transform_condition_occurrence_composite_pk_uniqueness(spark):
     assert len(rows) == 2
     assert rows[0]["condition_occurrence_id"] != rows[1]["condition_occurrence_id"]
     assert rows[0]["person_id"] == rows[1]["person_id"]
-

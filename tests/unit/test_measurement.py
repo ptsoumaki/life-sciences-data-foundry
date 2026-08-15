@@ -122,4 +122,3 @@ def test_transform_measurement_qualitative_observations(spark):
     assert row is not None
     assert row["value_as_number"] is None  # Non-numeric string casts to NULL in value_as_number
     assert row["value_source_value"] == "Positive"  # Verbatim qualitative payload preserved
-

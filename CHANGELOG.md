@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integrated explicit configurations for `[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]`, and `[tool.coverage]`.
 - **Modular Documentation Hub (`docs/`)**:
   - Dedicated deep-dive guides for environment setup (`docs/setup/environment-setup.md`), cloud deployment & IaC (`docs/deployment/databricks-and-iac.md`), and testing/DataOps quality gates (`docs/quality/testing-and-dataops.md`).
+- **Enterprise GxP Pull Request Template (`.github/pull_request_template.md`)**:
+  - Established a standardized PR template requiring Conventional Commit classifications, FDA 21 CFR Part 11 / data contract compliance checklists, DataOps test verification sign-offs, and security declarations.
 
 ### Changed
 - **Static Typing & Code Quality Hardening**:

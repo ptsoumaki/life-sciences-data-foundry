@@ -1,7 +1,8 @@
 """
 Module: graph_auditor.py
 Description: LangGraph state graph auditor for agentic GxP compliance, Delta Lake transaction
-             log auditing, and MLflow lineage verification against FDA 21 CFR Part 11 parameters.
+             log auditing, MLflow lineage verification, and Human-in-the-Loop (HITL) review
+             with FDA 21 CFR §11.50 / §11.200 Electronic Signatures.
 
 Dependencies:
     Requires `langgraph>=0.0.20`, `mlflow>=2.10.0`, `pydantic>=2.6.0`.
@@ -20,7 +21,10 @@ import re
 from typing import Any, TypedDict
 
 import mlflow
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command, interrupt
 from mlflow.tracking import MlflowClient
 
 # =====================================================================
@@ -38,18 +42,29 @@ class AuditFinding(TypedDict, total=False):
     details: dict[str, Any]
 
 
+class QASignoff(TypedDict, total=False):
+    """FDA 21 CFR §11.50 compliant Electronic Signature & Deviation Sign-off record."""
+    operator_id: str
+    decision: str  # "APPROVED_WITH_JUSTIFICATION", "OVERRIDE", "REJECTED"
+    justification: str
+    timestamp: str
+    signature_checksum: str
+
+
 class AuditState(TypedDict, total=False):
     """Complete state container for LangGraph audit graph traversal."""
     run_id: str | None
     delta_table_path: str | None
     rules_path: str | None
     tracking_uri: str | None
+    enable_hitl: bool
     mlflow_evidence: dict[str, Any]
     delta_evidence: dict[str, Any]
     schema_evidence: dict[str, Any]
     findings: list[AuditFinding]
     compliance_score: float
-    compliance_status: str  # "COMPLIANT", "NON_COMPLIANT", "FLAGGED_FOR_REVIEW"
+    compliance_status: str  # "COMPLIANT", "NON_COMPLIANT", "FLAGGED_FOR_REVIEW", "APPROVED_BY_QA", "REJECTED_BY_QA"
+    qa_signoff: QASignoff | None
     audit_report: dict[str, Any]
     errors: list[str]
 
@@ -214,7 +229,7 @@ def collect_delta_log_evidence(state: AuditState) -> dict[str, Any]:
             add_actions = 0
             remove_actions = 0
 
-            with open(commit_file, "r", encoding="utf-8") as f:
+            with open(commit_file, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -443,7 +458,7 @@ def evaluate_schema_integrity(state: AuditState) -> dict[str, Any]:
     expected_columns: list[str] = []
     if os.path.exists(resolved_rules_path):
         try:
-            with open(resolved_rules_path, "r", encoding="utf-8") as f:
+            with open(resolved_rules_path, encoding="utf-8") as f:
                 rules_json = json.load(f)
             rules_loaded = True
             for exp in rules_json.get("expectations", []):
@@ -501,7 +516,7 @@ def evaluate_schema_integrity(state: AuditState) -> dict[str, Any]:
 
 
 def generate_audit_findings(state: AuditState) -> dict[str, Any]:
-    """Node: Aggregates findings, computes GxP compliance score, and signs the audit report."""
+    """Node: Aggregates findings, computes GxP compliance score, and generates preliminary report."""
     findings = state.get("findings") or []
     mlflow_evidence = state.get("mlflow_evidence") or {}
     delta_evidence = state.get("delta_evidence") or {}
@@ -570,6 +585,7 @@ def generate_audit_findings(state: AuditState) -> dict[str, Any]:
             "delta_log": delta_evidence.get("status"),
             "schema": schema_evidence.get("status"),
         },
+        "qa_signoff": None,
     }
 
     # Cryptographic Audit Receipt (SHA-256)
@@ -584,28 +600,92 @@ def generate_audit_findings(state: AuditState) -> dict[str, Any]:
     }
 
 
+def human_qa_review(state: AuditState) -> dict[str, Any]:
+    """Node: Human-in-the-Loop (HITL) GxP Review & 21 CFR §11.50 Electronic Signature Gate.
+
+    When enable_hitl is True and status is FLAGGED_FOR_REVIEW or NON_COMPLIANT,
+    interrupts state execution for qualified human approval/deviation sign-off.
+    """
+    enable_hitl = state.get("enable_hitl", False)
+    status = state.get("compliance_status")
+
+    if not enable_hitl or status not in ("FLAGGED_FOR_REVIEW", "NON_COMPLIANT"):
+        return {}
+
+    # Yield control to Human QA Reviewer via LangGraph interrupt
+    review_request = {
+        "action": "QA_SIGNOFF_REQUIRED",
+        "compliance_status": status,
+        "compliance_score": state.get("compliance_score"),
+        "unpassed_findings": [f for f in state.get("findings", []) if not f.get("passed")],
+        "message": "Regulatory review and electronic signature (21 CFR §11.50) required prior to persistence.",
+    }
+
+    # Pauses graph execution until human submits sign-off payload
+    human_input = interrupt(review_request)
+
+    if isinstance(human_input, dict):
+        decision = human_input.get("decision", "REJECTED")
+        operator_id = human_input.get("operator_id", "UNKNOWN_OPERATOR")
+        justification = human_input.get("justification", "No justification provided")
+        timestamp = human_input.get("timestamp") or datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        # Compute electronic signature checksum (21 CFR §11.50)
+        sig_raw = f"{operator_id}:{decision}:{justification}:{timestamp}"
+        signature_checksum = human_input.get("signature_checksum") or compute_sha256_checksum(sig_raw)
+
+        qa_signoff: QASignoff = {
+            "operator_id": operator_id,
+            "decision": decision,
+            "justification": justification,
+            "timestamp": timestamp,
+            "signature_checksum": signature_checksum,
+        }
+
+        new_status = (
+            "APPROVED_BY_QA"
+            if decision in ("APPROVED_WITH_JUSTIFICATION", "OVERRIDE", "APPROVED")
+            else "REJECTED_BY_QA"
+        )
+
+        # Re-sign audit report with attached electronic signature
+        report = dict(state.get("audit_report") or {})
+        report["compliance_status"] = new_status
+        report["qa_signoff"] = qa_signoff
+        serialized_report = json.dumps(report, sort_keys=True)
+        report["audit_receipt_sha256"] = compute_sha256_checksum(serialized_report)
+
+        return {
+            "qa_signoff": qa_signoff,
+            "compliance_status": new_status,
+            "audit_report": report,
+        }
+
+    return {}
+
+
 # =====================================================================
 # Public GxPGraphAuditor Class
 # =====================================================================
 
 class GxPGraphAuditor:
-    """State graph evaluator for autonomous GxP audit trail and lineage verification.
+    """State graph evaluator for autonomous GxP audit trail, lineage verification,
 
-    Audits pipeline run events and Delta Lake transaction logs against FDA 21 CFR Part 11
-    and OMOP CDM v5.4 validation state machines.
+    and Human-in-the-Loop regulatory review (FDA 21 CFR Part 11).
     """
 
-    def __init__(self, config: dict[str, Any] | None = None) -> None:
-        """Initializes the GxPGraphAuditor with execution parameters.
-
-        Args:
-            config: Optional configuration dictionary for state graph traversal.
-        """
+    def __init__(
+        self,
+        config: dict[str, Any] | None = None,
+        checkpointer: BaseCheckpointSaver | None = None,
+    ) -> None:
+        """Initializes the GxPGraphAuditor with execution parameters and checkpointer."""
         self.config = config or {}
-        self.app = self.build_graph()
+        self.checkpointer = checkpointer or MemorySaver()
+        self.app = self.build_graph(checkpointer=self.checkpointer)
 
-    def build_graph(self):
-        """Builds and compiles the LangGraph StateGraph for GxP auditing."""
+    def build_graph(self, checkpointer: BaseCheckpointSaver | None = None):
+        """Builds and compiles the LangGraph StateGraph for GxP auditing with checkpointer."""
         workflow = StateGraph(AuditState)
 
         # Add Nodes
@@ -614,6 +694,7 @@ class GxPGraphAuditor:
         workflow.add_node("evaluate_cfr_part_11_compliance", evaluate_cfr_part_11_compliance)
         workflow.add_node("evaluate_schema_integrity", evaluate_schema_integrity)
         workflow.add_node("generate_audit_findings", generate_audit_findings)
+        workflow.add_node("human_qa_review", human_qa_review)
 
         # Add Linear Directed Edges
         workflow.add_edge(START, "collect_mlflow_evidence")
@@ -621,9 +702,10 @@ class GxPGraphAuditor:
         workflow.add_edge("collect_delta_log_evidence", "evaluate_cfr_part_11_compliance")
         workflow.add_edge("evaluate_cfr_part_11_compliance", "evaluate_schema_integrity")
         workflow.add_edge("evaluate_schema_integrity", "generate_audit_findings")
-        workflow.add_edge("generate_audit_findings", END)
+        workflow.add_edge("generate_audit_findings", "human_qa_review")
+        workflow.add_edge("human_qa_review", END)
 
-        return workflow.compile()
+        return workflow.compile(checkpointer=checkpointer)
 
     def audit_run_lineage(
         self,
@@ -631,48 +713,61 @@ class GxPGraphAuditor:
         delta_table_path: str | None = None,
         rules_path: str | None = None,
         tracking_uri: str | None = None,
+        enable_hitl: bool = False,
+        thread_id: str = "default_thread",
     ) -> dict[str, Any]:
-        """Audits the provenance graph for a specific MLflow / Medallion pipeline run.
-
-        Args:
-            run_id: Unique MLflow run identifier to audit.
-            delta_table_path: Optional path to physical Delta table directory.
-            rules_path: Optional path to data contract rules specification.
-            tracking_uri: Optional MLflow tracking URI.
-
-        Returns:
-            Audit result summary dictionary containing lineage verification status.
-        """
+        """Audits the provenance graph for a specific MLflow / Medallion pipeline run."""
         initial_state: AuditState = {
             "run_id": run_id,
             "delta_table_path": delta_table_path,
             "rules_path": rules_path,
             "tracking_uri": tracking_uri,
+            "enable_hitl": enable_hitl,
             "findings": [],
             "errors": [],
+            "qa_signoff": None,
         }
 
-        final_state = self.app.invoke(initial_state)
+        call_config = {"configurable": {"thread_id": thread_id}}
+        final_state = self.app.invoke(initial_state, config=call_config)
+
+        # If interrupted by HITL, retrieve current state snapshot
+        state_snapshot = self.app.get_state(call_config)
+        if state_snapshot.tasks and any(t.interrupts for t in state_snapshot.tasks):
+            interrupt_val = state_snapshot.tasks[0].interrupts[0].value
+            return {
+                "hitl_interrupted": True,
+                "thread_id": thread_id,
+                "review_request": interrupt_val,
+                "state_values": state_snapshot.values,
+            }
+
+        return final_state.get("audit_report", {})
+
+    def resume_audit_with_signoff(
+        self,
+        thread_id: str,
+        signoff_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Resumes a paused HITL audit thread with human approval and electronic signature."""
+        call_config = {"configurable": {"thread_id": thread_id}}
+        final_state = self.app.invoke(Command(resume=signoff_payload), config=call_config)
         return final_state.get("audit_report", {})
 
     def audit_delta_table(
         self,
         delta_table_path: str,
         rules_path: str | None = None,
+        enable_hitl: bool = False,
+        thread_id: str = "delta_audit_thread",
     ) -> dict[str, Any]:
-        """Audits the transaction log of a physical Delta Lake table without an MLflow run.
-
-        Args:
-            delta_table_path: Path to Delta table root containing `_delta_log/`.
-            rules_path: Optional path to data contract rules specification.
-
-        Returns:
-            Audit report dictionary with Delta transaction log findings.
-        """
+        """Audits the transaction log of a physical Delta Lake table without an MLflow run."""
         return self.audit_run_lineage(
             run_id=None,
             delta_table_path=delta_table_path,
             rules_path=rules_path,
+            enable_hitl=enable_hitl,
+            thread_id=thread_id,
         )
 
 
@@ -689,6 +784,8 @@ def main() -> None:
     parser.add_argument("--delta-path", type=str, default=None, help="Path to Delta Lake table")
     parser.add_argument("--rules", type=str, default="governance/rules.json", help="Path to rules JSON")
     parser.add_argument("--tracking-uri", type=str, default=None, help="MLflow tracking URI")
+    parser.add_argument("--enable-hitl", action="store_true", help="Enable Human-in-the-Loop review")
+    parser.add_argument("--thread-id", type=str, default="cli_audit", help="Checkpointer thread ID")
     parser.add_argument("--output", type=str, default=None, help="Path to save output JSON audit report")
 
     args = parser.parse_args()
@@ -699,11 +796,29 @@ def main() -> None:
         delta_table_path=args.delta_path,
         rules_path=args.rules,
         tracking_uri=args.tracking_uri,
+        enable_hitl=args.enable_hitl,
+        thread_id=args.thread_id,
     )
+
+    if report.get("hitl_interrupted"):
+        print("\n" + "!" * 70)
+        print(" [HITL INTERRUPT] Regulatory Review & Electronic Signature Required (21 CFR §11.50)")
+        print(f" Thread ID: {report.get('thread_id')}")
+        print("!" * 70)
+        req = report.get("review_request", {})
+        print(f" Message: {req.get('message')}")
+        print(f" Current Status: {req.get('compliance_status')} | Score: {req.get('compliance_score')}")
+        print("\n Unpassed Findings:")
+        for f in req.get("unpassed_findings", []):
+            print(f"  - [{f.get('severity')}] {f.get('code')}: {f.get('title')}")
+        return
 
     print("\n" + "=" * 70)
     print(f" GxP LINEAGE AUDIT REPORT — Status: {report.get('compliance_status')}")
     print(f" Score: {report.get('compliance_score')}/100.0 | Receipt: {report.get('audit_receipt_sha256', '')[:16]}...")
+    if report.get("qa_signoff"):
+        so = report["qa_signoff"]
+        print(f" QA Sign-off: {so.get('decision')} by {so.get('operator_id')} ({so.get('signature_checksum')[:12]}...)")
     print("=" * 70)
     print(f"Evaluations: {report.get('summary', {}).get('total_evaluations')} total | "
           f"{report.get('summary', {}).get('passed_evaluations')} passed | "

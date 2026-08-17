@@ -216,3 +216,102 @@ def test_audit_delta_table_missing_directory(tmp_path):
     assert missing_finding is not None
     assert missing_finding["passed"] is False
     assert report["compliance_status"] == "NON_COMPLIANT"
+
+
+def test_audit_hitl_interruption_and_approval(tmp_path):
+    """Validates that HITL interrupts on non-compliant runs and resumes upon electronic signature."""
+    db_path = (tmp_path / "mlflow_hitl.db").as_posix()
+    mlflow_uri = f"sqlite:///{db_path}"
+    mlflow.set_tracking_uri(mlflow_uri)
+    mlflow.set_experiment("test_gxp_hitl")
+
+    with mlflow.start_run(run_name="flagged_run") as run:
+        run_id = run.info.run_id
+        mlflow.log_param("data_input_path", "unverified_data.csv")
+        mlflow.log_param("data_sha256", "invalid_checksum")
+        mlflow.log_param("rules_sha256", "invalid_rules_hash")
+        mlflow.log_metric("total_records_ingested", 100)
+        mlflow.log_metric("evaluated_expectations", 4)
+        mlflow.log_metric("successful_expectations", 3)
+        mlflow.log_metric("unsuccessful_expectations", 1)
+        mlflow.log_metric("expectation_success_rate", 75.0)
+        mlflow.log_metric("gxp_gate_passed", 0.0)
+
+    auditor = GxPGraphAuditor()
+    thread_id = "test_hitl_approval_thread"
+
+    # Step 1: Initial audit execution with HITL enabled -> should interrupt
+    interrupted_result = auditor.audit_run_lineage(
+        run_id=run_id,
+        tracking_uri=mlflow_uri,
+        enable_hitl=True,
+        thread_id=thread_id,
+    )
+
+    assert interrupted_result.get("hitl_interrupted") is True
+    assert interrupted_result.get("thread_id") == thread_id
+    review_req = interrupted_result.get("review_request", {})
+    assert review_req.get("action") == "QA_SIGNOFF_REQUIRED"
+    assert len(review_req.get("unpassed_findings", [])) > 0
+
+    # Step 2: Human QA Lead reviews and provides Electronic Signature (21 CFR §11.50)
+    signoff_payload = {
+        "operator_id": "QA_LEAD_01",
+        "decision": "APPROVED_WITH_JUSTIFICATION",
+        "justification": "Deviation accepted for controlled sandbox testing.",
+    }
+
+    final_report = auditor.resume_audit_with_signoff(
+        thread_id=thread_id,
+        signoff_payload=signoff_payload,
+    )
+
+    assert final_report["compliance_status"] == "APPROVED_BY_QA"
+    assert final_report["qa_signoff"]["operator_id"] == "QA_LEAD_01"
+    assert final_report["qa_signoff"]["decision"] == "APPROVED_WITH_JUSTIFICATION"
+    assert is_valid_sha256(final_report["qa_signoff"]["signature_checksum"]) is True
+    assert is_valid_sha256(final_report["audit_receipt_sha256"]) is True
+
+
+def test_audit_hitl_rejection(tmp_path):
+    """Validates that a human QA rejection updates status to REJECTED_BY_QA."""
+    db_path = (tmp_path / "mlflow_hitl_rej.db").as_posix()
+    mlflow_uri = f"sqlite:///{db_path}"
+    mlflow.set_tracking_uri(mlflow_uri)
+    mlflow.set_experiment("test_gxp_hitl_rej")
+
+    with mlflow.start_run(run_name="flagged_run_rej") as run:
+        run_id = run.info.run_id
+        mlflow.log_param("data_input_path", "unverified_data.csv")
+        mlflow.log_param("data_sha256", "invalid_checksum")
+        mlflow.log_param("rules_sha256", "invalid_rules_hash")
+        mlflow.log_metric("gxp_gate_passed", 0.0)
+
+    auditor = GxPGraphAuditor()
+    thread_id = "test_hitl_rejection_thread"
+
+    # Interrupt
+    interrupted_result = auditor.audit_run_lineage(
+        run_id=run_id,
+        tracking_uri=mlflow_uri,
+        enable_hitl=True,
+        thread_id=thread_id,
+    )
+    assert interrupted_result.get("hitl_interrupted") is True
+
+    # Reject
+    signoff_payload = {
+        "operator_id": "QA_LEAD_02",
+        "decision": "REJECTED",
+        "justification": "Integrity checksum missing. Batch rejected for production release.",
+    }
+
+    final_report = auditor.resume_audit_with_signoff(
+        thread_id=thread_id,
+        signoff_payload=signoff_payload,
+    )
+
+    assert final_report["compliance_status"] == "REJECTED_BY_QA"
+    assert final_report["qa_signoff"]["operator_id"] == "QA_LEAD_02"
+    assert final_report["qa_signoff"]["decision"] == "REJECTED"
+

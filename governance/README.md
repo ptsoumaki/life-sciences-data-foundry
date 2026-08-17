@@ -17,7 +17,7 @@ A decoupled JSON expectation suite defining data quality contracts for OMOP CDM 
 | `expect_column_values_to_not_be_null` | `person_id` | CRITICAL_FATAL | Enforces primary key integrity for audit traceability |
 | `expect_column_values_to_match_regex` | `birth_datetime` | ERROR | Validates ISO-8601 UTC timestamp format |
 | `expect_column_values_to_be_in_set` | `gender_concept_id` | WARNING | Checks alignment with OMOP vocabulary concepts |
-| `expect_table_columns_to_match_ordered_list` | *(all)* | CRITICAL_FATAL | Guarantees schema lock before writing to Gold Delta layer |
+| `expect_table_columns_to_match_set` | *(all)* | CRITICAL_FATAL | Guarantees presence of required clinical columns before Gold Delta persistence |
 
 ### `mlflow_tracker.py` — MLflow Lineage & Audit Tracker
 
@@ -49,6 +49,6 @@ python governance/mlflow_tracker.py /path/to/data.csv governance/rules.json
 
 ## Dependencies
 
-- `great-expectations >= 0.18.0`
+- `great-expectations >= 1.0.0`
 - `mlflow >= 2.10.0`
 - `pandas`

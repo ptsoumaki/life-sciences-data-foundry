@@ -5,6 +5,40 @@ All notable changes to the Life Sciences Data Foundry project are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8] - 2026-08-17
+
+### Added
+- **Production DataOps CI/CD Gate Expansion (`.github/workflows/tf-lint.yml`)**:
+  - Multi-tier GitHub Actions continuous integration workflow executing on all `main` and `dev` branch pushes and pull requests.
+  - Dedicated `infrastructure-validation` job verifying Terraform 1.5.0 IaC (`fmt -check`, `validate`) and Nextflow DSL2 dry-run stub execution.
+  - Dedicated `python-quality-gate` job running `ruff check .`, `ruff format --check .`, and `mypy` strict static type verification.
+  - Dedicated `pyspark-dataops-test-suite` job running `pytest` with OpenJDK 17 + Python 3.11, generating comprehensive `pytest-cov` terminal and XML coverage reports, and archiving build artifacts.
+- **Standardized Toolchain Configuration (`pyproject.toml`)**:
+  - Integrated explicit configurations for `[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]`, and `[tool.coverage]`.
+- **Modular Documentation Hub (`docs/`)**:
+  - Dedicated deep-dive guides for environment setup (`docs/setup/environment-setup.md`), cloud deployment & IaC (`docs/deployment/databricks-and-iac.md`), and testing/DataOps quality gates (`docs/quality/testing-and-dataops.md`).
+- **Enterprise GxP Pull Request Template (`.github/pull_request_template.md`)**:
+  - Established a standardized PR template requiring Conventional Commit classifications, FDA 21 CFR Part 11 / data contract compliance checklists, DataOps test verification sign-offs, and security declarations.
+
+### Changed
+- **Static Typing & Code Quality Hardening**:
+  - Refined type hints across `analytical-layer/omop_cdm_v54/` (`connectors.py`, `pipeline.py`, `compat.py`, `vocabularies.py`), `analytical-layer/medallion/` (`writer.py`), and `governance/mlflow_tracker.py` to achieve 100% clean validation under `mypy` and `ruff`.
+  - Added explicit non-null assertions across unit test suites to guarantee robust type safety on PySpark `Row` projections.
+- **CI Supply Chain Security Hardening**:
+  - Pinned all GitHub Actions steps in `.github/workflows/tf-lint.yml` to immutable commit SHAs for GxP supply chain security.
+- **Executive README Architecture Blueprint (`README.md`)**:
+  - Streamlined the platform blueprint with a pruned top-level architecture layout, direct documentation matrix links, and updated regulatory compliance mappings.
+
+### Fixed
+- **OMOP CDM v5.4 Measurement Payload Preservation (`analytical-layer/omop_cdm_v54/measurement.py`)**:
+  - Preserved qualitative observation values in `value_source_value` while applying `try_cast` for numeric parsing into `value_as_number` to prevent data loss on non-numeric payloads.
+- **Condition Occurrence Composite Primary Key (`analytical-layer/omop_cdm_v54/condition_occurrence.py`)**:
+  - Generated deterministic composite primary keys for `condition_occurrence_id` and optimized dynamic vocabulary map evaluation.
+- **Delta Lake Z-Ordering & Cloud Table Verification (`analytical-layer/medallion/writer.py`)**:
+  - Corrected Delta table Z-Order invocation syntax and S3 cloud storage path detection.
+
+---
+
 ## [0.2.7] - 2026-08-14
 
 ### Added

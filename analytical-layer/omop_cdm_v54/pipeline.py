@@ -6,52 +6,44 @@ Description: Production PySpark Medallion Lakehouse pipeline orchestrating Bronz
 Author: Vivi Tsoumaki
 """
 
+import argparse
 import os
 import sys
-import argparse
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, coalesce, current_timestamp, expr, lit, to_date, to_timestamp, upper, trim
+from typing import Any
 
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import (
+    coalesce,
+    col,
+    expr,
+    to_timestamp,
+    trim,
+    upper,
+)
 
 from omop_cdm_v54.compat import HAS_DELTA, configure_spark_with_delta_pip
-
-try:
-    from omop_cdm_v54.connectors import (
-        configure_s3a_anonymous_access,
-        load_demographics_data,
-        load_diagnoses_data,
-        load_labs_data,
-        load_genomics_data,
-        resolve_data_dir,
-    )
-    from omop_cdm_v54.person import transform_person
-    from omop_cdm_v54.measurement import transform_measurement
-    from omop_cdm_v54.condition_occurrence import transform_condition_occurrence
-    from omop_cdm_v54.genomic_variants import transform_genomic_variants
-except ImportError:
-    from connectors import (
-        configure_s3a_anonymous_access,
-        load_demographics_data,
-        load_diagnoses_data,
-        load_labs_data,
-        load_genomics_data,
-        resolve_data_dir,
-    )
-    from person import transform_person
-    from measurement import transform_measurement
-    from condition_occurrence import transform_condition_occurrence
-    from genomic_variants import transform_genomic_variants
+from omop_cdm_v54.condition_occurrence import transform_condition_occurrence
+from omop_cdm_v54.connectors import (
+    configure_s3a_anonymous_access,
+    load_demographics_data,
+    load_diagnoses_data,
+    load_genomics_data,
+    load_labs_data,
+    resolve_data_dir,
+)
+from omop_cdm_v54.genomic_variants import transform_genomic_variants
+from omop_cdm_v54.measurement import transform_measurement
+from omop_cdm_v54.person import transform_person
 
 try:
     from medallion.writer import DeltaMedallionWriter
 except ImportError:
-    DeltaMedallionWriter = None
+    DeltaMedallionWriter = None  # type: ignore[assignment, misc]
 
 try:
     from governance.mlflow_tracker import evaluate_data_contract
 except ImportError:
-    evaluate_data_contract = None
-
+    evaluate_data_contract = None  # type: ignore[assignment]
 
 
 def configure_windows_hadoop_environment():
@@ -62,7 +54,7 @@ def configure_windows_hadoop_environment():
     Sets HADOOP_HOME and hadoop.home.dir environment variables accordingly.
     No-op on non-Windows platforms.
     """
-    if os.name == 'nt':
+    if os.name == "nt":
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         hadoop_dir = os.path.join(base_dir, "hadoop")
         bin_dir = os.path.join(hadoop_dir, "bin")
@@ -75,17 +67,20 @@ def configure_windows_hadoop_environment():
             if os.path.exists(csc):
                 try:
                     import subprocess
+
                     with open(cs_path, "w") as f:
                         f.write("class Program { static int Main(string[] args) { return 0; } }\n")
-                    subprocess.run([csc, "/nologo", f"/out:{winutils_path}", cs_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(
+                        [csc, "/nologo", f"/out:{winutils_path}", cs_path],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
                 except Exception:
                     pass
 
         os.environ["HADOOP_HOME"] = hadoop_dir
         os.environ["hadoop.home.dir"] = hadoop_dir
-
-
-
 
 
 def create_spark_session(mode: str = "demo") -> SparkSession:
@@ -105,35 +100,38 @@ def create_spark_session(mode: str = "demo") -> SparkSession:
     os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
     configure_windows_hadoop_environment()
 
-    builder = SparkSession.builder \
-        .appName("life-sciences-data-foundry-omop-cdm") \
-        .master("local[*]") \
-        .config("spark.driver.host", "127.0.0.1") \
-        .config("spark.driver.bindAddress", "127.0.0.1") \
+    builder = (
+        SparkSession.builder.appName("life-sciences-data-foundry-omop-cdm")
+        .master("local[*]")
+        .config("spark.driver.host", "127.0.0.1")
+        .config("spark.driver.bindAddress", "127.0.0.1")
         .config("spark.sql.shuffle.partitions", "4")
+    )
 
     if mode.lower() == "remote":
         builder = configure_s3a_anonymous_access(builder)
 
-    if HAS_DELTA:
-        builder = builder \
-            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
-            .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+    if HAS_DELTA and configure_spark_with_delta_pip is not None:
+        builder = builder.config(
+            "spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension"
+        ).config(
+            "spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+        )
         return configure_spark_with_delta_pip(builder).getOrCreate()
-    
+
     return builder.getOrCreate()
 
 
 def run_omop_pipeline(
     spark: SparkSession,
     mode: str = "demo",
-    data_dir: str = None,
+    data_dir: str | None = None,
     save_delta: bool = True,
-    output_dir: str = None,
+    output_dir: str | None = None,
     run_maintenance: bool = False,
     enable_contract_enforcement: bool = True,
     rules_path: str = "governance/rules.json",
-) -> dict:
+) -> dict[str, Any]:
     """Executes the Bronze → Silver → Gold Medallion OMOP CDM v5.4 pipeline.
 
     Ingests raw clinical and genomic data (Bronze), applies GxP timestamp normalisation
@@ -185,8 +183,8 @@ def run_omop_pipeline(
         "parsed_birth_dt",
         coalesce(
             to_timestamp(expr("try_cast(birth_datetime as timestamp)")),
-            to_timestamp(expr("try_cast(birth_datetime as date)"))
-        )
+            to_timestamp(expr("try_cast(birth_datetime as date)")),
+        ),
     ).cache()
 
     # Quality Gate: Valid clinical record requires parseable birth date and recognized gender.
@@ -198,21 +196,21 @@ def run_omop_pipeline(
 
     # Filter Diagnoses — parse to DateType directly (OMOP condition_start_date is `date`, not `datetime`).
     df_silver_diagnoses = df_raw_diagnoses.withColumn(
-        "parsed_diag_dt",
-        expr("try_cast(diagnosis_date as date)")
+        "parsed_diag_dt", expr("try_cast(diagnosis_date as date)")
     ).filter(col("parsed_diag_dt").isNotNull())
 
     # Filter Labs — parse timestamp and date (OMOP measurement_date is `date`, measurement_datetime is `timestamp`).
-    df_silver_labs = df_raw_labs.withColumn(
-        "parsed_lab_datetime",
-        coalesce(
-            to_timestamp(expr("try_cast(lab_datetime as timestamp)")),
-            to_timestamp(expr("try_cast(lab_datetime as date)"))
+    df_silver_labs = (
+        df_raw_labs.withColumn(
+            "parsed_lab_datetime",
+            coalesce(
+                to_timestamp(expr("try_cast(lab_datetime as timestamp)")),
+                to_timestamp(expr("try_cast(lab_datetime as date)")),
+            ),
         )
-    ).withColumn(
-        "parsed_lab_dt",
-        col("parsed_lab_datetime").cast("date")
-    ).filter(col("parsed_lab_dt").isNotNull())
+        .withColumn("parsed_lab_dt", col("parsed_lab_datetime").cast("date"))
+        .filter(col("parsed_lab_dt").isNotNull())
+    )
 
     # Filter Genomics — include standard PASS and uncomputed '.' variant quality filters.
     df_silver_genomics = df_raw_genomics.filter(col("filter").isin("PASS", "."))
@@ -238,7 +236,9 @@ def run_omop_pipeline(
     df_omop_measurement_genomics = transform_genomic_variants(df_silver_genomics)
 
     # Union Lab and Genomic Measurements into Gold MEASUREMENT Table
-    df_omop_measurement = df_omop_measurement_labs.unionByName(df_omop_measurement_genomics, allowMissingColumns=True)
+    df_omop_measurement = df_omop_measurement_labs.unionByName(
+        df_omop_measurement_genomics, allowMissingColumns=True
+    )
 
     print("\n--- OHDSI OMOP CDM v5.4 PERSON Table ---")
     df_omop_person.show(5, truncate=False)
@@ -276,7 +276,9 @@ def run_omop_pipeline(
     # 4. DELTA LAKE SINKS: Storage Optimization & Liquid Clustering Persistence
     # -------------------------------------------------------------------------
     if save_delta and HAS_DELTA and DeltaMedallionWriter is not None:
-        print("\n[INFO] [DELTA STORAGE] Persisting Medallion Tiers with Liquid Clustering & Schema Evolution...")
+        print(
+            "\n[INFO] [DELTA STORAGE] Persisting Medallion Tiers with Liquid Clustering & Schema Evolution..."
+        )
         writer = DeltaMedallionWriter(spark, base_output_dir=output_dir)
 
         # Write Silver Sinks
@@ -289,26 +291,39 @@ def run_omop_pipeline(
             writer.write_quarantine_table(df_quarantine_clinical, "quarantine_clinical")
 
         # Write Gold Sinks with Liquid Clustering (CLUSTER BY (person_id, concept_id))
-        person_path = writer.write_gold_omop_table(df_omop_person, "person", cluster_by=["person_id"])
-        cond_path = writer.write_gold_omop_table(df_omop_condition, "condition_occurrence", cluster_by=["person_id", "condition_concept_id"])
-        meas_path = writer.write_gold_omop_table(df_omop_measurement, "measurement", cluster_by=["person_id", "measurement_concept_id"])
+        _person_path = writer.write_gold_omop_table(
+            df_omop_person, "person", cluster_by=["person_id"]
+        )
+        _cond_path = writer.write_gold_omop_table(
+            df_omop_condition,
+            "condition_occurrence",
+            cluster_by=["person_id", "condition_concept_id"],
+        )
+        meas_path = writer.write_gold_omop_table(
+            df_omop_measurement, "measurement", cluster_by=["person_id", "measurement_concept_id"]
+        )
 
         # Log GxP Delta Metrology Telemetry
         meas_telemetry = writer.get_table_telemetry(meas_path)
-        print(f"[DELTA METROLOGY] Gold MEASUREMENT Table Telemetry:")
+        print("[DELTA METROLOGY] Gold MEASUREMENT Table Telemetry:")
         print(f"   - Path: {meas_telemetry.get('table_path')}")
-        print(f"   - Files: {meas_telemetry.get('num_files')} | Size: {meas_telemetry.get('size_in_bytes')} bytes")
+        print(
+            f"   - Files: {meas_telemetry.get('num_files')} | Size: {meas_telemetry.get('size_in_bytes')} bytes"
+        )
         print(f"   - Clustering Keys: {meas_telemetry.get('clustering_columns')}")
 
-        print("[DELTA STORAGE] Delta Lake Liquid Clustering & Schema Evolution Sinks Written Successfully.")
+        print(
+            "[DELTA STORAGE] Delta Lake Liquid Clustering & Schema Evolution Sinks Written Successfully."
+        )
 
         if run_maintenance:
             print("[DELTA MAINTENANCE] Executing automated compaction and vacuum routines...")
             writer.optimize_table(meas_path)
             writer.vacuum_table(meas_path, retention_hours=168.0)
 
-
-    print(f"[SUCCESS] OHDSI OMOP CDM v5.4 Pipeline Execution Mode [{mode.upper()}] Completed Successfully.")
+    print(
+        f"[SUCCESS] OHDSI OMOP CDM v5.4 Pipeline Execution Mode [{mode.upper()}] Completed Successfully."
+    )
 
     return {
         "person": df_omop_person,
@@ -319,20 +334,46 @@ def run_omop_pipeline(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PySpark Medallion OMOP CDM v5.4 Pipeline")
-    parser.add_argument("--mode", type=str, default="demo", choices=["demo", "remote"],
-                        help="Execution mode: 'demo' (local synthetic datasets) or 'remote' (public open datasets)")
-    parser.add_argument("--data_dir", type=str, default=None,
-                        help="Path to custom directory containing real-world clinical & genomic input files")
-    parser.add_argument("--save_delta", action=argparse.BooleanOptionalAction, default=True,
-                        help="Persist Medallion datasets into Delta Lake sinks (use --no-save_delta to skip)")
-    parser.add_argument("--output_dir", type=str, default=None,
-                        help="Custom path for Delta Lake warehouse storage")
-    parser.add_argument("--run_maintenance", action="store_true", default=False,
-                        help="Execute post-ingest Delta Lake OPTIMIZE compaction and VACUUM routines")
-    parser.add_argument("--enable_contract_enforcement", action=argparse.BooleanOptionalAction, default=True,
-                        help="Enforce Great Expectations data quality contracts before Gold persistence")
-    parser.add_argument("--rules_path", type=str, default="governance/rules.json",
-                        help="Path to Great Expectations rules JSON specification file")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="demo",
+        choices=["demo", "remote"],
+        help="Execution mode: 'demo' (local synthetic datasets) or 'remote' (public open datasets)",
+    )
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default=None,
+        help="Path to custom directory containing real-world clinical & genomic input files",
+    )
+    parser.add_argument(
+        "--save_delta",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Persist Medallion datasets into Delta Lake sinks (use --no-save_delta to skip)",
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default=None, help="Custom path for Delta Lake warehouse storage"
+    )
+    parser.add_argument(
+        "--run_maintenance",
+        action="store_true",
+        default=False,
+        help="Execute post-ingest Delta Lake OPTIMIZE compaction and VACUUM routines",
+    )
+    parser.add_argument(
+        "--enable_contract_enforcement",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enforce Great Expectations data quality contracts before Gold persistence",
+    )
+    parser.add_argument(
+        "--rules_path",
+        type=str,
+        default="governance/rules.json",
+        help="Path to Great Expectations rules JSON specification file",
+    )
     args = parser.parse_args()
 
     mode_val = os.getenv("DATA_MODE", args.mode)
@@ -349,5 +390,3 @@ if __name__ == "__main__":
         rules_path=args.rules_path,
     )
     spark.stop()
-
-

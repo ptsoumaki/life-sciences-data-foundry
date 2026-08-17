@@ -7,24 +7,18 @@ on:
   pull_request:
     branches: [ main, dev ]
 
-# Force the runner execution environment to prioritize the Node.js 24 engine
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 jobs:
-  dataops-spec-validation:
-    name: "Lint & Validate Structural Blueprint"
+  infrastructure-validation:
+    name: "Lint & Validate Infrastructure Blueprint"
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Source Code
-        # Pinning to v4.2.2 resolves Node 20 deprecation warnings on Node 24 runners
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       # GxP Compliance: Resolve environment inputs with audit trail logging
       - name: Verify and Resolve Deployment Secrets
         run: |
-          # Use secrets if present; otherwise, fall back to non-sensitive defaults for testing
           ENV_NAME="${{ secrets.ENVIRONMENT }}"
           REG_NAME="${{ secrets.AWS_REGION }}"
           
@@ -37,7 +31,6 @@ jobs:
             REG_NAME="eu-west-1"
           fi
           
-          # Export to environment file for subsequent steps
           echo "RESOLVED_ENV=$ENV_NAME" >> $GITHUB_ENV
           echo "RESOLVED_REG=$REG_NAME" >> $GITHUB_ENV
 
@@ -50,8 +43,7 @@ jobs:
 
       # Infrastructure Validation Tier (Terraform IaC)
       - name: Setup Terraform Binary
-        # Pinning to v3.1.2 forces Node 24 execution compatibility
-        uses: hashicorp/setup-terraform@v3.1.2
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: 1.5.0
 
@@ -67,8 +59,7 @@ jobs:
       # Pipeline Validation Tier (Nextflow DSL2)
       - name: Cache Nextflow Engine Binaries
         id: cache-nextflow
-        # Pinning to v4.2.0 ensures Node 24 compatibility for cache retrieval
-        uses: actions/cache@v4.2.0
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
         with:
           path: ~/.nextflow
           key: ${{ runner.os }}-nextflow-23.04.0
@@ -86,7 +77,6 @@ jobs:
         run: nextflow config pipelines/main.nf -profile local_dev
 
       - name: Dry-Run Stub Execution Gate
-        # -stub compiles processes and channel graphs without running container microservices
         run: |
           mkdir -p mock_data
           touch mock_data/sample_1.fastq
@@ -95,3 +85,68 @@ jobs:
             -stub \
             --raw_input "mock_data/*.fastq" \
             --outdir "mock_data/out"
+
+  python-quality-gate:
+    name: "Static Analysis & Type Safety Gate (Ruff & Mypy)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Python 3.11 Environment
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Development Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Execute Ruff Linter Gate
+        run: ruff check .
+
+      - name: Execute Ruff Formatting Gate
+        run: ruff format --check .
+
+      - name: Execute Mypy Static Type Verification
+        run: mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion governance tests
+
+  pyspark-dataops-test-suite:
+    name: "PySpark DataOps & Contract Quality Gate"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup OpenJDK 17 (PySpark JVM Runtime)
+        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Python 3.11 Environment
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Platform & Test Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Execute PySpark Unit & Integration Test Suite
+        run: |
+          pytest --cov=analytical-layer --cov=governance --cov-report=term-missing --cov-report=xml tests/
+
+      - name: Upload Test Coverage Artifact
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        if: always()
+        with:
+          name: code-coverage-report
+          path: coverage.xml
+          retention-days: 14

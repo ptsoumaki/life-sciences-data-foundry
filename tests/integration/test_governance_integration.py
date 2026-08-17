@@ -3,9 +3,12 @@ Integration tests for MLflow cryptographic lineage tracking and Great Expectatio
 """
 
 import os
+from typing import Any
+
 import mlflow
 import pandas as pd
-from governance.mlflow_tracker import evaluate_data_contract, compute_sha256
+
+from governance.mlflow_tracker import compute_sha256, evaluate_data_contract
 
 
 def test_mlflow_lineage_and_contract_auditing(tmp_path):
@@ -53,9 +56,9 @@ def test_mlflow_lineage_and_contract_auditing(tmp_path):
     exp = mlflow.get_experiment_by_name(exp_name)
     assert exp is not None
 
-    runs = mlflow.search_runs(experiment_ids=[exp.experiment_id])
+    runs: Any = mlflow.search_runs(experiment_ids=[exp.experiment_id])
     assert len(runs) > 0
-    latest_run = runs.iloc[0]
+    latest_run: Any = runs.iloc[0] if hasattr(runs, "iloc") else runs[0]
 
     assert "metrics.expectation_success_rate" in latest_run
     assert latest_run["metrics.expectation_success_rate"] == 100.0

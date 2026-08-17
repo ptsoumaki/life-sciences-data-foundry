@@ -9,7 +9,6 @@ Dependencies:
 """
 
 
-
 class FoundryMCPServer:
     """Model Context Protocol (MCP) server for Life Sciences Data Foundry.
 

@@ -37,12 +37,14 @@ Ensure your local development station has the following required toolchain versi
 
 | Tool | Required Version | Purpose |
 | --- | --- | --- |
-| **Python** | `3.11` (`>=3.10, <3.12`) | Governance validation, lineage tracking, and PySpark OMOP CDM mapping |
-| **Java / JDK** | `>=11` (17 recommended) | JVM runtime engine required by Nextflow pipeline runner |
+| **Python** | `3.11` (`>=3.10, <3.13`) | Governance validation, lineage tracking, and PySpark OMOP CDM mapping |
+| **Java / JDK** | `>=11` (17 recommended) | JVM runtime engine required by Nextflow and PySpark |
 | **Terraform** | `>=1.5.0` | Declarative IaC infrastructure provisioning and governance |
 | **Nextflow** | `>=23.04.0` | Episodic containerized DSL2 workflow orchestration |
 | **Docker Engine** | Latest Stable | Local process execution context for Nextflow pipelines |
 | **AWS CLI** | `v2` | AWS infrastructure authentication and deployment verification |
+
+> 📖 For comprehensive environment installation and Java configuration, refer to the [**Environment Setup Guide**](docs/setup/environment-setup.md).
 
 ---
 
@@ -188,7 +190,29 @@ To satisfy GxP / FDA 21 CFR Part 11 auditability standards, explicit merge commi
 
 Before opening a Pull Request, run the platform validation suite locally:
 
-1. **Terraform Format & Syntax Validation:**
+1. **PySpark Unit & Integration Tests:**
+   ```bash
+   pytest tests/unit/ -v
+   pytest tests/integration/ -v
+   ```
+
+2. **Governance & Audit Tracker Verification:**
+   ```bash
+   python governance/mlflow_tracker.py
+   ```
+
+3. **Analytical PySpark Normalization Execution:**
+   ```bash
+   python analytical-layer/omop_cdm_v54/pipeline.py --mode demo --save_delta
+   ```
+
+4. **Nextflow Pipeline Stub Verification:**
+   ```bash
+   mkdir -p mock_data && touch mock_data/sample_1.fastq
+   nextflow run pipelines/main.nf -profile local_dev -stub --raw_input "mock_data/*.fastq" --outdir "mock_data/out"
+   ```
+
+5. **Terraform Format & Syntax Validation:**
    ```bash
    cd terraform
    terraform init -backend=false
@@ -197,21 +221,7 @@ Before opening a Pull Request, run the platform validation suite locally:
    cd ..
    ```
 
-2. **Nextflow Pipeline Stub Verification:**
-   ```bash
-   mkdir -p mock_data && touch mock_data/sample_1.fastq
-   nextflow run pipelines/main.nf -profile local_dev -stub --raw_input "mock_data/*.fastq" --outdir "mock_data/out"
-   ```
-
-3. **Governance & Audit Tracker Verification:**
-   ```bash
-   python governance/mlflow_tracker.py
-   ```
-
-4. **Analytical PySpark Normalization Execution:**
-   ```bash
-   python analytical-layer/omop_mapping.py
-   ```
+> 📖 For full CI/CD specifications and code quality details, see the [**Testing & DataOps Guide**](docs/quality/testing-and-dataops.md).
 
 ---
 

@@ -18,12 +18,14 @@ analytical-layer/
 │   └── writer.py                     # DeltaMedallionWriter with Liquid Clustering & Schema Evolution
 ├── omop_cdm_v54/                     # MODULAR PYSPARK OMOP CDM v5.4 DOMAIN PACKAGE
 │   ├── __init__.py                   # Package exports & versioning
+│   ├── compat.py                     # Delta Lake & PySpark runtime compatibility layer
 │   ├── condition_occurrence.py       # ICD-10 to SNOMED CT concept transformer
 │   ├── connectors.py                 # Open Data ingestion connector (demo vs remote mode)
 │   ├── genomic_variants.py           # VCF parser & variant measurement transformer
 │   ├── measurement.py                # LOINC lab biomarker transformer
 │   ├── person.py                     # Demographics to OMOP PERSON transformer
-│   └── pipeline.py                   # Production Medallion pipeline orchestrator
+│   ├── pipeline.py                   # Production Medallion pipeline orchestrator
+│   └── vocabularies.py               # Dynamic concept mapping & PySpark lookup engine
 └── README.md                         # Architecture specification & usage
 ```
 

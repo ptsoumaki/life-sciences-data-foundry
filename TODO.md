@@ -63,8 +63,8 @@ This document tracks active development phases and engineering priorities for th
 - [x] **DataOps CI/CD Gate Expansion (`.github/workflows/tf-lint.yml`)**
   - Configured multi-job GitHub Actions workflow to execute Terraform IaC syntax checks, Nextflow stub evaluation, `ruff` linter/formatter, `mypy` strict static type verification, and PySpark unit/integration test suites with `pytest-cov` reporting on all feature branch pull requests.
   - Standardized toolchain configurations in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]`, `[tool.coverage]`).
-- [ ] **Enterprise GxP Pull Request Template (`.github/pull_request_template.md`)**
-  - Establish a standardized PR template requiring Conventional Commit classifications, FDA 21 CFR Part 11 / data contract compliance checklists, DataOps test verification sign-offs, and security declarations.
+- [x] **Enterprise GxP Pull Request Template (`.github/pull_request_template.md`)**
+  - Established a standardized PR template requiring Conventional Commit classifications, FDA 21 CFR Part 11 / data contract compliance checklists, DataOps test verification sign-offs, and security declarations.
 
 ---
 

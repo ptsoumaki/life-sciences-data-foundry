@@ -63,9 +63,6 @@ This document tracks active development phases and engineering priorities for th
 - [x] **DataOps CI/CD Gate Expansion (`.github/workflows/tf-lint.yml`)**
   - Configured multi-job GitHub Actions workflow to execute Terraform IaC syntax checks, Nextflow stub evaluation, `ruff` linter/formatter, `mypy` strict static type verification, and PySpark unit/integration test suites with `pytest-cov` reporting on all feature branch pull requests.
   - Standardized toolchain configurations in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]`, `[tool.coverage]`).
-- [ ] **Automated Changelog & SemVer Release Gate (`.github/workflows/release-changelog.yml`)**
-  - Automate `CHANGELOG.md` updates based on git commit history upon pull request merge to production (`main`).
-  - Calculate incremental SemVer versioning (`patch`, `minor`, `major`) and publish tagged GitHub releases for auditable GxP provenance.
 - [ ] **Enterprise GxP Pull Request Template (`.github/pull_request_template.md`)**
   - Establish a standardized PR template requiring Conventional Commit classifications, FDA 21 CFR Part 11 / data contract compliance checklists, DataOps test verification sign-offs, and security declarations.
 
@@ -126,6 +123,9 @@ This document tracks active development phases and engineering priorities for th
 
 ## 🛠️ Background Utilities & Nice-to-Haves
 
+- [ ] **Automated Changelog & SemVer Release Gate (`.github/workflows/release-changelog.yml`)** *(Nice-to-Have)*
+  - Automate `CHANGELOG.md` updates based on git commit history upon pull request merge to production (`main`).
+  - Calculate incremental SemVer versioning (`patch`, `minor`, `major`) and publish tagged GitHub releases for auditable GxP provenance.
 - [ ] **HL7 FHIR R4 to OMOP Ingestion Connector (`analytical-layer/omop_cdm_v54/connectors.py`)** *(Nice-to-Have)*
   - Lightweight connector parsing synthetic FHIR JSON Bundles (`Patient`, `Condition`, `Observation`) into OMOP CDM Silver tables.
 - [ ] **PySpark & Delta Lake Performance Benchmark Suite (`tests/benchmarks/`)** *(Nice-to-Have)*

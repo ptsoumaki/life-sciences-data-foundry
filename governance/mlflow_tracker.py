@@ -12,7 +12,6 @@ Public API:
     run_governance_pipeline -- End-to-end governance pipeline entry point.
 """
 
-import hashlib
 import json
 import os
 import sys
@@ -23,14 +22,7 @@ import great_expectations as ge
 import mlflow
 import pandas as pd
 
-
-def compute_sha256(file_path: str) -> str:
-    """Computes SHA-256 checksum for immutable audit tracking (21 CFR Part 11)."""
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest()
+from governance.crypto import compute_sha256
 
 
 def generate_default_clinical_sample(target_path: str) -> pd.DataFrame:

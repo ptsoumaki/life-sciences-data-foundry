@@ -14,10 +14,8 @@ Author: Vivi Tsoumaki
 import argparse
 import datetime
 import glob
-import hashlib
 import json
 import os
-import re
 from typing import Any, TypedDict
 
 import mlflow
@@ -26,6 +24,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 from mlflow.tracking import MlflowClient
+
+from governance.crypto import compute_sha256, is_valid_sha256
 
 # =====================================================================
 # State & Finding Types
@@ -74,22 +74,10 @@ class AuditState(TypedDict, total=False):
 
 
 # =====================================================================
-# Helper Utilities
+# Helper Utilities (Re-exported from centralized governance.crypto)
 # =====================================================================
 
-
-def is_valid_sha256(hash_str: str | None) -> bool:
-    """Validates whether a string is a standard 64-character hexadecimal SHA-256 hash."""
-    if not hash_str or not isinstance(hash_str, str):
-        return False
-    return bool(re.match(r"^[a-fA-F0-9]{64}$", hash_str.strip()))
-
-
-def compute_sha256_checksum(content: str | bytes) -> str:
-    """Computes SHA-256 checksum for audit record hashing."""
-    if isinstance(content, str):
-        content = content.encode("utf-8")
-    return hashlib.sha256(content).hexdigest()
+compute_sha256_checksum = compute_sha256
 
 
 # =====================================================================

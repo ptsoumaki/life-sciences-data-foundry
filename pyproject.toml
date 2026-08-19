@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "life-sciences-data-foundry"
-version = "0.2.0"
+version = "0.2.9"
 description = "Enterprise GxP-compliant multi-omics foundry & clinical normalization engine"
 authors = [{ name = "Vivi Tsoumaki", email = "ptsoumaki@gmail.com" }]
 readme = "README.md"

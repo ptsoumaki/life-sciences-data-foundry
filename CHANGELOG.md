@@ -14,10 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Direct Delta Lake commit log parser verifying commit sequence continuity (`DLT_SEQ_001`), timestamp monotonicity (`DLT_TIME_002`), and table metadata.
 - **Automated MLflow GxP Audit Certificates**:
   - Automatically attaches signed `audit_receipts/gxp_audit_certificate.json` directly to audited MLflow runs with cryptographic SHA-256 receipts (`gxp_audit_receipt_sha256`) and regulatory status tags (`gxp_audit_status`).
+- **Model Context Protocol (FastMCP) Clinical Data Server (`agentic-ai/mcp_server.py`)**:
+  - Implemented `FoundryMCPServer` exposing 11 FastMCP tools for OMOP CDM v5.4 concept lookups (ICD-10 to SNOMED, LOINC labs, demographics, ClinVar variants), table schema definitions (`PERSON`, `CONDITION_OCCURRENCE`, `MEASUREMENT`, `COHORT`), Great Expectations data contracts, Delta Lake transaction commit logs, and MLflow GxP lineage auditing.
+  - Dual-transport architecture supporting Standard I/O (`stdio`) for local AI agent desktop clients and Server-Sent Events (`sse`) for microservice integration.
 - **Centralized Cryptographic Utility Module (`governance/crypto.py`)**:
   - Single source of truth for high-performance SHA-256 file streaming (4 KB blocks), in-memory string/byte hashing, and 64-character hexadecimal digest verification.
-- **Comprehensive Unit Testing Suites (`tests/unit/test_graph_auditor.py`, `tests/unit/test_crypto.py`)**:
-  - 13 unit tests verifying state graph compilation, compliant/non-compliant runs, Delta transaction logs, HITL approval/rejection, cryptographic hashing, and automated MLflow certificate logging.
+- **Comprehensive Unit Testing Suites (`tests/unit/test_graph_auditor.py`, `tests/unit/test_mcp_server.py`, `tests/unit/test_crypto.py`)**:
+  - 26 unit tests across the agentic AI tier verifying state graph compilation, compliant/non-compliant runs, Delta transaction logs, HITL review, cryptographic hashing, and all 11 FastMCP clinical tools.
 
 ### Changed
 - **Unified Project Dependency Configuration (`pyproject.toml`)**:

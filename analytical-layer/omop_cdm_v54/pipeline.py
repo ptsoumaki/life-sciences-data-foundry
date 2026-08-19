@@ -54,6 +54,9 @@ def configure_windows_hadoop_environment():
     Sets HADOOP_HOME and hadoop.home.dir environment variables accordingly.
     No-op on non-Windows platforms.
     """
+    if "JAVA_HOME" in os.environ:
+        os.environ["JAVA_HOME"] = os.environ["JAVA_HOME"].rstrip("\\/ ")
+
     if os.name == "nt":
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         hadoop_dir = os.path.join(base_dir, "hadoop")

@@ -75,8 +75,10 @@ This document tracks active development phases and engineering priorities for th
   - Implemented Human-in-the-Loop (HITL) review gates with FDA 21 CFR §11.50 Electronic Signatures and automated MLflow GxP Audit Certificate logging (`audit_receipts/gxp_audit_certificate.json`).
   - Integrated centralized cryptographic verification via [`governance/crypto.py`](governance/crypto.py).
   - Added comprehensive unit test suites (`tests/unit/test_graph_auditor.py`, `tests/unit/test_crypto.py`) with 100% pass rate.
-- [ ] **Model Context Protocol (MCP) Clinical Data Server (`agentic-ai/mcp_server.py`)**
-  - Expose FastMCP tools for querying OMOP CDM concept hierarchies, vocabulary relationships, and pipeline execution state.
+- [x] **Model Context Protocol (MCP) Clinical Data Server (`agentic-ai/mcp_server.py`)**
+  - Exposed 11 FastMCP tools for querying OMOP CDM concept hierarchies (ICD-10 to SNOMED, LOINC labs, demographics, ClinVar variants), table schema definitions, Great Expectations data contracts, Delta Lake transaction commit logs, and MLflow GxP lineage auditing.
+  - Implemented dual-transport architecture supporting Standard I/O (`stdio`) for AI agent desktop clients and Server-Sent Events (`sse`) for network microservices.
+  - Built comprehensive unit test suite (`tests/unit/test_mcp_server.py`) with 100% pass rate.
 
 ---
 

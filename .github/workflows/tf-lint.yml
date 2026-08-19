@@ -9,7 +9,7 @@ on:
 
 jobs:
   infrastructure-validation:
-    name: "Lint & Validate Infrastructure Blueprint"
+    name: "Lint & Validate Structural Blueprint"
     runs-on: ubuntu-latest
 
     steps:

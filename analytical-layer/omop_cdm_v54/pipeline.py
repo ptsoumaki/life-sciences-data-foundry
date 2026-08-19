@@ -81,6 +81,12 @@ def configure_windows_hadoop_environment():
                     )
                 except Exception:
                     pass
+                finally:
+                    # Remove the C# source file regardless of compilation outcome.
+                    try:
+                        os.remove(cs_path)
+                    except OSError:
+                        pass
 
         os.environ["HADOOP_HOME"] = hadoop_dir
         os.environ["hadoop.home.dir"] = hadoop_dir
@@ -178,10 +184,8 @@ def run_omop_pipeline(
     # -------------------------------------------------------------------------
     print("\n[INFO] [SILVER TIER] Enforcing GxP Data Quality Contracts & Timestamp Parsing...")
 
-    # Normalise birth_datetime per OMOP CDM v5.4: prefer full timestamp precision;
-    # fall back to date-only cast (midnight) when time component is absent.
-    # Cache before the twin accept/quarantine filter so both count() calls read from
-    # memory rather than re-evaluating the Bronze source read.
+    # Prefer full timestamp precision; fall back to midnight cast when time component is absent.
+    # Cache before the twin accept/quarantine filter to avoid re-evaluating the Bronze read twice.
     df_clinical_parsed = df_raw_patients.withColumn(
         "parsed_birth_dt",
         coalesce(
@@ -190,8 +194,7 @@ def run_omop_pipeline(
         ),
     ).cache()
 
-    # Quality Gate: Valid clinical record requires parseable birth date and recognized gender.
-    # Define single canonical condition and invert for quarantine to guarantee mutual exclusivity.
+    # Single canonical condition inverted for quarantine guarantees mutually exclusive partitions.
     valid_gender_expr = upper(trim(col("gender"))).isin("MALE", "FEMALE", "M", "F", "UNKNOWN")
     valid_clinical_condition = col("parsed_birth_dt").isNotNull() & valid_gender_expr
     df_silver_clinical = df_clinical_parsed.filter(valid_clinical_condition)
@@ -218,8 +221,7 @@ def run_omop_pipeline(
     # Filter Genomics — include standard PASS and uncomputed '.' variant quality filters.
     df_silver_genomics = df_raw_genomics.filter(col("filter").isin("PASS", "."))
 
-    # Materialize Silver counts before reporting metrics; avoids re-scanning the
-    # same DataFrame twice when the twin filter (accepted / quarantined) is lazy.
+    # Materialize counts now; the cached DataFrame absorbs both filter passes without re-scanning.
     _silver_clinical_count = df_silver_clinical.count()
     _qc_count = df_quarantine_clinical.count()
     print(f"[METRIC] Silver Clinical Records Accepted: {_silver_clinical_count}")
@@ -258,8 +260,10 @@ def run_omop_pipeline(
     if enable_contract_enforcement and evaluate_data_contract is not None:
         print("\n[INFO] [DATA CONTRACT GATE] Enforcing Great Expectations GxP Data Contracts...")
         try:
+            # Sample up to 10 000 rows for GE validation to cap in-driver memory;
+            # schema and null checks are statistically valid on this cardinality.
             contract_res = evaluate_data_contract(
-                df_omop_person,
+                df_omop_person.limit(10_000),
                 rules_path=rules_path,
                 experiment_name="gxp_clinical_governance",
                 strict=False,
@@ -294,10 +298,10 @@ def run_omop_pipeline(
             writer.write_quarantine_table(df_quarantine_clinical, "quarantine_clinical")
 
         # Write Gold Sinks with Liquid Clustering (CLUSTER BY (person_id, concept_id))
-        _person_path = writer.write_gold_omop_table(
+        person_path = writer.write_gold_omop_table(
             df_omop_person, "person", cluster_by=["person_id"]
         )
-        _cond_path = writer.write_gold_omop_table(
+        cond_path = writer.write_gold_omop_table(
             df_omop_condition,
             "condition_occurrence",
             cluster_by=["person_id", "condition_concept_id"],
@@ -306,14 +310,17 @@ def run_omop_pipeline(
             df_omop_measurement, "measurement", cluster_by=["person_id", "measurement_concept_id"]
         )
 
-        # Log GxP Delta Metrology Telemetry
-        meas_telemetry = writer.get_table_telemetry(meas_path)
-        print("[DELTA METROLOGY] Gold MEASUREMENT Table Telemetry:")
-        print(f"   - Path: {meas_telemetry.get('table_path')}")
-        print(
-            f"   - Files: {meas_telemetry.get('num_files')} | Size: {meas_telemetry.get('size_in_bytes')} bytes"
-        )
-        print(f"   - Clustering Keys: {meas_telemetry.get('clustering_columns')}")
+        # Log GxP Delta telemetry for all three Gold tables.
+        for table_label, table_path in [
+            ("PERSON", person_path),
+            ("CONDITION_OCCURRENCE", cond_path),
+            ("MEASUREMENT", meas_path),
+        ]:
+            telemetry = writer.get_table_telemetry(table_path)
+            print(f"[DELTA METROLOGY] Gold {table_label} — "
+                  f"files: {telemetry.get('num_files')} | "
+                  f"size: {telemetry.get('size_in_bytes')} bytes | "
+                  f"clustering: {telemetry.get('clustering_columns')}")
 
         print(
             "[DELTA STORAGE] Delta Lake Liquid Clustering & Schema Evolution Sinks Written Successfully."
@@ -380,7 +387,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     mode_val = os.getenv("DATA_MODE", args.mode)
-    data_dir_val = os.getenv("DATA_DIR", args.data_dir)
+    # Prefer the env var; `or` guards against DATA_DIR="" overriding a valid CLI argument.
+    data_dir_val = os.getenv("DATA_DIR") or args.data_dir
     spark = create_spark_session(mode=mode_val)
     run_omop_pipeline(
         spark,

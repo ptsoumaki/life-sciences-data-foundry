@@ -55,11 +55,6 @@ pip install --upgrade pip
 pip install -e ".[dev]"
 ```
 
-To install optional agentic AI dependencies (`langgraph`, `mcp`):
-```bash
-pip install -e ".[dev,agentic]"
-```
-
 ---
 
 ## ☕ 2. Java Runtime (`JAVA_HOME`) Configuration

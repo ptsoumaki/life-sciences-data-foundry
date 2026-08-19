@@ -14,8 +14,8 @@ The **Enterprise Life Sciences Data Engineering Foundry** is a production-grade 
 
 * **Clinical Normalization Engine:** PySpark ETL/ELT pipelines converting heterogeneous EHR records, clinical trial observations, and multi-omics variant metadata into standard [OHDSI OMOP CDM v5.4](https://ohdsi.github.io/CommonDataModel/cdm54.html) relational tables (`PERSON`, `MEASUREMENT`, `CONDITION_OCCURRENCE`).
 * **Medallion Delta Lakehouse:** Multi-tier storage architecture utilizing Delta Lake ACID transactions, Liquid Clustering (`CLUSTER BY (person_id, concept_id)`), and Change Data Feed (CDF) for optimized cohort queries.
-* **Programmatic Data Contracts & GxP Lineage:** Decoupled Great Expectations rule assertions ([`governance/rules.json`](governance/rules.json)) enforcing schema and quality contracts prior to Gold-tier persistence, coupled with MLflow SHA-256 cryptographic provenance tracking ([`governance/mlflow_tracker.py`](governance/mlflow_tracker.py)) to satisfy **FDA 21 CFR Part 11**.
-* **Agentic Lineage & Audit Interface:** Model Context Protocol (FastMCP) server and LangGraph multi-agent compliance auditor ([`agentic-ai/`](agentic-ai/)) inspecting transaction logs, MLflow run metadata, and vocabulary mapping trees.
+* **Programmatic Data Contracts & GxP Lineage:** Decoupled Great Expectations rule assertions ([`governance/rules.json`](governance/rules.json)) enforcing schema and quality contracts prior to Gold-tier persistence, coupled with MLflow SHA-256 cryptographic provenance tracking ([`governance/mlflow_tracker.py`](governance/mlflow_tracker.py)) and centralized crypto utilities ([`governance/crypto.py`](governance/crypto.py)) to satisfy **FDA 21 CFR Part 11**.
+* **Agentic Lineage & Audit Interface:** LangGraph compliance state auditor ([`agentic-ai/graph_auditor.py`](agentic-ai/graph_auditor.py)) and FastMCP server ([`agentic-ai/mcp_server.py`](agentic-ai/mcp_server.py)) inspecting Delta Lake commit logs, MLflow run metadata, and generating automated GxP audit certificates with 21 CFR §11.50 Human-in-the-Loop review.
 * **Cloud-Native IaC & Orchestration:** Databricks Asset Bundles ([`databricks.yml`](databricks.yml)) and Terraform IaC ([`terraform/`](terraform/)) provisioning immutable S3 WORM storage (`COMPLIANCE` retention mode).
 
 ---
@@ -25,9 +25,9 @@ The **Enterprise Life Sciences Data Engineering Foundry** is a production-grade 
 | Standard / Domain | Platform Implementation | Strategic Purpose in Biopharma R&D |
 | :--- | :--- | :--- |
 | **OHDSI OMOP CDM v5.4** | [`analytical-layer/omop_cdm_v54/`](analytical-layer/omop_cdm_v54/) | Cross-institutional RWE analytics & standardized cohort building across global clinical networks |
-| **FDA 21 CFR Part 11** | [`governance/rules.json`](governance/rules.json) & [`mlflow_tracker.py`](governance/mlflow_tracker.py) | Electronic records integrity, SHA-256 cryptographic run lineage & programmatic data contracts |
+| **FDA 21 CFR Part 11** | [`governance/rules.json`](governance/rules.json), [`mlflow_tracker.py`](governance/mlflow_tracker.py) & [`crypto.py`](governance/crypto.py) | Electronic records integrity, SHA-256 cryptographic run lineage & programmatic data contracts |
 | **Delta Lake ACID** | [`analytical-layer/medallion/`](analytical-layer/medallion/) | Transactional reliability, schema evolution, time-travel auditing & Liquid Clustering |
-| **Model Context Protocol** | [`agentic-ai/mcp_server.py`](agentic-ai/mcp_server.py) | FastMCP agentic interface for querying OMOP concept hierarchies & execution state |
+| **Agentic GxP Audit & MCP** | [`agentic-ai/graph_auditor.py`](agentic-ai/graph_auditor.py) & [`mcp_server.py`](agentic-ai/mcp_server.py) | LangGraph autonomous lineage auditor with HITL sign-offs & FastMCP discovery interface |
 | **AWS S3 Object Lock** | [`terraform/storage_and_compute.tf`](terraform/storage_and_compute.tf) | WORM storage enforcement preventing accidental or unauthorized clinical record deletion |
 
 ---

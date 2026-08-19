@@ -2,10 +2,10 @@
 Module: mcp_server.py
 Description: FastMCP Server exposing Life Sciences Data Foundry capabilities
              (OMOP ETL, Great Expectations data contracts, Delta Lake queries) as Model Context Protocol tools.
-             Planned for Phase 6 Agentic Lineage & MLOps.
+             Planned for Phase 7 Agentic Lineage & MLOps.
 
 Dependencies:
-    Requires `mcp>=0.1.0`. Install with: `pip install -e ".[agentic]"`
+    Requires `mcp>=0.1.0`. Install with: `pip install -e .`
 """
 
 
@@ -29,18 +29,18 @@ class FoundryMCPServer:
         """Registers Foundry ETL, governance evaluation, and query tools with the MCP protocol.
 
         Raises:
-            NotImplementedError: Phase 6 FastMCP server implementation is in active development.
+            NotImplementedError: Phase 7 FastMCP server implementation is in active development.
         """
         raise NotImplementedError(
-            "FoundryMCPServer tool registration is scheduled for Phase 6 (Agentic Lineage & MLOps)."
+            "FoundryMCPServer tool registration is scheduled for Phase 7 (Agentic Lineage & MLOps)."
         )
 
     def serve(self) -> None:
         """Starts the MCP server event loop.
 
         Raises:
-            NotImplementedError: Phase 6 FastMCP server implementation is in active development.
+            NotImplementedError: Phase 7 FastMCP server implementation is in active development.
         """
         raise NotImplementedError(
-            "FoundryMCPServer event loop is scheduled for Phase 6 (Agentic Lineage & MLOps)."
+            "FoundryMCPServer event loop is scheduled for Phase 7 (Agentic Lineage & MLOps)."
         )

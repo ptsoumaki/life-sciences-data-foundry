@@ -54,7 +54,9 @@ def generate_default_clinical_sample(target_path: str) -> pd.DataFrame:
 def load_dataset(data_path: str) -> pd.DataFrame:
     """Loads dataset from CSV, TSV, Parquet, or JSON format into Pandas DataFrame."""
     if not os.path.exists(data_path):
-        if "sample" in data_path or data_path.endswith(".csv"):
+        # Restrict synthetic fallback to explicit sample paths; raising for any other missing
+        # file prevents silent GxP data substitution on misconfigured production inputs.
+        if "sample" in data_path.lower():
             return generate_default_clinical_sample(data_path)
         raise FileNotFoundError(f"Input data file not found at: {data_path}")
 
@@ -97,8 +99,7 @@ def evaluate_data_contract(
             successful_expectations (int), unsuccessful_expectations (int),
             success_rate (float, 0-100), run_id (str).
     """
-    # Resolve relative paths against the repository root so the function works
-    # regardless of the working directory the caller was launched from.
+    # Resolve against repo root to support invocation from any working directory.
     resolved_rules_path = rules_path
     if not os.path.exists(resolved_rules_path):
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -108,7 +109,7 @@ def evaluate_data_contract(
         else:
             raise FileNotFoundError(f"Data contract rules not found at: {rules_path}")
 
-    # GE 1.x operates on Pandas; convert PySpark DataFrames before validation.
+    # GE 1.x requires a Pandas DataFrame; convert PySpark inputs before validation.
     if hasattr(df, "toPandas"):
         pdf = df.toPandas()
     elif isinstance(df, pd.DataFrame):
@@ -129,8 +130,8 @@ def evaluate_data_contract(
     clean_experiment_name = experiment_name.lstrip("/")
     try:
         mlflow.set_experiment(clean_experiment_name)
-    except Exception:
-        pass
+    except Exception as exp_err:
+        print(f"[MLFLOW WARNING] Could not set experiment '{clean_experiment_name}': {exp_err}")
 
     rules_checksum = (
         compute_sha256(resolved_rules_path) if os.path.exists(resolved_rules_path) else "N/A"
@@ -141,8 +142,7 @@ def evaluate_data_contract(
         else "in_memory_dataframe"
     )
 
-    # Load the full suite configuration; `meta` block carries compliance metadata
-    # (standard, schema version) that is logged as MLflow run params below.
+    # Load suite config; the `meta` block carries compliance metadata logged as MLflow params.
     with open(resolved_rules_path) as f:
         suite_config = json.load(f)
 
@@ -150,9 +150,7 @@ def evaluate_data_contract(
 
     active_run = mlflow.active_run()
     is_nested_run = active_run is not None
-    # Start a new MLflow run only when no run is already active.
-    # Do NOT wrap an existing active_run in a context manager: exiting `with active_run:`
-    # calls active_run.__exit__() which ends the run, closing any outer caller's context.
+    # Do not wrap an existing outer run in a context manager — that would end it on __exit__.
     run: Any
     if is_nested_run:
         run = active_run
@@ -169,9 +167,8 @@ def evaluate_data_contract(
         )
         mlflow.log_param("target_schema", meta.get("target_schema", "OMOP_CDM_v5.4"))
 
-        # Build an ephemeral GE context from the rules JSON and run all expectations.
-        # Each add_* call falls back to get_* to handle repeated invocations within
-        # the same Python process without raising DuplicateKeyError.
+        # Build an ephemeral GE context; fall back to get_* on repeated same-process calls
+        # to avoid DuplicateKeyError without requiring a fresh interpreter each time.
         try:
             context = ge.get_context(mode="ephemeral")
             ds: Any
@@ -213,8 +210,8 @@ def evaluate_data_contract(
                     f"[GxP WARNING] Rules config contained {len(suite_config.get('expectations', []))} expectations but 0 were valid."
                 )
 
-            # Hash-derived name satisfies GE's uniqueness requirement across repeated
-            # calls with the same suite name in a single ephemeral context.
+            # Hash suffix satisfies GE's uniqueness constraint when the same suite name is
+            # reused across multiple calls within a single ephemeral context.
             val_def_name = f"gxp_val_def_{abs(hash(suite_name))}"
             try:
                 val_def = context.validation_definitions.add(
@@ -252,7 +249,7 @@ def evaluate_data_contract(
             validation_passed = False
             res_dict = {"success": False, "error": str(e)}
 
-        # Log all GxP metrics and attach the rules file + validation result as MLflow artifacts.
+        # Log GxP metrics and archive the contract spec and validation result as MLflow artifacts.
         mlflow.log_metric("total_records_ingested", len(pdf))
         mlflow.log_metric("evaluated_expectations", evaluated_expectations)
         mlflow.log_metric("successful_expectations", successful_expectations)
@@ -270,7 +267,13 @@ def evaluate_data_contract(
         except Exception as art_err:
             print(f"[MLFLOW WARNING] Could not log audit artifact: {art_err}")
 
-        run_id = getattr(getattr(run, "info", None), "run_id", "active_run")
+        # For nested runs, re-query the active run to get the current run_id rather than
+        # relying on the stale reference captured before the try block.
+        run_id = (
+            mlflow.active_run().info.run_id
+            if is_nested_run
+            else getattr(getattr(run, "info", None), "run_id", None) or "unknown_run"
+        )
         if not validation_passed:
             print(
                 f"[WARNING] GxP Data Contract Gate: {unsuccessful_expectations} expectations evaluated for review. Run ID: {run_id}"
@@ -282,7 +285,7 @@ def evaluate_data_contract(
         )
 
     finally:
-        # Only end the run if we started it; leave the caller's outer run open.
+        # End only runs opened by this function; caller-owned outer runs must remain active.
         if not is_nested_run:
             mlflow.end_run()
 
@@ -306,7 +309,7 @@ def evaluate_data_contract(
     return result_dict
 
 
-def run_governance_pipeline(data_path: str, rules_path: str, experiment_name: str):
+def run_governance_pipeline(data_path: str, rules_path: str, experiment_name: str) -> dict[str, Any]:
     """Loads a dataset and evaluates the given data contract, logging results to MLflow.
 
     Convenience wrapper around load_dataset + evaluate_data_contract for

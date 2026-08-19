@@ -16,6 +16,7 @@ import datetime
 import glob
 import json
 import os
+import tempfile
 from typing import Any, TypedDict
 
 import mlflow
@@ -736,6 +737,62 @@ def human_qa_review(state: AuditState) -> dict[str, Any]:
 
 
 # =====================================================================
+# Automated MLflow GxP Audit Certificate Logging
+# =====================================================================
+
+
+def log_gxp_audit_certificate(
+    report: dict[str, Any],
+    run_id: str | None,
+    tracking_uri: str | None = None,
+) -> bool:
+    """Logs the signed GxP audit report, cryptographic receipt, and tags directly to MLflow.
+
+    Attaches 'gxp_audit_certificate.json' under the 'audit_receipts/' artifact path
+    and records regulatory status tags and compliance metrics for 21 CFR §11.10(e) traceability.
+
+    Args:
+        report: The signed GxP audit report payload.
+        run_id: The MLflow run ID to attach the certificate to.
+        tracking_uri: Optional MLflow tracking URI.
+
+    Returns:
+        True if logged successfully to MLflow, False otherwise.
+    """
+    if not run_id or not isinstance(run_id, str):
+        return False
+
+    try:
+        if tracking_uri:
+            mlflow.set_tracking_uri(tracking_uri)
+
+        client = MlflowClient(tracking_uri=tracking_uri)
+        status = report.get("compliance_status", "UNKNOWN")
+        score = report.get("compliance_score", 0.0)
+        receipt = report.get("audit_receipt_sha256", "")
+
+        client.set_tag(run_id, "gxp_audit_status", str(status))
+        client.set_tag(run_id, "gxp_audit_receipt_sha256", str(receipt))
+        client.set_tag(run_id, "gxp_auditor_version", "LangGraph-GxP-Auditor-v0.2.0")
+        client.log_metric(run_id, "gxp_audit_compliance_score", float(score))
+
+        if report.get("qa_signoff"):
+            so = report["qa_signoff"]
+            client.set_tag(run_id, "gxp_qa_signer", str(so.get("operator_id", "")))
+            client.set_tag(run_id, "gxp_qa_decision", str(so.get("decision", "")))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cert_path = os.path.join(tmp_dir, "gxp_audit_certificate.json")
+            with open(cert_path, "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=2, sort_keys=True)
+            client.log_artifact(run_id, cert_path, artifact_path="audit_receipts")
+
+        return True
+    except Exception:
+        return False
+
+
+# =====================================================================
 # Public GxPGraphAuditor Class
 # =====================================================================
 
@@ -787,6 +844,7 @@ class GxPGraphAuditor:
         tracking_uri: str | None = None,
         enable_hitl: bool = False,
         thread_id: str = "default_thread",
+        log_to_mlflow: bool = True,
     ) -> dict[str, Any]:
         """Audits the provenance graph for a specific MLflow / Medallion pipeline run."""
         initial_state: AuditState = {
@@ -814,17 +872,29 @@ class GxPGraphAuditor:
                 "state_values": state_snapshot.values,
             }
 
-        return final_state.get("audit_report", {})
+        report = final_state.get("audit_report", {})
+        if log_to_mlflow and run_id and report:
+            log_gxp_audit_certificate(report, run_id=run_id, tracking_uri=tracking_uri)
+
+        return report
 
     def resume_audit_with_signoff(
         self,
         thread_id: str,
         signoff_payload: dict[str, Any],
+        log_to_mlflow: bool = True,
     ) -> dict[str, Any]:
         """Resumes a paused HITL audit thread with human approval and electronic signature."""
         call_config = {"configurable": {"thread_id": thread_id}}
         final_state = self.app.invoke(Command(resume=signoff_payload), config=call_config)
-        return final_state.get("audit_report", {})
+        report = final_state.get("audit_report", {})
+
+        run_id = final_state.get("run_id")
+        tracking_uri = final_state.get("tracking_uri")
+        if log_to_mlflow and run_id and report:
+            log_gxp_audit_certificate(report, run_id=run_id, tracking_uri=tracking_uri)
+
+        return report
 
     def audit_delta_table(
         self,
@@ -840,6 +910,7 @@ class GxPGraphAuditor:
             rules_path=rules_path,
             enable_hitl=enable_hitl,
             thread_id=thread_id,
+            log_to_mlflow=False,
         )
 
 
@@ -866,6 +937,11 @@ def main() -> None:
     parser.add_argument(
         "--output", type=str, default=None, help="Path to save output JSON audit report"
     )
+    parser.add_argument(
+        "--no-mlflow-log",
+        action="store_true",
+        help="Disable automated logging of audit certificate to MLflow run",
+    )
 
     args = parser.parse_args()
 
@@ -877,6 +953,7 @@ def main() -> None:
         tracking_uri=args.tracking_uri,
         enable_hitl=args.enable_hitl,
         thread_id=args.thread_id,
+        log_to_mlflow=not args.no_mlflow_log,
     )
 
     if report.get("hitl_interrupted"):

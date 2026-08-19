@@ -81,6 +81,16 @@ def test_audit_run_lineage_compliant_mlflow(tmp_path):
     assert report["summary"]["critical_failures"] == 0
     assert report["summary"]["error_failures"] == 0
 
+    # Verify automated MLflow audit certificate logging
+    client = mlflow.tracking.MlflowClient(tracking_uri=mlflow_uri)
+    run_data = client.get_run(run_id).data
+    assert run_data.tags["gxp_audit_status"] == "COMPLIANT"
+    assert run_data.tags["gxp_audit_receipt_sha256"] == report["audit_receipt_sha256"]
+    assert run_data.metrics["gxp_audit_compliance_score"] >= 95.0
+
+    artifacts = client.list_artifacts(run_id, path="audit_receipts")
+    assert any(a.path == "audit_receipts/gxp_audit_certificate.json" for a in artifacts)
+
 
 def test_audit_run_lineage_non_compliant_mlflow(tmp_path):
     """Validates that missing checksums and failed validation trigger NON_COMPLIANT status."""
@@ -313,6 +323,13 @@ def test_audit_hitl_interruption_and_approval(tmp_path):
     assert final_report["qa_signoff"]["decision"] == "APPROVED_WITH_JUSTIFICATION"
     assert is_valid_sha256(final_report["qa_signoff"]["signature_checksum"]) is True
     assert is_valid_sha256(final_report["audit_receipt_sha256"]) is True
+
+    # Verify updated QA sign-off tags in MLflow
+    client = mlflow.tracking.MlflowClient(tracking_uri=mlflow_uri)
+    run_data = client.get_run(run_id).data
+    assert run_data.tags["gxp_audit_status"] == "APPROVED_BY_QA"
+    assert run_data.tags["gxp_qa_signer"] == "QA_LEAD_01"
+    assert run_data.tags["gxp_qa_decision"] == "APPROVED_WITH_JUSTIFICATION"
 
 
 def test_audit_hitl_rejection(tmp_path):

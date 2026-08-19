@@ -5,6 +5,28 @@ All notable changes to the Life Sciences Data Foundry project are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2026-08-19
+
+### Added
+- **LangGraph GxP Compliance State Graph Auditor (`agentic-ai/graph_auditor.py`)**:
+  - Implemented 6-node autonomous state graph auditing MLflow run lineage, Delta Lake transaction commit logs (`_delta_log/`), and OMOP CDM schema conformance against FDA 21 CFR Part 11 parameters.
+  - Built Human-in-the-Loop (HITL) review gates using LangGraph `interrupt()` and `Command(resume=...)` for qualified 21 CFR §11.50 Electronic Signatures and deviation justifications.
+  - Direct Delta Lake commit log parser verifying commit sequence continuity (`DLT_SEQ_001`), timestamp monotonicity (`DLT_TIME_002`), and table metadata.
+- **Automated MLflow GxP Audit Certificates**:
+  - Automatically attaches signed `audit_receipts/gxp_audit_certificate.json` directly to audited MLflow runs with cryptographic SHA-256 receipts (`gxp_audit_receipt_sha256`) and regulatory status tags (`gxp_audit_status`).
+- **Centralized Cryptographic Utility Module (`governance/crypto.py`)**:
+  - Single source of truth for high-performance SHA-256 file streaming (4 KB blocks), in-memory string/byte hashing, and 64-character hexadecimal digest verification.
+- **Comprehensive Unit Testing Suites (`tests/unit/test_graph_auditor.py`, `tests/unit/test_crypto.py`)**:
+  - 13 unit tests verifying state graph compilation, compliant/non-compliant runs, Delta transaction logs, HITL approval/rejection, cryptographic hashing, and automated MLflow certificate logging.
+
+### Changed
+- **Unified Project Dependency Configuration (`pyproject.toml`)**:
+  - Consolidated `langgraph` and `mcp` directly into core project dependencies and updated installation instructions across documentation.
+- **Expanded CI Quality Gates (`.github/workflows/tf-lint.yml`)**:
+  - Integrated `agentic-ai` into Mypy static type checking and Pytest `--cov` code coverage reporting in CI.
+
+---
+
 ## [0.2.8] - 2026-08-19
 
 ### Added

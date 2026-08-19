@@ -4,8 +4,10 @@ Pytest configuration and shared session-scoped PySpark fixtures for the OMOP CDM
 
 import os
 import sys
+
 import pytest
 from pyspark.sql import SparkSession
+
 from omop_cdm_v54.compat import HAS_DELTA, configure_spark_with_delta_pip
 from omop_cdm_v54.pipeline import configure_windows_hadoop_environment
 
@@ -24,8 +26,7 @@ def spark():
     configure_windows_hadoop_environment()
 
     builder = (
-        SparkSession.builder
-        .master("local[2]")
+        SparkSession.builder.master("local[2]")
         .appName("PySpark-OMOP-Unit-Tests")
         .config("spark.sql.shuffle.partitions", "2")
         .config("spark.default.parallelism", "2")
@@ -34,10 +35,12 @@ def spark():
         .config("spark.driver.bindAddress", "127.0.0.1")
     )
 
-    if HAS_DELTA:
-        builder = builder \
-            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
-            .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+    if HAS_DELTA and configure_spark_with_delta_pip is not None:
+        builder = builder.config(
+            "spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension"
+        ).config(
+            "spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+        )
         session = configure_spark_with_delta_pip(builder).getOrCreate()
     else:
         session = builder.getOrCreate()

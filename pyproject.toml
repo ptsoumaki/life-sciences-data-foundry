@@ -81,7 +81,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["omop_cdm_v54", "governance", "medallion"]
+source = ["omop_cdm_v54", "governance", "medallion", "agentic-ai"]
 omit = ["tests/*"]
 
 [tool.coverage.report]

@@ -228,6 +228,25 @@ def collect_delta_log_evidence(state: AuditState) -> dict[str, Any]:
             key=lambda p: int(os.path.splitext(os.path.basename(p))[0]),
         )
 
+        if not commit_files:
+            error_msg = f"Delta Lake transaction log at '{delta_log_dir}' contains 0 commit files."
+            findings.append(
+                {
+                    "code": "DLT_002",
+                    "category": "DELTA_TRANSACTION_LOG",
+                    "severity": "CRITICAL_FATAL",
+                    "title": "Empty Delta Transaction Log",
+                    "description": error_msg,
+                    "passed": False,
+                    "details": {"table_path": table_path, "delta_log_dir": delta_log_dir},
+                }
+            )
+            return {
+                "delta_evidence": {"status": "EMPTY_LOG", "error": error_msg},
+                "findings": findings,
+                "errors": errors,
+            }
+
         commits_summary: list[dict[str, Any]] = []
         parsed_schema: dict[str, Any] | None = None
         protocol_version: dict[str, Any] | None = None
@@ -298,7 +317,7 @@ def collect_delta_log_evidence(state: AuditState) -> dict[str, Any]:
 
         # Check commit sequence continuity
         versions = [c["version"] for c in commits_summary]
-        is_continuous = len(versions) == 0 or versions == list(
+        is_continuous = len(versions) > 0 and versions == list(
             range(min(versions), max(versions) + 1)
         )
 
@@ -379,80 +398,94 @@ def evaluate_cfr_part_11_compliance(state: AuditState) -> dict[str, Any]:
     findings: list[AuditFinding] = list(state.get("findings") or [])
     mlflow_evidence = state.get("mlflow_evidence") or {}
     delta_evidence = state.get("delta_evidence") or {}
+    mlflow_status = mlflow_evidence.get("status")
 
-    params = mlflow_evidence.get("params", {})
-    metrics = mlflow_evidence.get("metrics", {})
+    if mlflow_status == "COLLECTED":
+        params = mlflow_evidence.get("params", {})
+        metrics = mlflow_evidence.get("metrics", {})
 
-    # 1. 21 CFR §11.10(e) - SHA-256 Immutable Dataset Hash
-    data_sha256 = params.get("data_sha256")
-    is_data_hash_valid = is_valid_sha256(data_sha256) or data_sha256 == "in_memory_dataframe"
-    findings.append(
-        {
-            "code": "CFR_11_10_E_DATA",
-            "category": "CFR_PART_11",
-            "severity": "CRITICAL_FATAL",
-            "title": "21 CFR §11.10(e) Data Provenance SHA-256 Checksum",
-            "description": "Requires cryptographic SHA-256 hashing of source datasets for immutable audit tracking.",
-            "passed": bool(is_data_hash_valid),
-            "details": {"data_sha256": data_sha256, "valid_hash": is_data_hash_valid},
-        }
-    )
+        # 1. 21 CFR §11.10(e) - SHA-256 Immutable Dataset Hash
+        data_sha256 = params.get("data_sha256")
+        is_data_hash_valid = is_valid_sha256(data_sha256) or data_sha256 == "in_memory_dataframe"
+        findings.append(
+            {
+                "code": "CFR_11_10_E_DATA",
+                "category": "CFR_PART_11",
+                "severity": "CRITICAL_FATAL",
+                "title": "21 CFR §11.10(e) Data Provenance SHA-256 Checksum",
+                "description": "Requires cryptographic SHA-256 hashing of source datasets for immutable audit tracking.",
+                "passed": bool(is_data_hash_valid),
+                "details": {"data_sha256": data_sha256, "valid_hash": is_data_hash_valid},
+            }
+        )
 
-    # 2. 21 CFR §11.10(e) - SHA-256 Rule Specification Hash
-    rules_sha256 = params.get("rules_sha256")
-    is_rules_hash_valid = is_valid_sha256(rules_sha256)
-    findings.append(
-        {
-            "code": "CFR_11_10_E_RULES",
-            "category": "CFR_PART_11",
-            "severity": "CRITICAL_FATAL",
-            "title": "21 CFR §11.10(e) Contract Specification SHA-256 Checksum",
-            "description": "Requires cryptographic SHA-256 hashing of Great Expectations contract rules.",
-            "passed": bool(is_rules_hash_valid),
-            "details": {"rules_sha256": rules_sha256, "valid_hash": is_rules_hash_valid},
-        }
-    )
+        # 2. 21 CFR §11.10(e) - SHA-256 Rule Specification Hash
+        rules_sha256 = params.get("rules_sha256")
+        is_rules_hash_valid = is_valid_sha256(rules_sha256)
+        findings.append(
+            {
+                "code": "CFR_11_10_E_RULES",
+                "category": "CFR_PART_11",
+                "severity": "CRITICAL_FATAL",
+                "title": "21 CFR §11.10(e) Contract Specification SHA-256 Checksum",
+                "description": "Requires cryptographic SHA-256 hashing of Great Expectations contract rules.",
+                "passed": bool(is_rules_hash_valid),
+                "details": {"rules_sha256": rules_sha256, "valid_hash": is_rules_hash_valid},
+            }
+        )
 
-    # 3. 21 CFR §11.10(a) - Validation of System Integrity (GxP Gate Passed)
-    gxp_gate_passed = metrics.get("gxp_gate_passed")
-    unsuccessful_expectations = metrics.get("unsuccessful_expectations", 0)
-    validation_passed = (gxp_gate_passed == 1.0) and (unsuccessful_expectations == 0)
-    findings.append(
-        {
-            "code": "CFR_11_10_A_VALIDATION",
-            "category": "CFR_PART_11",
-            "severity": "CRITICAL_FATAL",
-            "title": "21 CFR §11.10(a) Automated Data Contract Gate",
-            "description": "Requires 100% adherence to GxP validation expectations prior to persistence.",
-            "passed": bool(validation_passed),
-            "details": {
-                "gxp_gate_passed": gxp_gate_passed,
-                "unsuccessful_expectations": unsuccessful_expectations,
-                "success_rate": metrics.get("expectation_success_rate"),
-            },
-        }
-    )
+        # 3. 21 CFR §11.10(a) - Validation of System Integrity (GxP Gate Passed)
+        gxp_gate_passed = metrics.get("gxp_gate_passed")
+        unsuccessful_expectations = metrics.get("unsuccessful_expectations", 0)
+        validation_passed = (gxp_gate_passed == 1.0) and (unsuccessful_expectations == 0)
+        findings.append(
+            {
+                "code": "CFR_11_10_A_VALIDATION",
+                "category": "CFR_PART_11",
+                "severity": "CRITICAL_FATAL",
+                "title": "21 CFR §11.10(a) Automated Data Contract Gate",
+                "description": "Requires 100% adherence to GxP validation expectations prior to persistence.",
+                "passed": bool(validation_passed),
+                "details": {
+                    "gxp_gate_passed": gxp_gate_passed,
+                    "unsuccessful_expectations": unsuccessful_expectations,
+                    "success_rate": metrics.get("expectation_success_rate"),
+                },
+            }
+        )
 
-    # 4. 21 CFR §11.10(k) - Execution Environment & Compliance Standard Configuration
-    compliance_standard = params.get("compliance_standard")
-    target_schema = params.get("target_schema")
-    execution_env = params.get("execution_environment")
-    is_env_configured = bool(compliance_standard and target_schema and execution_env)
-    findings.append(
-        {
-            "code": "CFR_11_10_K_CONFIG",
-            "category": "CFR_PART_11",
-            "severity": "WARNING",
-            "title": "21 CFR §11.10(k) Operational Environment & Standards Tagging",
-            "description": "Requires explicit declaration of regulatory standard, target schema, and execution environment.",
-            "passed": bool(is_env_configured),
-            "details": {
-                "compliance_standard": compliance_standard,
-                "target_schema": target_schema,
-                "execution_environment": execution_env,
-            },
-        }
-    )
+        # 4. 21 CFR §11.10(k) - Execution Environment & Compliance Standard Configuration
+        compliance_standard = params.get("compliance_standard")
+        target_schema = params.get("target_schema")
+        execution_env = params.get("execution_environment")
+        is_env_configured = bool(compliance_standard and target_schema and execution_env)
+        findings.append(
+            {
+                "code": "CFR_11_10_K_CONFIG",
+                "category": "CFR_PART_11",
+                "severity": "WARNING",
+                "title": "21 CFR §11.10(k) Operational Environment & Standards Tagging",
+                "description": "Requires explicit declaration of regulatory standard, target schema, and execution environment.",
+                "passed": bool(is_env_configured),
+                "details": {
+                    "compliance_standard": compliance_standard,
+                    "target_schema": target_schema,
+                    "execution_environment": execution_env,
+                },
+            }
+        )
+    elif mlflow_status == "SKIPPED":
+        findings.append(
+            {
+                "code": "CFR_11_10_MLF_SKIPPED",
+                "category": "CFR_PART_11",
+                "severity": "INFO",
+                "title": "MLflow Lineage Scope Skipped",
+                "description": "MLflow run ID not requested; evaluating Delta Lake transaction log audit trail directly.",
+                "passed": True,
+                "details": {"reason": mlflow_evidence.get("reason", "No run_id provided")},
+            }
+        )
 
     # 5. Delta Lake User Metadata Audit Trail (if Delta evidence is available)
     if delta_evidence.get("status") == "COLLECTED":

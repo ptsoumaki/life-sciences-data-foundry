@@ -190,13 +190,39 @@ def test_audit_delta_table_transaction_log(tmp_path):
     report = auditor.audit_delta_table(delta_table_path=str(delta_dir))
 
     assert report["evidence_summary"]["delta_log"] == "COLLECTED"
+    assert report["compliance_status"] == "COMPLIANT"
+    assert report["compliance_score"] >= 95.0
+    assert report["summary"]["critical_failures"] == 0
+    assert is_valid_sha256(report["audit_receipt_sha256"]) is True
+
     seq_finding = next((f for f in report["findings"] if f["code"] == "DLT_SEQ_001"), None)
     time_finding = next((f for f in report["findings"] if f["code"] == "DLT_TIME_002"), None)
     schema_finding = next((f for f in report["findings"] if f["code"] == "SCH_001"), None)
+    skipped_mlf = next(
+        (f for f in report["findings"] if f["code"] == "CFR_11_10_MLF_SKIPPED"), None
+    )
 
     assert seq_finding is not None and seq_finding["passed"] is True
     assert time_finding is not None and time_finding["passed"] is True
     assert schema_finding is not None and schema_finding["passed"] is True
+    assert skipped_mlf is not None and skipped_mlf["passed"] is True
+
+
+def test_audit_delta_table_empty_log_directory(tmp_path):
+    """Validates that an empty _delta_log directory produces DLT_002 critical failure."""
+    delta_dir = tmp_path / "delta_empty"
+    delta_log = delta_dir / "_delta_log"
+    delta_log.mkdir(parents=True)
+
+    auditor = GxPGraphAuditor()
+    report = auditor.audit_delta_table(delta_table_path=str(delta_dir))
+
+    assert report["evidence_summary"]["delta_log"] == "EMPTY_LOG"
+    assert report["compliance_status"] == "NON_COMPLIANT"
+    empty_finding = next((f for f in report["findings"] if f["code"] == "DLT_002"), None)
+    assert empty_finding is not None
+    assert empty_finding["passed"] is False
+    assert empty_finding["severity"] == "CRITICAL_FATAL"
 
 
 def test_audit_delta_table_discontinuous_commits(tmp_path):

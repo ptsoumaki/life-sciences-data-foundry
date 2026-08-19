@@ -18,7 +18,7 @@ if base_dir not in sys.path:
 if agentic_dir not in sys.path:
     sys.path.insert(0, agentic_dir)
 
-from graph_auditor import GxPGraphAuditor, compute_sha256_checksum, is_valid_sha256
+from graph_auditor import GxPGraphAuditor, compute_sha256_checksum, is_valid_sha256  # noqa: E402
 
 
 def test_is_valid_sha256():
@@ -122,17 +122,19 @@ def test_audit_delta_table_transaction_log(tmp_path):
             "metaData": {
                 "id": "table-id-1",
                 "format": {"provider": "parquet"},
-                "schemaString": json.dumps({
-                    "type": "struct",
-                    "fields": [
-                        {"name": "person_id", "type": "long", "nullable": False},
-                        {"name": "gender_concept_id", "type": "integer", "nullable": True},
-                        {"name": "year_of_birth", "type": "integer", "nullable": True},
-                        {"name": "birth_datetime", "type": "string", "nullable": True},
-                        {"name": "race_concept_id", "type": "integer", "nullable": True},
-                        {"name": "ethnicity_concept_id", "type": "integer", "nullable": True},
-                    ],
-                }),
+                "schemaString": json.dumps(
+                    {
+                        "type": "struct",
+                        "fields": [
+                            {"name": "person_id", "type": "long", "nullable": False},
+                            {"name": "gender_concept_id", "type": "integer", "nullable": True},
+                            {"name": "year_of_birth", "type": "integer", "nullable": True},
+                            {"name": "birth_datetime", "type": "string", "nullable": True},
+                            {"name": "race_concept_id", "type": "integer", "nullable": True},
+                            {"name": "ethnicity_concept_id", "type": "integer", "nullable": True},
+                        ],
+                    }
+                ),
                 "partitionColumns": ["person_id"],
                 "configuration": {
                     "delta.enableChangeDataFeed": "true",
@@ -149,7 +151,14 @@ def test_audit_delta_table_transaction_log(tmp_path):
                 "userMetadata": "Initial Gold OMOP CDM Table Creation",
             }
         },
-        {"add": {"path": "part-0000.parquet", "size": 1024, "modificationTime": 1700000000000, "dataChange": True}},
+        {
+            "add": {
+                "path": "part-0000.parquet",
+                "size": 1024,
+                "modificationTime": 1700000000000,
+                "dataChange": True,
+            }
+        },
     ]
 
     commit_1 = [
@@ -161,7 +170,14 @@ def test_audit_delta_table_transaction_log(tmp_path):
                 "userMetadata": "Incremental Upsert (SCD Type 1)",
             }
         },
-        {"add": {"path": "part-0001.parquet", "size": 2048, "modificationTime": 1700000100000, "dataChange": True}},
+        {
+            "add": {
+                "path": "part-0001.parquet",
+                "size": 2048,
+                "modificationTime": 1700000100000,
+                "dataChange": True,
+            }
+        },
     ]
 
     with open(delta_log / "00000000000000000000.json", "w", encoding="utf-8") as f:
@@ -314,4 +330,3 @@ def test_audit_hitl_rejection(tmp_path):
     assert final_report["compliance_status"] == "REJECTED_BY_QA"
     assert final_report["qa_signoff"]["operator_id"] == "QA_LEAD_02"
     assert final_report["qa_signoff"]["decision"] == "REJECTED"
-

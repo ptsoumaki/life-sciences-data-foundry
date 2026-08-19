@@ -5,7 +5,7 @@ Description: FastMCP Server exposing Life Sciences Data Foundry capabilities
              Planned for Phase 6 Agentic Lineage & MLOps.
 
 Dependencies:
-    Requires `mcp>=0.1.0`. Install with: `pip install -e ".[agentic]"`
+    Requires `mcp>=0.1.0`. Install with: `pip install -e .`
 """
 
 

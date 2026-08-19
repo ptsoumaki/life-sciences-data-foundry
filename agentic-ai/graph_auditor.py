@@ -6,7 +6,7 @@ Description: LangGraph state graph auditor for agentic GxP compliance, Delta Lak
 
 Dependencies:
     Requires `langgraph>=0.0.20`, `mlflow>=2.10.0`, `pydantic>=2.6.0`.
-    Install with: `pip install -e ".[agentic]"`
+    Install with: `pip install -e .`
 
 Author: Vivi Tsoumaki
 """
@@ -31,8 +31,10 @@ from mlflow.tracking import MlflowClient
 # State & Finding Types
 # =====================================================================
 
+
 class AuditFinding(TypedDict, total=False):
     """Structured GxP finding produced during regulatory evaluation."""
+
     code: str
     category: str  # "MLFLOW_LINEAGE", "DELTA_TRANSACTION_LOG", "CFR_PART_11", "SCHEMA_INTEGRITY"
     severity: str  # "CRITICAL_FATAL", "ERROR", "WARNING", "INFO"
@@ -44,6 +46,7 @@ class AuditFinding(TypedDict, total=False):
 
 class QASignoff(TypedDict, total=False):
     """FDA 21 CFR §11.50 compliant Electronic Signature & Deviation Sign-off record."""
+
     operator_id: str
     decision: str  # "APPROVED_WITH_JUSTIFICATION", "OVERRIDE", "REJECTED"
     justification: str
@@ -53,6 +56,7 @@ class QASignoff(TypedDict, total=False):
 
 class AuditState(TypedDict, total=False):
     """Complete state container for LangGraph audit graph traversal."""
+
     run_id: str | None
     delta_table_path: str | None
     rules_path: str | None
@@ -73,6 +77,7 @@ class AuditState(TypedDict, total=False):
 # Helper Utilities
 # =====================================================================
 
+
 def is_valid_sha256(hash_str: str | None) -> bool:
     """Validates whether a string is a standard 64-character hexadecimal SHA-256 hash."""
     if not hash_str or not isinstance(hash_str, str):
@@ -90,6 +95,7 @@ def compute_sha256_checksum(content: str | bytes) -> str:
 # =====================================================================
 # LangGraph Audit State Graph Nodes
 # =====================================================================
+
 
 def collect_mlflow_evidence(state: AuditState) -> dict[str, Any]:
     """Node: Queries MLflow for run parameters, metrics, tags, and audit artifacts."""
@@ -130,7 +136,7 @@ def collect_mlflow_evidence(state: AuditState) -> dict[str, Any]:
         try:
             artifacts = client.list_artifacts(run_id)
             artifact_list = [a.path for a in artifacts]
-        except Exception as art_err:  # noqa: BLE001
+        except Exception as art_err:
             artifact_list = [f"ERROR_LISTING_ARTIFACTS: {art_err}"]
 
         mlflow_evidence = {
@@ -142,29 +148,37 @@ def collect_mlflow_evidence(state: AuditState) -> dict[str, Any]:
             "artifacts": artifact_list,
         }
 
-        findings.append({
-            "code": "MLF_001",
-            "category": "MLFLOW_LINEAGE",
-            "severity": "INFO",
-            "title": "MLflow Run Provenance Retrieved",
-            "description": f"Successfully retrieved MLflow run metadata for run '{run_id}'.",
-            "passed": True,
-            "details": {"run_id": run_id, "status": run.info.status, "artifact_count": len(artifact_list)},
-        })
+        findings.append(
+            {
+                "code": "MLF_001",
+                "category": "MLFLOW_LINEAGE",
+                "severity": "INFO",
+                "title": "MLflow Run Provenance Retrieved",
+                "description": f"Successfully retrieved MLflow run metadata for run '{run_id}'.",
+                "passed": True,
+                "details": {
+                    "run_id": run_id,
+                    "status": run.info.status,
+                    "artifact_count": len(artifact_list),
+                },
+            }
+        )
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         error_msg = f"Failed to retrieve MLflow run '{run_id}': {e}"
         errors.append(error_msg)
         mlflow_evidence = {"status": "ERROR", "error": str(e)}
-        findings.append({
-            "code": "MLF_ERR",
-            "category": "MLFLOW_LINEAGE",
-            "severity": "CRITICAL_FATAL",
-            "title": "MLflow Run Lookup Failure",
-            "description": error_msg,
-            "passed": False,
-            "details": {"run_id": run_id, "error": str(e)},
-        })
+        findings.append(
+            {
+                "code": "MLF_ERR",
+                "category": "MLFLOW_LINEAGE",
+                "severity": "CRITICAL_FATAL",
+                "title": "MLflow Run Lookup Failure",
+                "description": error_msg,
+                "passed": False,
+                "details": {"run_id": run_id, "error": str(e)},
+            }
+        )
 
     return {
         "mlflow_evidence": mlflow_evidence,
@@ -190,15 +204,17 @@ def collect_delta_log_evidence(state: AuditState) -> dict[str, Any]:
     delta_log_dir = os.path.join(table_path, "_delta_log")
     if not os.path.isdir(delta_log_dir):
         error_msg = f"Delta Lake transaction log not found at '{delta_log_dir}'."
-        findings.append({
-            "code": "DLT_001",
-            "category": "DELTA_TRANSACTION_LOG",
-            "severity": "CRITICAL_FATAL",
-            "title": "Missing Delta Transaction Log",
-            "description": error_msg,
-            "passed": False,
-            "details": {"table_path": table_path},
-        })
+        findings.append(
+            {
+                "code": "DLT_001",
+                "category": "DELTA_TRANSACTION_LOG",
+                "severity": "CRITICAL_FATAL",
+                "title": "Missing Delta Transaction Log",
+                "description": error_msg,
+                "passed": False,
+                "details": {"table_path": table_path},
+            }
+        )
         return {
             "delta_evidence": {"status": "MISSING_LOG", "error": error_msg},
             "findings": findings,
@@ -266,21 +282,25 @@ def collect_delta_log_evidence(state: AuditState) -> dict[str, Any]:
                         remove_actions += 1
                         total_remove_actions += 1
 
-            commits_summary.append({
-                "version": version,
-                "file": os.path.basename(commit_file),
-                "timestamp": commit_info.get("timestamp"),
-                "operation": commit_info.get("operation", "UNKNOWN"),
-                "operation_params": commit_info.get("operationParameters", {}),
-                "user_metadata": commit_info.get("userMetadata"),
-                "engine_info": commit_info.get("engineInfo"),
-                "add_actions": add_actions,
-                "remove_actions": remove_actions,
-            })
+            commits_summary.append(
+                {
+                    "version": version,
+                    "file": os.path.basename(commit_file),
+                    "timestamp": commit_info.get("timestamp"),
+                    "operation": commit_info.get("operation", "UNKNOWN"),
+                    "operation_params": commit_info.get("operationParameters", {}),
+                    "user_metadata": commit_info.get("userMetadata"),
+                    "engine_info": commit_info.get("engineInfo"),
+                    "add_actions": add_actions,
+                    "remove_actions": remove_actions,
+                }
+            )
 
         # Check commit sequence continuity
         versions = [c["version"] for c in commits_summary]
-        is_continuous = len(versions) == 0 or versions == list(range(min(versions), max(versions) + 1))
+        is_continuous = len(versions) == 0 or versions == list(
+            range(min(versions), max(versions) + 1)
+        )
 
         # Check monotonic timestamps
         timestamps = [c["timestamp"] for c in commits_summary if c.get("timestamp") is not None]
@@ -306,40 +326,46 @@ def collect_delta_log_evidence(state: AuditState) -> dict[str, Any]:
         }
 
         # Sequence continuity finding
-        findings.append({
-            "code": "DLT_SEQ_001",
-            "category": "DELTA_TRANSACTION_LOG",
-            "severity": "CRITICAL_FATAL" if not is_continuous else "INFO",
-            "title": "Delta Log Commit Sequence Continuity",
-            "description": "Validates that commit versions are consecutive and strictly uninterrupted.",
-            "passed": is_continuous,
-            "details": {"versions": versions, "is_continuous": is_continuous},
-        })
+        findings.append(
+            {
+                "code": "DLT_SEQ_001",
+                "category": "DELTA_TRANSACTION_LOG",
+                "severity": "CRITICAL_FATAL" if not is_continuous else "INFO",
+                "title": "Delta Log Commit Sequence Continuity",
+                "description": "Validates that commit versions are consecutive and strictly uninterrupted.",
+                "passed": is_continuous,
+                "details": {"versions": versions, "is_continuous": is_continuous},
+            }
+        )
 
         # Timestamp monotonicity finding
-        findings.append({
-            "code": "DLT_TIME_002",
-            "category": "DELTA_TRANSACTION_LOG",
-            "severity": "ERROR" if not is_monotonic_time else "INFO",
-            "title": "Delta Log Monotonic Timestamp Consistency",
-            "description": "Validates that transaction timestamps advance monotonically without clock skew.",
-            "passed": is_monotonic_time,
-            "details": {"timestamps": timestamps, "is_monotonic": is_monotonic_time},
-        })
+        findings.append(
+            {
+                "code": "DLT_TIME_002",
+                "category": "DELTA_TRANSACTION_LOG",
+                "severity": "ERROR" if not is_monotonic_time else "INFO",
+                "title": "Delta Log Monotonic Timestamp Consistency",
+                "description": "Validates that transaction timestamps advance monotonically without clock skew.",
+                "passed": is_monotonic_time,
+                "details": {"timestamps": timestamps, "is_monotonic": is_monotonic_time},
+            }
+        )
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         error_msg = f"Failed to parse Delta Lake transaction log at '{delta_log_dir}': {e}"
         errors.append(error_msg)
         delta_evidence = {"status": "ERROR", "error": str(e)}
-        findings.append({
-            "code": "DLT_ERR",
-            "category": "DELTA_TRANSACTION_LOG",
-            "severity": "ERROR",
-            "title": "Delta Transaction Log Parse Error",
-            "description": error_msg,
-            "passed": False,
-            "details": {"error": str(e)},
-        })
+        findings.append(
+            {
+                "code": "DLT_ERR",
+                "category": "DELTA_TRANSACTION_LOG",
+                "severity": "ERROR",
+                "title": "Delta Transaction Log Parse Error",
+                "description": error_msg,
+                "passed": False,
+                "details": {"error": str(e)},
+            }
+        )
 
     return {
         "delta_evidence": delta_evidence,
@@ -360,79 +386,92 @@ def evaluate_cfr_part_11_compliance(state: AuditState) -> dict[str, Any]:
     # 1. 21 CFR §11.10(e) - SHA-256 Immutable Dataset Hash
     data_sha256 = params.get("data_sha256")
     is_data_hash_valid = is_valid_sha256(data_sha256) or data_sha256 == "in_memory_dataframe"
-    findings.append({
-        "code": "CFR_11_10_E_DATA",
-        "category": "CFR_PART_11",
-        "severity": "CRITICAL_FATAL",
-        "title": "21 CFR §11.10(e) Data Provenance SHA-256 Checksum",
-        "description": "Requires cryptographic SHA-256 hashing of source datasets for immutable audit tracking.",
-        "passed": bool(is_data_hash_valid),
-        "details": {"data_sha256": data_sha256, "valid_hash": is_data_hash_valid},
-    })
+    findings.append(
+        {
+            "code": "CFR_11_10_E_DATA",
+            "category": "CFR_PART_11",
+            "severity": "CRITICAL_FATAL",
+            "title": "21 CFR §11.10(e) Data Provenance SHA-256 Checksum",
+            "description": "Requires cryptographic SHA-256 hashing of source datasets for immutable audit tracking.",
+            "passed": bool(is_data_hash_valid),
+            "details": {"data_sha256": data_sha256, "valid_hash": is_data_hash_valid},
+        }
+    )
 
     # 2. 21 CFR §11.10(e) - SHA-256 Rule Specification Hash
     rules_sha256 = params.get("rules_sha256")
     is_rules_hash_valid = is_valid_sha256(rules_sha256)
-    findings.append({
-        "code": "CFR_11_10_E_RULES",
-        "category": "CFR_PART_11",
-        "severity": "CRITICAL_FATAL",
-        "title": "21 CFR §11.10(e) Contract Specification SHA-256 Checksum",
-        "description": "Requires cryptographic SHA-256 hashing of Great Expectations contract rules.",
-        "passed": bool(is_rules_hash_valid),
-        "details": {"rules_sha256": rules_sha256, "valid_hash": is_rules_hash_valid},
-    })
+    findings.append(
+        {
+            "code": "CFR_11_10_E_RULES",
+            "category": "CFR_PART_11",
+            "severity": "CRITICAL_FATAL",
+            "title": "21 CFR §11.10(e) Contract Specification SHA-256 Checksum",
+            "description": "Requires cryptographic SHA-256 hashing of Great Expectations contract rules.",
+            "passed": bool(is_rules_hash_valid),
+            "details": {"rules_sha256": rules_sha256, "valid_hash": is_rules_hash_valid},
+        }
+    )
 
     # 3. 21 CFR §11.10(a) - Validation of System Integrity (GxP Gate Passed)
     gxp_gate_passed = metrics.get("gxp_gate_passed")
     unsuccessful_expectations = metrics.get("unsuccessful_expectations", 0)
     validation_passed = (gxp_gate_passed == 1.0) and (unsuccessful_expectations == 0)
-    findings.append({
-        "code": "CFR_11_10_A_VALIDATION",
-        "category": "CFR_PART_11",
-        "severity": "CRITICAL_FATAL",
-        "title": "21 CFR §11.10(a) Automated Data Contract Gate",
-        "description": "Requires 100% adherence to GxP validation expectations prior to persistence.",
-        "passed": bool(validation_passed),
-        "details": {
-            "gxp_gate_passed": gxp_gate_passed,
-            "unsuccessful_expectations": unsuccessful_expectations,
-            "success_rate": metrics.get("expectation_success_rate"),
-        },
-    })
+    findings.append(
+        {
+            "code": "CFR_11_10_A_VALIDATION",
+            "category": "CFR_PART_11",
+            "severity": "CRITICAL_FATAL",
+            "title": "21 CFR §11.10(a) Automated Data Contract Gate",
+            "description": "Requires 100% adherence to GxP validation expectations prior to persistence.",
+            "passed": bool(validation_passed),
+            "details": {
+                "gxp_gate_passed": gxp_gate_passed,
+                "unsuccessful_expectations": unsuccessful_expectations,
+                "success_rate": metrics.get("expectation_success_rate"),
+            },
+        }
+    )
 
     # 4. 21 CFR §11.10(k) - Execution Environment & Compliance Standard Configuration
     compliance_standard = params.get("compliance_standard")
     target_schema = params.get("target_schema")
     execution_env = params.get("execution_environment")
     is_env_configured = bool(compliance_standard and target_schema and execution_env)
-    findings.append({
-        "code": "CFR_11_10_K_CONFIG",
-        "category": "CFR_PART_11",
-        "severity": "WARNING",
-        "title": "21 CFR §11.10(k) Operational Environment & Standards Tagging",
-        "description": "Requires explicit declaration of regulatory standard, target schema, and execution environment.",
-        "passed": bool(is_env_configured),
-        "details": {
-            "compliance_standard": compliance_standard,
-            "target_schema": target_schema,
-            "execution_environment": execution_env,
-        },
-    })
+    findings.append(
+        {
+            "code": "CFR_11_10_K_CONFIG",
+            "category": "CFR_PART_11",
+            "severity": "WARNING",
+            "title": "21 CFR §11.10(k) Operational Environment & Standards Tagging",
+            "description": "Requires explicit declaration of regulatory standard, target schema, and execution environment.",
+            "passed": bool(is_env_configured),
+            "details": {
+                "compliance_standard": compliance_standard,
+                "target_schema": target_schema,
+                "execution_environment": execution_env,
+            },
+        }
+    )
 
     # 5. Delta Lake User Metadata Audit Trail (if Delta evidence is available)
     if delta_evidence.get("status") == "COLLECTED":
         commits = delta_evidence.get("commits", [])
         has_operations = len(commits) > 0 and all(c.get("operation") for c in commits)
-        findings.append({
-            "code": "CFR_11_10_E_DELTA",
-            "category": "CFR_PART_11",
-            "severity": "WARNING",
-            "title": "21 CFR §11.10(e) Delta Lake Transaction Audit Trail",
-            "description": "Validates that all Delta Lake operations are recorded with full operation metadata.",
-            "passed": bool(has_operations),
-            "details": {"total_commits": len(commits), "operations": [c.get("operation") for c in commits]},
-        })
+        findings.append(
+            {
+                "code": "CFR_11_10_E_DELTA",
+                "category": "CFR_PART_11",
+                "severity": "WARNING",
+                "title": "21 CFR §11.10(e) Delta Lake Transaction Audit Trail",
+                "description": "Validates that all Delta Lake operations are recorded with full operation metadata.",
+                "passed": bool(has_operations),
+                "details": {
+                    "total_commits": len(commits),
+                    "operations": [c.get("operation") for c in commits],
+                },
+            }
+        )
 
     return {
         "findings": findings,
@@ -464,29 +503,33 @@ def evaluate_schema_integrity(state: AuditState) -> dict[str, Any]:
             for exp in rules_json.get("expectations", []):
                 if exp.get("expectation_type") == "expect_table_columns_to_match_set":
                     expected_columns = exp.get("kwargs", {}).get("column_set", [])
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             schema_evidence = {"status": "RULES_PARSE_ERROR", "error": str(e)}
 
     # Check Delta Schema if available
     delta_schema = delta_evidence.get("parsed_schema")
     if delta_schema and isinstance(delta_schema, dict):
-        delta_fields = [f.get("name") for f in delta_schema.get("fields", []) if isinstance(f, dict)]
+        delta_fields = [
+            f.get("name") for f in delta_schema.get("fields", []) if isinstance(f, dict)
+        ]
         missing_columns = [c for c in expected_columns if c not in delta_fields]
         is_schema_compliant = len(missing_columns) == 0
 
-        findings.append({
-            "code": "SCH_001",
-            "category": "SCHEMA_INTEGRITY",
-            "severity": "CRITICAL_FATAL" if not is_schema_compliant else "INFO",
-            "title": "OMOP CDM v5.4 Schema Column Conformance",
-            "description": "Validates that the physical Delta table contains all mandatory clinical columns.",
-            "passed": is_schema_compliant,
-            "details": {
-                "expected_columns": expected_columns,
-                "delta_columns": delta_fields,
-                "missing_columns": missing_columns,
-            },
-        })
+        findings.append(
+            {
+                "code": "SCH_001",
+                "category": "SCHEMA_INTEGRITY",
+                "severity": "CRITICAL_FATAL" if not is_schema_compliant else "INFO",
+                "title": "OMOP CDM v5.4 Schema Column Conformance",
+                "description": "Validates that the physical Delta table contains all mandatory clinical columns.",
+                "passed": is_schema_compliant,
+                "details": {
+                    "expected_columns": expected_columns,
+                    "delta_columns": delta_fields,
+                    "missing_columns": missing_columns,
+                },
+            }
+        )
         schema_evidence = {
             "status": "EVALUATED",
             "delta_columns": delta_fields,
@@ -495,15 +538,20 @@ def evaluate_schema_integrity(state: AuditState) -> dict[str, Any]:
             "is_compliant": is_schema_compliant,
         }
     elif rules_loaded:
-        findings.append({
-            "code": "SCH_002",
-            "category": "SCHEMA_INTEGRITY",
-            "severity": "INFO",
-            "title": "Data Contract Rules Specification Available",
-            "description": f"Loaded {len(expected_columns)} expected schema columns from '{os.path.basename(resolved_rules_path)}'.",
-            "passed": True,
-            "details": {"rules_path": resolved_rules_path, "expected_columns": expected_columns},
-        })
+        findings.append(
+            {
+                "code": "SCH_002",
+                "category": "SCHEMA_INTEGRITY",
+                "severity": "INFO",
+                "title": "Data Contract Rules Specification Available",
+                "description": f"Loaded {len(expected_columns)} expected schema columns from '{os.path.basename(resolved_rules_path)}'.",
+                "passed": True,
+                "details": {
+                    "rules_path": resolved_rules_path,
+                    "expected_columns": expected_columns,
+                },
+            }
+        )
         schema_evidence = {
             "status": "RULES_LOADED",
             "expected_columns": expected_columns,
@@ -557,7 +605,7 @@ def generate_audit_findings(state: AuditState) -> dict[str, Any]:
         compliance_status = "COMPLIANT"
 
     # Audit timestamp (ISO 8601 UTC)
-    audit_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    audit_timestamp = datetime.datetime.now(datetime.UTC).isoformat()
 
     # Base report payload
     report_payload = {
@@ -628,11 +676,13 @@ def human_qa_review(state: AuditState) -> dict[str, Any]:
         decision = human_input.get("decision", "REJECTED")
         operator_id = human_input.get("operator_id", "UNKNOWN_OPERATOR")
         justification = human_input.get("justification", "No justification provided")
-        timestamp = human_input.get("timestamp") or datetime.datetime.now(datetime.timezone.utc).isoformat()
+        timestamp = human_input.get("timestamp") or datetime.datetime.now(datetime.UTC).isoformat()
 
         # Compute electronic signature checksum (21 CFR §11.50)
         sig_raw = f"{operator_id}:{decision}:{justification}:{timestamp}"
-        signature_checksum = human_input.get("signature_checksum") or compute_sha256_checksum(sig_raw)
+        signature_checksum = human_input.get("signature_checksum") or compute_sha256_checksum(
+            sig_raw
+        )
 
         qa_signoff: QASignoff = {
             "operator_id": operator_id,
@@ -667,6 +717,7 @@ def human_qa_review(state: AuditState) -> dict[str, Any]:
 # =====================================================================
 # Public GxPGraphAuditor Class
 # =====================================================================
+
 
 class GxPGraphAuditor:
     """State graph evaluator for autonomous GxP audit trail, lineage verification,
@@ -775,6 +826,7 @@ class GxPGraphAuditor:
 # CLI Entry Point
 # =====================================================================
 
+
 def main() -> None:
     """CLI entry point for executing GxP LangGraph compliance audits."""
     parser = argparse.ArgumentParser(
@@ -782,11 +834,17 @@ def main() -> None:
     )
     parser.add_argument("--run-id", type=str, default=None, help="MLflow run ID to audit")
     parser.add_argument("--delta-path", type=str, default=None, help="Path to Delta Lake table")
-    parser.add_argument("--rules", type=str, default="governance/rules.json", help="Path to rules JSON")
+    parser.add_argument(
+        "--rules", type=str, default="governance/rules.json", help="Path to rules JSON"
+    )
     parser.add_argument("--tracking-uri", type=str, default=None, help="MLflow tracking URI")
-    parser.add_argument("--enable-hitl", action="store_true", help="Enable Human-in-the-Loop review")
+    parser.add_argument(
+        "--enable-hitl", action="store_true", help="Enable Human-in-the-Loop review"
+    )
     parser.add_argument("--thread-id", type=str, default="cli_audit", help="Checkpointer thread ID")
-    parser.add_argument("--output", type=str, default=None, help="Path to save output JSON audit report")
+    parser.add_argument(
+        "--output", type=str, default=None, help="Path to save output JSON audit report"
+    )
 
     args = parser.parse_args()
 
@@ -807,7 +865,9 @@ def main() -> None:
         print("!" * 70)
         req = report.get("review_request", {})
         print(f" Message: {req.get('message')}")
-        print(f" Current Status: {req.get('compliance_status')} | Score: {req.get('compliance_score')}")
+        print(
+            f" Current Status: {req.get('compliance_status')} | Score: {req.get('compliance_score')}"
+        )
         print("\n Unpassed Findings:")
         for f in req.get("unpassed_findings", []):
             print(f"  - [{f.get('severity')}] {f.get('code')}: {f.get('title')}")
@@ -815,18 +875,26 @@ def main() -> None:
 
     print("\n" + "=" * 70)
     print(f" GxP LINEAGE AUDIT REPORT — Status: {report.get('compliance_status')}")
-    print(f" Score: {report.get('compliance_score')}/100.0 | Receipt: {report.get('audit_receipt_sha256', '')[:16]}...")
+    print(
+        f" Score: {report.get('compliance_score')}/100.0 | Receipt: {report.get('audit_receipt_sha256', '')[:16]}..."
+    )
     if report.get("qa_signoff"):
         so = report["qa_signoff"]
-        print(f" QA Sign-off: {so.get('decision')} by {so.get('operator_id')} ({so.get('signature_checksum')[:12]}...)")
+        print(
+            f" QA Sign-off: {so.get('decision')} by {so.get('operator_id')} ({so.get('signature_checksum')[:12]}...)"
+        )
     print("=" * 70)
-    print(f"Evaluations: {report.get('summary', {}).get('total_evaluations')} total | "
-          f"{report.get('summary', {}).get('passed_evaluations')} passed | "
-          f"{report.get('summary', {}).get('critical_failures')} critical failures")
+    print(
+        f"Evaluations: {report.get('summary', {}).get('total_evaluations')} total | "
+        f"{report.get('summary', {}).get('passed_evaluations')} passed | "
+        f"{report.get('summary', {}).get('critical_failures')} critical failures"
+    )
     print("-" * 70)
     for finding in report.get("findings", []):
         icon = "✓" if finding.get("passed") else "✗"
-        print(f" [{icon}] {finding.get('code')}: {finding.get('title')} ({finding.get('severity')})")
+        print(
+            f" [{icon}] {finding.get('code')}: {finding.get('title')} ({finding.get('severity')})"
+        )
 
     if args.output:
         os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)

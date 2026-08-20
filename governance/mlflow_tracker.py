@@ -269,9 +269,10 @@ def evaluate_data_contract(
 
         # For nested runs, re-query the active run to get the current run_id rather than
         # relying on the stale reference captured before the try block.
+        active = mlflow.active_run() if is_nested_run else None
         run_id = (
-            mlflow.active_run().info.run_id
-            if is_nested_run
+            active.info.run_id
+            if active is not None
             else getattr(getattr(run, "info", None), "run_id", None) or "unknown_run"
         )
         if not validation_passed:
@@ -309,7 +310,9 @@ def evaluate_data_contract(
     return result_dict
 
 
-def run_governance_pipeline(data_path: str, rules_path: str, experiment_name: str) -> dict[str, Any]:
+def run_governance_pipeline(
+    data_path: str, rules_path: str, experiment_name: str
+) -> dict[str, Any]:
     """Loads a dataset and evaluates the given data contract, logging results to MLflow.
 
     Convenience wrapper around load_dataset + evaluate_data_contract for

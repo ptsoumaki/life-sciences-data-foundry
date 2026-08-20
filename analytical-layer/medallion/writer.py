@@ -14,6 +14,7 @@ from pyspark.sql import DataFrame, SparkSession
 
 from omop_cdm_v54.compat import HAS_DELTA
 
+DeltaTable: Any
 try:
     from delta.tables import DeltaTable
 except ImportError:

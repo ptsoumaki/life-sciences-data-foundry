@@ -317,10 +317,12 @@ def run_omop_pipeline(
             ("MEASUREMENT", meas_path),
         ]:
             telemetry = writer.get_table_telemetry(table_path)
-            print(f"[DELTA METROLOGY] Gold {table_label} — "
-                  f"files: {telemetry.get('num_files')} | "
-                  f"size: {telemetry.get('size_in_bytes')} bytes | "
-                  f"clustering: {telemetry.get('clustering_columns')}")
+            print(
+                f"[DELTA METROLOGY] Gold {table_label} — "
+                f"files: {telemetry.get('num_files')} | "
+                f"size: {telemetry.get('size_in_bytes')} bytes | "
+                f"clustering: {telemetry.get('clustering_columns')}"
+            )
 
         print(
             "[DELTA STORAGE] Delta Lake Liquid Clustering & Schema Evolution Sinks Written Successfully."

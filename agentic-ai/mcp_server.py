@@ -27,6 +27,7 @@ for p in [BASE_DIR, AGENTIC_DIR, ANALYTICAL_DIR]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
+MCPServer: Any
 # FastMCP is the current standard interface; MCPServer is the legacy alias fallback.
 try:
     from mcp.server.fastmcp import FastMCP as MCPServer
@@ -45,8 +46,8 @@ from omop_cdm_v54.vocabularies import (  # noqa: E402
 )
 
 __all__ = [
-    "FoundryMCPServer",
     "OMOP_CDM_V54_SCHEMAS",
+    "FoundryMCPServer",
 ]
 # Standard OMOP CDM v5.4 Table Schema Definitions
 OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {

@@ -59,14 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Executive README Architecture Blueprint (`README.md`)**:
   - Streamlined the platform blueprint with a pruned top-level architecture layout, direct documentation matrix links, and updated regulatory compliance mappings.
 
-### Fixed
-- **OMOP CDM v5.4 Measurement Payload Preservation (`analytical-layer/omop_cdm_v54/measurement.py`)**:
-  - Preserved qualitative observation values in `value_source_value` while applying `try_cast` for numeric parsing into `value_as_number` to prevent data loss on non-numeric payloads.
-- **Condition Occurrence Composite Primary Key (`analytical-layer/omop_cdm_v54/condition_occurrence.py`)**:
-  - Generated deterministic composite primary keys for `condition_occurrence_id` and optimized dynamic vocabulary map evaluation.
-- **Delta Lake Z-Ordering & Cloud Table Verification (`analytical-layer/medallion/writer.py`)**:
-  - Corrected Delta table Z-Order invocation syntax and S3 cloud storage path detection.
-
 ---
 
 ## [0.2.7] - 2026-08-14
@@ -88,19 +80,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Refactored clinical record filtering to use canonical complementary condition expressions (`valid_clinical_condition` and `~valid_clinical_condition`) with `df_clinical_parsed.cache()` for strictly mutually exclusive quarantine partitioning.
 - **Centralized Path Resolution (`connectors.py` & `pipeline.py`)**:
   - Standardized dataset resolution via `resolve_data_dir()` helper with `LSDF_DATA_DIR` environment variable override support.
-
-### Fixed
-- **MLflow Lineage Tracker Hardening (`governance/mlflow_tracker.py`)**:
-  - Isolated temporary validation artifact writes within `tempfile.TemporaryDirectory()`, eliminating working tree clutter and concurrent race conditions.
-  - Prevented nested `with mlflow.start_run()` contexts from prematurely closing parent experiment runs.
-  - Added logging for unhandled Great Expectations assertion classes and exposed evaluation failure error states.
-- **OMOP CDM v5.4 Specification Compliance**:
-  - Standardized foreign key fields (`provider_id`, `visit_occurrence_id`, `stop_reason`) to `NULL` instead of `0` in `condition_occurrence.py`.
-  - Preserved full timestamp precision in `measurement_datetime` across `measurement.py`.
-  - Prevented multi-allelic variant hash collisions in `genomic_variants.py` by incorporating `col("alt")` into deterministic 64-bit surrogate keys.
-- **Delta Lake Storage Multi-Platform Compatibility (`analytical-layer/medallion/writer.py`)**:
-  - Normalized all Delta Lake table paths to forward slashes, preventing Windows Hadoop path parsing issues.
-  - Prevented redundant liquid clustering fallback attempts when Unity Catalog is disabled.
 
 ---
 
@@ -132,11 +111,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Upgraded surrogate key hashing from 32-bit `hash` to deterministic 64-bit `xxhash64`.
 - Expanded gender string normalization to support single-letter codes (`M`/`F`).
-
-### Fixed
-- Added missing `coalesce` and `expr` function imports in `pipeline.py` preventing timestamp parsing errors.
-- Guarded `ALTER TABLE` Liquid Clustering execution in `writer.py` to operate only when Unity Catalog is enabled, avoiding Windows local file locking.
-- Resolved patient/sample identifier column resolution bug in `genomic_variants.py`.
 
 ---
 

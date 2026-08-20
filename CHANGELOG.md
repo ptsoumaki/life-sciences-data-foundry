@@ -5,7 +5,7 @@ All notable changes to the Life Sciences Data Foundry project are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.9] - 2026-08-19
+## [0.2.9] - 2026-08-20
 
 ### Added
 - **LangGraph GxP Compliance State Graph Auditor (`agentic-ai/graph_auditor.py`)**:
@@ -21,12 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Single source of truth for high-performance SHA-256 file streaming (4 KB blocks), in-memory string/byte hashing, and 64-character hexadecimal digest verification.
 - **Comprehensive Unit Testing Suites (`tests/unit/test_graph_auditor.py`, `tests/unit/test_mcp_server.py`, `tests/unit/test_crypto.py`)**:
   - 26 unit tests across the agentic AI tier verifying state graph compilation, compliant/non-compliant runs, Delta transaction logs, HITL review, cryptographic hashing, and all 11 FastMCP clinical tools.
+- **Vocabulary drift detection**: `_warn_on_fallback_drift()` added to `vocabularies.py`; surfaces any Python/JSON concept ID divergence as a `[VOCABULARY WARNING]` on startup.
 
 ### Changed
 - **Unified Project Dependency Configuration (`pyproject.toml`)**:
-  - Consolidated `langgraph` and `mcp` directly into core project dependencies and updated installation instructions across documentation.
+  - Consolidated `langgraph` and `mcp` directly into core project dependencies.
+  - Registered `network` pytest marker; remote GitHub/S3 integration tests are opt-in via `LSDF_NETWORK_TESTS=1`.
 - **Expanded CI Quality Gates (`.github/workflows/tf-lint.yml`)**:
-  - Integrated `agentic-ai` into Mypy static type checking and Pytest `--cov` code coverage reporting in CI.
+  - Integrated `agentic-ai` into Mypy static type checking and Pytest `--cov` coverage reporting in CI.
+- **`README.md`**: rewritten as a concise entry-point; prerequisites and setup delegated to `CONTRIBUTING.md`.
+- **`CONTRIBUTING.md`**: corrected Python/JDK version labels, pipeline invocation updated to `python -m omop_cdm_v54.pipeline`, network test opt-in documented.
+- **`SECURITY.md`**: reformatted security controls as a table; added vulnerability reporting pointer.
 
 ---
 

@@ -214,7 +214,7 @@ OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
                 "name": "condition_type_concept_id",
                 "type": "integer",
                 "nullable": False,
-                "description": "Provenance concept (e.g. 32020=EHR encounter diagnosis).",
+                "description": "Provenance concept — always 32817 (EHR) for pipeline-generated EHR condition records.",
             },
             {
                 "name": "condition_source_value",
@@ -282,7 +282,7 @@ OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
                 "name": "measurement_type_concept_id",
                 "type": "integer",
                 "nullable": False,
-                "description": "Provenance concept (e.g. 44818702=Lab result).",
+                "description": "Provenance concept — always 45754907 (Lab result) for pipeline-generated lab measurements.",
             },
             {
                 "name": "operator_concept_id",

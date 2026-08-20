@@ -28,14 +28,19 @@ for p in [BASE_DIR, AGENTIC_DIR, ANALYTICAL_DIR]:
         sys.path.insert(0, p)
 
 MCPServer: Any
-# FastMCP is the current standard interface; MCPServer is the legacy alias fallback.
+
 try:
-    from mcp.server.fastmcp import FastMCP as MCPServer
+    from mcp.server.fastmcp import FastMCP as _FastMCP
+
+    MCPServer = _FastMCP
 except ImportError:
     try:
-        from mcp.server.mcpserver import MCPServer  # type: ignore[no-redef]
+        from mcp.server.mcpserver import MCPServer as _MCPServerLegacy
+
+        MCPServer = _MCPServerLegacy
     except ImportError:
-        MCPServer = None  # type: ignore[assignment, misc]
+        MCPServer = None
+
 
 from governance.crypto import compute_sha256  # noqa: E402
 from omop_cdm_v54.vocabularies import (  # noqa: E402

@@ -12,13 +12,7 @@ from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
 
-from omop_cdm_v54.compat import HAS_DELTA
-
-DeltaTable: Any
-try:
-    from delta.tables import DeltaTable
-except ImportError:
-    DeltaTable = None  # type: ignore[assignment]
+from omop_cdm_v54.compat import HAS_DELTA, DeltaTable
 
 
 class DeltaMedallionWriter:

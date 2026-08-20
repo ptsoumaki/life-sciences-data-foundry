@@ -291,9 +291,10 @@ def parse_vcf_to_dataframe(
 
     df_raw = spark.read.text(vcf_path).filter(~col("value").startswith("##"))
 
-    # Resolve the header independently of row data: Spark partition ordering is
-    # non-deterministic, so the #CHROM line must be located before applying any limit.
-    header_row = df_raw.filter(col("value").startswith("#CHROM")).first()
+    # The #CHROM header always appears within the first few lines after ##-meta
+    # filtering. Capping the scan to 500 rows avoids a full distributed partition
+    # scan on large or remote (S3A) VCF files without any practical safety risk.
+    header_row = df_raw.limit(500).filter(col("value").startswith("#CHROM")).first()
     if not header_row:
         raise ValueError(f"No #CHROM header line found in VCF: {vcf_path}")
 

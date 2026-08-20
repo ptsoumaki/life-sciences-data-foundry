@@ -21,7 +21,13 @@ from typing import Any
 
 from pyspark.sql.functions import Column, coalesce, create_map, lit
 
-# Default fallback vocabulary concept mappings in case JSON config is unavailable
+# ---------------------------------------------------------------------------
+# Emergency fallback vocabulary mappings.
+# These are used ONLY when governance/concept_mappings.json cannot be loaded.
+# concept_mappings.json is the single authoritative source of truth;
+# any edits to concept IDs must be reflected in both places.
+# Drift between the two is detected at runtime by _warn_on_fallback_drift().
+# ---------------------------------------------------------------------------
 DEFAULT_ICD10_MAPPINGS: dict[str, int] = {
     "E11.9": 201826,
     "E119": 201826,
@@ -72,6 +78,29 @@ DEFAULT_CLINVAR_MAPPINGS: dict[str, int] = {
 }
 
 
+def _warn_on_fallback_drift(loaded: dict[str, Any]) -> None:
+    """Logs a warning for any key whose concept ID differs between the loaded JSON
+    and the Python fallback dict, catching divergence before it reaches query time."""
+    checks: list[tuple[str, dict[str, int]]] = [
+        ("icd10_to_snomed", DEFAULT_ICD10_MAPPINGS),
+        ("loinc_to_concept", DEFAULT_LOINC_MAPPINGS),
+        ("gender_to_concept", DEFAULT_GENDER_MAPPINGS),
+        ("race_to_concept", DEFAULT_RACE_MAPPINGS),
+        ("ethnicity_to_concept", DEFAULT_ETHNICITY_MAPPINGS),
+        ("clinvar_to_concept", DEFAULT_CLINVAR_MAPPINGS),
+    ]
+    for section_key, default_dict in checks:
+        json_section = loaded.get(section_key, {})
+        for code, fallback_id in default_dict.items():
+            json_id = json_section.get(code)
+            if json_id is not None and int(json_id) != fallback_id:
+                print(
+                    f"[VOCABULARY WARNING] Fallback drift in '{section_key}': "
+                    f"code='{code}' fallback={fallback_id} json={json_id}. "
+                    "Sync DEFAULT_* dict in vocabularies.py with concept_mappings.json."
+                )
+
+
 def _resolve_mappings_file_path(custom_path: str | None = None) -> str | None:
     """Resolves the absolute path to concept_mappings.json."""
     if custom_path and os.path.exists(custom_path):
@@ -108,7 +137,7 @@ def load_concept_mappings(mapping_file: str | None = None) -> dict[str, dict[str
         try:
             with open(resolved_path, encoding="utf-8") as f:
                 data = json.load(f)
-                return {
+                result = {
                     "icd10_to_snomed": data.get("icd10_to_snomed", DEFAULT_ICD10_MAPPINGS),
                     "loinc_to_concept": data.get("loinc_to_concept", DEFAULT_LOINC_MAPPINGS),
                     "gender_to_concept": data.get("gender_to_concept", DEFAULT_GENDER_MAPPINGS),
@@ -118,6 +147,8 @@ def load_concept_mappings(mapping_file: str | None = None) -> dict[str, dict[str
                     ),
                     "clinvar_to_concept": data.get("clinvar_to_concept", DEFAULT_CLINVAR_MAPPINGS),
                 }
+                _warn_on_fallback_drift(result)
+                return result
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
             print(
                 f"[VOCABULARY WARNING] Failed to load {resolved_path} ({e}); using built-in defaults."

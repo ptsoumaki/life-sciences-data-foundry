@@ -5,6 +5,36 @@ All notable changes to the Life Sciences Data Foundry project are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2026-08-20
+
+### Added
+- **LangGraph GxP Compliance State Graph Auditor (`agentic-ai/graph_auditor.py`)**:
+  - Implemented 6-node autonomous state graph auditing MLflow run lineage, Delta Lake transaction commit logs (`_delta_log/`), and OMOP CDM schema conformance against FDA 21 CFR Part 11 parameters.
+  - Built Human-in-the-Loop (HITL) review gates using LangGraph `interrupt()` and `Command(resume=...)` for qualified 21 CFR §11.50 Electronic Signatures and deviation justifications.
+  - Direct Delta Lake commit log parser verifying commit sequence continuity (`DLT_SEQ_001`), timestamp monotonicity (`DLT_TIME_002`), and table metadata.
+- **Automated MLflow GxP Audit Certificates**:
+  - Automatically attaches signed `audit_receipts/gxp_audit_certificate.json` directly to audited MLflow runs with cryptographic SHA-256 receipts (`gxp_audit_receipt_sha256`) and regulatory status tags (`gxp_audit_status`).
+- **Model Context Protocol (FastMCP) Clinical Data Server (`agentic-ai/mcp_server.py`)**:
+  - Implemented `FoundryMCPServer` exposing 11 FastMCP tools for OMOP CDM v5.4 concept lookups (ICD-10 to SNOMED, LOINC labs, demographics, ClinVar variants), table schema definitions (`PERSON`, `CONDITION_OCCURRENCE`, `MEASUREMENT`, `COHORT`), Great Expectations data contracts, Delta Lake transaction commit logs, and MLflow GxP lineage auditing.
+  - Dual-transport architecture supporting Standard I/O (`stdio`) for local AI agent desktop clients and Server-Sent Events (`sse`) for microservice integration.
+- **Centralized Cryptographic Utility Module (`governance/crypto.py`)**:
+  - Single source of truth for high-performance SHA-256 file streaming (4 KB blocks), in-memory string/byte hashing, and 64-character hexadecimal digest verification.
+- **Comprehensive Unit Testing Suites (`tests/unit/test_graph_auditor.py`, `tests/unit/test_mcp_server.py`, `tests/unit/test_crypto.py`)**:
+  - 26 unit tests across the agentic AI tier verifying state graph compilation, compliant/non-compliant runs, Delta transaction logs, HITL review, cryptographic hashing, and all 11 FastMCP clinical tools.
+- **Vocabulary drift detection**: `_warn_on_fallback_drift()` added to `vocabularies.py`; surfaces any Python/JSON concept ID divergence as a `[VOCABULARY WARNING]` on startup.
+
+### Changed
+- **Unified Project Dependency Configuration (`pyproject.toml`)**:
+  - Consolidated `langgraph` and `mcp` directly into core project dependencies.
+  - Registered `network` pytest marker; remote GitHub/S3 integration tests are opt-in via `LSDF_NETWORK_TESTS=1`.
+- **Expanded CI Quality Gates (`.github/workflows/tf-lint.yml`)**:
+  - Integrated `agentic-ai` into Mypy static type checking and Pytest `--cov` coverage reporting in CI.
+- **`README.md`**: rewritten as a concise entry-point; prerequisites and setup delegated to `CONTRIBUTING.md`.
+- **`CONTRIBUTING.md`**: corrected Python/JDK version labels, pipeline invocation updated to `python -m omop_cdm_v54.pipeline`, network test opt-in documented.
+- **`SECURITY.md`**: reformatted security controls as a table; added vulnerability reporting pointer.
+
+---
+
 ## [0.2.8] - 2026-08-19
 
 ### Added
@@ -29,14 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Executive README Architecture Blueprint (`README.md`)**:
   - Streamlined the platform blueprint with a pruned top-level architecture layout, direct documentation matrix links, and updated regulatory compliance mappings.
 
-### Fixed
-- **OMOP CDM v5.4 Measurement Payload Preservation (`analytical-layer/omop_cdm_v54/measurement.py`)**:
-  - Preserved qualitative observation values in `value_source_value` while applying `try_cast` for numeric parsing into `value_as_number` to prevent data loss on non-numeric payloads.
-- **Condition Occurrence Composite Primary Key (`analytical-layer/omop_cdm_v54/condition_occurrence.py`)**:
-  - Generated deterministic composite primary keys for `condition_occurrence_id` and optimized dynamic vocabulary map evaluation.
-- **Delta Lake Z-Ordering & Cloud Table Verification (`analytical-layer/medallion/writer.py`)**:
-  - Corrected Delta table Z-Order invocation syntax and S3 cloud storage path detection.
-
 ---
 
 ## [0.2.7] - 2026-08-14
@@ -58,19 +80,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Refactored clinical record filtering to use canonical complementary condition expressions (`valid_clinical_condition` and `~valid_clinical_condition`) with `df_clinical_parsed.cache()` for strictly mutually exclusive quarantine partitioning.
 - **Centralized Path Resolution (`connectors.py` & `pipeline.py`)**:
   - Standardized dataset resolution via `resolve_data_dir()` helper with `LSDF_DATA_DIR` environment variable override support.
-
-### Fixed
-- **MLflow Lineage Tracker Hardening (`governance/mlflow_tracker.py`)**:
-  - Isolated temporary validation artifact writes within `tempfile.TemporaryDirectory()`, eliminating working tree clutter and concurrent race conditions.
-  - Prevented nested `with mlflow.start_run()` contexts from prematurely closing parent experiment runs.
-  - Added logging for unhandled Great Expectations assertion classes and exposed evaluation failure error states.
-- **OMOP CDM v5.4 Specification Compliance**:
-  - Standardized foreign key fields (`provider_id`, `visit_occurrence_id`, `stop_reason`) to `NULL` instead of `0` in `condition_occurrence.py`.
-  - Preserved full timestamp precision in `measurement_datetime` across `measurement.py`.
-  - Prevented multi-allelic variant hash collisions in `genomic_variants.py` by incorporating `col("alt")` into deterministic 64-bit surrogate keys.
-- **Delta Lake Storage Multi-Platform Compatibility (`analytical-layer/medallion/writer.py`)**:
-  - Normalized all Delta Lake table paths to forward slashes, preventing Windows Hadoop path parsing issues.
-  - Prevented redundant liquid clustering fallback attempts when Unity Catalog is disabled.
 
 ---
 
@@ -102,11 +111,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Upgraded surrogate key hashing from 32-bit `hash` to deterministic 64-bit `xxhash64`.
 - Expanded gender string normalization to support single-letter codes (`M`/`F`).
-
-### Fixed
-- Added missing `coalesce` and `expr` function imports in `pipeline.py` preventing timestamp parsing errors.
-- Guarded `ALTER TABLE` Liquid Clustering execution in `writer.py` to operate only when Unity Catalog is enabled, avoiding Windows local file locking.
-- Resolved patient/sample identifier column resolution bug in `genomic_variants.py`.
 
 ---
 

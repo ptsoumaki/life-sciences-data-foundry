@@ -70,10 +70,15 @@ This document tracks active development phases and engineering priorities for th
 
 ## 🤖 Phase 7: Agentic Lineage & MLOps Infrastructure
 
-- [ ] **LangGraph Delta Lake Lineage Auditor (`agentic-ai/graph_auditor.py`)**
-  - Build state graph evaluating MLflow lineage trees (`governance/mlflow_tracker.py`), Delta Lake transaction commit logs (`_delta_log/`), and schema integrity against FDA 21 CFR Part 11 parameters.
-- [ ] **Model Context Protocol (MCP) Clinical Data Server (`agentic-ai/mcp_server.py`)**
-  - Expose FastMCP tools for querying OMOP CDM concept hierarchies, vocabulary relationships, and pipeline execution state.
+- [x] **LangGraph Delta Lake Lineage Auditor (`agentic-ai/graph_auditor.py`)**
+  - Built 6-node LangGraph state graph evaluating MLflow lineage trees (`governance/mlflow_tracker.py`), Delta Lake transaction commit logs (`_delta_log/`), and OMOP CDM schema integrity against FDA 21 CFR Part 11 parameters.
+  - Implemented Human-in-the-Loop (HITL) review gates with FDA 21 CFR §11.50 Electronic Signatures and automated MLflow GxP Audit Certificate logging (`audit_receipts/gxp_audit_certificate.json`).
+  - Integrated centralized cryptographic verification via [`governance/crypto.py`](governance/crypto.py).
+  - Added comprehensive unit test suites (`tests/unit/test_graph_auditor.py`, `tests/unit/test_crypto.py`) with 100% pass rate.
+- [x] **Model Context Protocol (MCP) Clinical Data Server (`agentic-ai/mcp_server.py`)**
+  - Exposed 11 FastMCP tools for querying OMOP CDM concept hierarchies (ICD-10 to SNOMED, LOINC labs, demographics, ClinVar variants), table schema definitions, Great Expectations data contracts, Delta Lake transaction commit logs, and MLflow GxP lineage auditing.
+  - Implemented dual-transport architecture supporting Standard I/O (`stdio`) for AI agent desktop clients and Server-Sent Events (`sse`) for network microservices.
+  - Built comprehensive unit test suite (`tests/unit/test_mcp_server.py`) with 100% pass rate.
 
 ---
 

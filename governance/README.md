@@ -6,6 +6,21 @@ This component implements the FDA 21 CFR Part 11 compliant data quality and exec
 
 ## Components
 
+### `crypto.py` — Centralized Cryptographic Hashing Utilities (21 CFR §11.10(e))
+
+Provides canonical, high-performance SHA-256 cryptographic hashing and verification for data files, in-memory payloads, and audit receipts.
+
+**Public API:**
+* `compute_sha256(target: str | bytes | Path) -> str`: Computes SHA-256 hex digest for file paths (streamed in 4 KB blocks) or in-memory content.
+* `is_valid_sha256(hash_str: str | None) -> bool`: Regex validation of standard 64-character hexadecimal digests.
+
+```python
+from governance.crypto import compute_sha256, is_valid_sha256
+
+digest = compute_sha256("data/raw/person.csv")
+assert is_valid_sha256(digest) is True
+```
+
 ### `rules.json` — Great Expectations GxP Validation Suite
 
 A decoupled JSON expectation suite defining data quality contracts for OMOP CDM v5.4 clinical record ingestion. Designed to run independently of Databricks, enabling validation across Nextflow, AWS Batch, and local environments.
@@ -21,7 +36,7 @@ A decoupled JSON expectation suite defining data quality contracts for OMOP CDM 
 
 ### `mlflow_tracker.py` — MLflow Lineage & Audit Tracker
 
-Orchestrates Great Expectations suite execution, computes SHA-256 cryptographic file hashes for provenance tracking, and logs all metrology to MLflow.
+Orchestrates Great Expectations suite execution, computes SHA-256 cryptographic file hashes for provenance tracking via `governance.crypto`, and logs all metrology to MLflow.
 
 **Features:**
 - Multi-format dataset ingestion (CSV, TSV, Parquet, JSON)

@@ -1,88 +1,90 @@
-# Enterprise Life Sciences Data Engineering Foundry & Clinical Normalization Engine 🧬
+# Enterprise Life Sciences Data Engineering Foundry 🧬
 
 [![DataOps CI/CD Gate](https://github.com/ptsoumaki/life-sciences-data-foundry/actions/workflows/tf-lint.yml/badge.svg)](https://github.com/ptsoumaki/life-sciences-data-foundry/actions/workflows/tf-lint.yml)
-![Compliance Standard](https://img.shields.io/badge/Compliance-FDA%2021%20CFR%20Part%2011-blue)
-![Data Architecture](https://img.shields.io/badge/Architecture-OMOP%20CDM%20v5.4%20%7C%20Medallion-orange)
-![Storage Engine](https://img.shields.io/badge/Storage-Delta%20Lake%203.1-green)
-![Python Version](https://img.shields.io/badge/Python-3.11-blue)
+![Version](https://img.shields.io/badge/version-0.2.9-informational)
+![Compliance](https://img.shields.io/badge/Compliance-FDA%2021%20CFR%20Part%2011-blue)
+![Architecture](https://img.shields.io/badge/Architecture-OMOP%20CDM%20v5.4%20%7C%20Medallion-orange)
+![Storage](https://img.shields.io/badge/Storage-Delta%20Lake%203.1-green)
+![Python](https://img.shields.io/badge/Python-3.10%20–%203.12-blue)
+![License](https://img.shields.io/badge/License-Apache%202.0-lightgrey)
 
 ---
 
-## 📋 Strategic Vision & Architecture
+## Overview
 
-The **Enterprise Life Sciences Data Engineering Foundry** is a production-grade blueprint designed to solve real-world evidence (RWE) data fragmentation, multi-omics clinical trial harmonization, and regulatory compliance for **Biopharma R&D**.
+A production-grade, GxP-compliant data engineering platform for Biopharma R&D — converting heterogeneous EHR records, clinical trial observations, and multi-omics variant calls into standard [OHDSI OMOP CDM v5.4](https://ohdsi.github.io/CommonDataModel/cdm54.html) at scale.
 
-* **Clinical Normalization Engine:** PySpark ETL/ELT pipelines converting heterogeneous EHR records, clinical trial observations, and multi-omics variant metadata into standard [OHDSI OMOP CDM v5.4](https://ohdsi.github.io/CommonDataModel/cdm54.html) relational tables (`PERSON`, `MEASUREMENT`, `CONDITION_OCCURRENCE`).
-* **Medallion Delta Lakehouse:** Multi-tier storage architecture utilizing Delta Lake ACID transactions, Liquid Clustering (`CLUSTER BY (person_id, concept_id)`), and Change Data Feed (CDF) for optimized cohort queries.
-* **Programmatic Data Contracts & GxP Lineage:** Decoupled Great Expectations rule assertions ([`governance/rules.json`](governance/rules.json)) enforcing schema and quality contracts prior to Gold-tier persistence, coupled with MLflow SHA-256 cryptographic provenance tracking ([`governance/mlflow_tracker.py`](governance/mlflow_tracker.py)) to satisfy **FDA 21 CFR Part 11**.
-* **Agentic Lineage & Audit Interface:** Model Context Protocol (FastMCP) server and LangGraph multi-agent compliance auditor ([`agentic-ai/`](agentic-ai/)) inspecting transaction logs, MLflow run metadata, and vocabulary mapping trees.
-* **Cloud-Native IaC & Orchestration:** Databricks Asset Bundles ([`databricks.yml`](databricks.yml)) and Terraform IaC ([`terraform/`](terraform/)) provisioning immutable S3 WORM storage (`COMPLIANCE` retention mode).
+| Capability | Implementation |
+| :--- | :--- |
+| **Clinical Normalization** | PySpark ETL/ELT producing OMOP CDM `PERSON`, `MEASUREMENT`, `CONDITION_OCCURRENCE` |
+| **Medallion Delta Lakehouse** | ACID transactions, Liquid Clustering, Change Data Feed, SCD Type 1 upserts |
+| **GxP Data Contracts** | Decoupled Great Expectations rules + MLflow SHA-256 provenance (FDA 21 CFR Part 11) |
+| **Agentic Compliance Audit** | LangGraph state-graph auditor + FastMCP server with HITL 21 CFR §11.50 sign-off |
+| **Cloud-Native IaC** | Databricks Asset Bundles + Terraform provisioning AWS S3 WORM (`COMPLIANCE` mode) |
+
+> **Getting started**: see [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, environment setup, and the local validation workflow.
 
 ---
 
-## 🏛️ Standardization & Regulatory Compliance Matrix
+## 🏛️ Compliance & Standardization Matrix
 
-| Standard / Domain | Platform Implementation | Strategic Purpose in Biopharma R&D |
+| Standard | Implementation | Purpose |
 | :--- | :--- | :--- |
-| **OHDSI OMOP CDM v5.4** | [`analytical-layer/omop_cdm_v54/`](analytical-layer/omop_cdm_v54/) | Cross-institutional RWE analytics & standardized cohort building across global clinical networks |
-| **FDA 21 CFR Part 11** | [`governance/rules.json`](governance/rules.json) & [`mlflow_tracker.py`](governance/mlflow_tracker.py) | Electronic records integrity, SHA-256 cryptographic run lineage & programmatic data contracts |
-| **Delta Lake ACID** | [`analytical-layer/medallion/`](analytical-layer/medallion/) | Transactional reliability, schema evolution, time-travel auditing & Liquid Clustering |
-| **Model Context Protocol** | [`agentic-ai/mcp_server.py`](agentic-ai/mcp_server.py) | FastMCP agentic interface for querying OMOP concept hierarchies & execution state |
-| **AWS S3 Object Lock** | [`terraform/storage_and_compute.tf`](terraform/storage_and_compute.tf) | WORM storage enforcement preventing accidental or unauthorized clinical record deletion |
+| **OHDSI OMOP CDM v5.4** | [`analytical-layer/omop_cdm_v54/`](analytical-layer/omop_cdm_v54/) | Cross-institutional RWE cohort analytics across global clinical networks |
+| **FDA 21 CFR Part 11** | [`governance/rules.json`](governance/rules.json) · [`mlflow_tracker.py`](governance/mlflow_tracker.py) · [`crypto.py`](governance/crypto.py) | Electronic records integrity, SHA-256 cryptographic lineage, data contracts |
+| **Delta Lake ACID** | [`analytical-layer/medallion/`](analytical-layer/medallion/) | Transactional reliability, schema evolution, time-travel, Liquid Clustering |
+| **Agentic GxP Audit / MCP** | [`agentic-ai/graph_auditor.py`](agentic-ai/graph_auditor.py) · [`mcp_server.py`](agentic-ai/mcp_server.py) | Autonomous lineage audit with HITL electronic sign-offs & AI discovery interface |
+| **AWS S3 Object Lock** | [`terraform/storage_and_compute.tf`](terraform/storage_and_compute.tf) | WORM storage preventing unauthorized deletion of clinical records |
 
 ---
 
-## 📐 Data Architecture & Medallion Topology
+## 📐 Architecture & Medallion Topology
 
 ```text
-                 [ DATAOPS CI/CD ENGINE ]
-                            │
-                            ▼ (Linting, Static Analysis & Code Quality)
-                    ┌───────────────┐
-                    │GitHub Actions │
-                    └───────┬───────┘
-                            │
-                            ▼ (Declarative IaC & Pipeline Trigger)
-               [ RAW CLINICAL & GENOMIC INGESTION ]
-                            │
-                            ▼
-               ┌─────────────────────────┐
-               │    Nextflow Pipeline    │
-               │   Orchestration Engine  │
-               └────────────┬────────────┘
-                            │
-                            ▼ (Bronze Tier Raw Ingestion Storage)
-               ┌─────────────────────────┐
-               │  AWS S3 WORM / Delta    │
-               │       Bronze Tier       │
-               └────────────┬────────────┘
-                            │
-                            ▼ (Programmatic Data Contract Gate)
-               [ DATA GOVERNANCE GATEWAY ]
-               ┌─────────────────────────┐
-               │ Great Expectations &    │
-               │ MLflow SHA-256 Lineage  │
-               └────────────┬────────────┘
-                            │
-                            ▼ (Silver Tier OMOP CDM Normalization)
-               [ CLINICAL ANALYTICAL ENGINE ]
-               ┌─────────────────────────┐
-               │  PySpark OMOP CDM v5.4  │
-               │  Normalization Engine   │
-               └────────────┬────────────┘
-                            │
-                            ▼ (Gold Tier Performance Optimized)
-               ┌─────────────────────────┐
-               │   Delta Lake Gold Tier  │
-               │ (Liquid Clustering)     │
-               └────────────┬────────────┘
-                            │
-                            ▼ (Agentic Audit & Discovery Interface)
-               [ AGENTIC INTELLIGENCE LAYER ]
-               ┌─────────────────────────┐
-               │  LangGraph MCP Server   │
-               │ (Data Lineage Auditor)  │
-               └─────────────────────────┘
+           [ DATAOPS CI/CD ENGINE ]
+                    │
+                    ▼  Lint · Static Analysis · Quality Gates
+          ┌───────────────────┐
+          │   GitHub Actions  │
+          └────────┬──────────┘
+                   │
+                   ▼  Declarative IaC & Pipeline Trigger
+      [ RAW CLINICAL & GENOMIC INGESTION ]
+                   │
+                   ▼
+          ┌───────────────────┐
+          │ Nextflow Pipeline │
+          └────────┬──────────┘
+                   │
+                   ▼  Bronze · Raw Ingestion
+          ┌───────────────────┐
+          │ AWS S3 WORM /     │
+          │ Delta Bronze Tier │
+          └────────┬──────────┘
+                   │
+                   ▼  Programmatic GxP Contract Gate
+          ┌───────────────────┐
+          │ Great Expectations│
+          │ MLflow SHA-256    │
+          └────────┬──────────┘
+                   │
+                   ▼  Silver · OMOP CDM Normalization
+          ┌───────────────────┐
+          │ PySpark OMOP CDM  │
+          │ v5.4 Normalizer   │
+          └────────┬──────────┘
+                   │
+                   ▼  Gold · Liquid Clustering
+          ┌───────────────────┐
+          │ Delta Lake Gold   │
+          │ (CLUSTER BY)      │
+          └────────┬──────────┘
+                   │
+                   ▼  Agentic Audit & Discovery
+          ┌───────────────────┐
+          │ LangGraph Auditor │
+          │ FastMCP Server    │
+          └───────────────────┘
 ```
 
 ---
@@ -91,60 +93,69 @@ The **Enterprise Life Sciences Data Engineering Foundry** is a production-grade 
 
 ```text
 life-sciences-data-foundry/
-├── .github/              # CI/CD workflows & DataOps automated quality gates
-├── agentic-ai/           # FastMCP server & LangGraph compliance state auditor
-├── analytical-layer/     # PySpark OMOP CDM v5.4 normalization & Delta Lake Medallion engine
-├── docs/                 # Platform documentation hub (setup, deployment, quality guides)
-├── governance/           # Great Expectations contracts & MLflow SHA-256 GxP lineage tracking
-├── pipelines/            # Nextflow DSL2 workflow orchestration & AWS Batch compute modules
-├── scripts/              # Environment bootstrapping scripts (PowerShell & POSIX)
-├── terraform/            # Cloud infrastructure IaC (AWS S3 WORM storage, KMS, IAM)
-├── tests/                # Automated testing suite (PySpark unit & integration tests)
+├── .github/              # CI/CD workflows & automated quality gates
+├── agentic-ai/           # FastMCP server & LangGraph GxP compliance auditor
+├── analytical-layer/     # PySpark OMOP CDM v5.4 normalization & Medallion engine
+├── docs/                 # Platform documentation hub
+├── governance/           # Great Expectations contracts & MLflow GxP lineage tracking
+├── pipelines/            # Nextflow DSL2 orchestration & AWS Batch compute modules
+├── scripts/              # Environment bootstrapping (PowerShell & POSIX)
+├── terraform/            # Cloud IaC (AWS S3 WORM, KMS, IAM)
+├── tests/                # PySpark unit & integration test suites
+├── .env.example          # Environment variable template
 ├── databricks.yml        # Databricks Asset Bundles (DABs) configuration
-└── pyproject.toml        # Python build configuration & dependencies
+└── pyproject.toml        # Python build, dependencies & tooling config
 ```
 
 ---
 
-## 📊 Architectural Decision & Trade-Off Analysis
+## 🧪 Quality Gates
 
-| Component | Design Selection | Alternative Considered | Strategic Rationale |
+| Gate | Command |
+| :--- | :--- |
+| Unit tests | `pytest tests/unit/ -v` |
+| Integration tests (demo mode) | `pytest tests/integration/ -v` |
+| Network integration tests (opt-in) | `LSDF_NETWORK_TESTS=1 pytest -m network` |
+| Static analysis | `ruff check . && mypy --config-file pyproject.toml .` |
+| Coverage | `pytest --cov --cov-report=html` |
+
+> See [Testing & DataOps Guide](docs/quality/testing-and-dataops.md) for CI integration and coverage configuration.
+
+---
+
+## 📊 Architectural Decision Log
+
+| Component | Selection | Alternative | Rationale |
 | :--- | :--- | :--- | :--- |
-| **Clinical Storage Engine** | PySpark & Delta Lake | Traditional RDBMS (Postgres) | Relational DBs bottleneck on petabyte-scale clinical/genomic join queries; Delta Lake provides ACID transactions, Liquid Clustering, and linear scaling. |
-| **Schema Validation Engine** | Decoupled JSON Contracts (`rules.json`) | Inline DLT `@dlt.expect` Decorators | Decoupled contracts allow validation execution across non-Databricks orchestrators (Nextflow/Spark) without engine vendor lock-in. |
-| **Clinical Standard Architecture** | OHDSI OMOP CDM v5.4 | Custom Proprietary Schemas | Custom schemas create siloed analytics; OMOP CDM enables standardized queries across global real-world evidence (RWE) networks. |
-| **Compute Execution Context** | Amazon ECS & AWS Batch Spot | Persistent EC2 Nodes | Fixed servers incur heavy idle runtime costs (~70% higher) and introduce software version configuration drift over time. |
-| **Data Integrity Layer** | S3 WORM Object Locking | Standard IAM Deny Rules | Administrative users can bypass IAM policies; WORM configurations introduce a strict cryptographic block that cannot be overwritten. |
-| **DataOps Quality Control** | GitHub Actions Pipeline | Manual Peer Review | Human review is slow and subjective; automated DataOps pipelines ensure strict compliance checks on every git commit. |
+| **Storage engine** | PySpark + Delta Lake | PostgreSQL | Petabyte-scale ACID with Liquid Clustering; relational DBs bottleneck on clinical/genomic join queries |
+| **Validation** | Decoupled JSON contracts | Inline DLT `@dlt.expect` | Engine-agnostic — runs on Nextflow, AWS Batch, or local Spark without Databricks lock-in |
+| **Clinical standard** | OMOP CDM v5.4 | Custom schema | OMOP enables standardized queries across global RWE networks; custom schemas silo analytics |
+| **Compute** | AWS Batch Spot | Persistent EC2 | ~70% lower idle cost; no configuration drift on long-running nodes |
+| **Data integrity** | S3 WORM Object Lock | IAM deny rules | IAM can be overridden by admin; WORM enforces immutability at the storage layer |
+| **Quality control** | GitHub Actions | Manual review | Automated gates enforce compliance checks on every commit; human review is slow and inconsistent |
 
 ---
 
-## 🧪 Enterprise Quality Gates & Test Coverage
+## 📚 Documentation
 
-| Test Suite | Implementation | Focus Area |
-| :--- | :--- | :--- |
-| **Unit Tests** | `pytest tests/unit/ -v` | Validates demographics, ICD-10/SNOMED mapping, LOINC labs, and VCF parsing |
-| **Integration Tests** | `pytest tests/integration/ -v` | End-to-end Medallion execution (`--mode demo` and `--mode remote`) with Delta writes |
-| **GxP Governance Gate** | `python governance/mlflow_tracker.py` | Great Expectations contract validation and MLflow SHA-256 provenance tracking |
-| **Static Quality Gate** | `ruff check .` & `mypy` | Strict static typing, formatting, and zero lint regressions |
-| **CI/CD Pipeline** | [`.github/workflows/tf-lint.yml`](.github/workflows/tf-lint.yml) | Automated multi-job GitHub Actions gate triggered on all pull requests |
-
-> 📖 For detailed testing instructions and coverage reporting, see [**Testing & DataOps Guide**](docs/quality/testing-and-dataops.md).
+| Guide | Path |
+| :--- | :--- |
+| Environment Setup | [`docs/setup/environment-setup.md`](docs/setup/environment-setup.md) |
+| Cloud Deployment & IaC | [`docs/deployment/databricks-and-iac.md`](docs/deployment/databricks-and-iac.md) |
+| Testing & Quality Gates | [`docs/quality/testing-and-dataops.md`](docs/quality/testing-and-dataops.md) |
+| Analytical Layer | [`analytical-layer/README.md`](analytical-layer/README.md) |
+| Governance & GxP | [`governance/README.md`](governance/README.md) |
+| Workflow Pipelines | [`pipelines/README.md`](pipelines/README.md) |
+| Agentic AI Tier | [`agentic-ai/README.md`](agentic-ai/README.md) |
+| Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Engineering Backlog | [`TODO.md`](TODO.md) |
+| Security Policy | [`SECURITY.md`](SECURITY.md) |
+| Release History | [`CHANGELOG.md`](CHANGELOG.md) |
 
 ---
 
-## 📚 Documentation Hub & Component Deep Dives
+## 📄 License
 
-| Guide / Specification | Path | Scope & Focus |
-| :--- | :--- | :--- |
-| **Environment Setup** | [`docs/setup/environment-setup.md`](docs/setup/environment-setup.md) | Python 3.11 `.venv`, JDK 17, dependencies, and environment bootstrapping |
-| **Cloud Deployment & IaC** | [`docs/deployment/databricks-and-iac.md`](docs/deployment/databricks-and-iac.md) | Databricks Asset Bundles (DABs), Terraform S3 WORM, and AWS Batch compute |
-| **Testing & Quality Gates** | [`docs/quality/testing-and-dataops.md`](docs/quality/testing-and-dataops.md) | PySpark unit tests, integration test suites, and DataOps CI/CD workflows |
-| **Analytical Layer** | [`analytical-layer/README.md`](analytical-layer/README.md) | OMOP CDM v5.4 domain packages, dynamic vocabularies, and Liquid Clustering |
-| **Governance & GxP** | [`governance/README.md`](governance/README.md) | Great Expectations rules suite, MLflow 21 CFR Part 11 cryptographic auditing |
-| **Workflow Pipelines** | [`pipelines/README.md`](pipelines/README.md) | Nextflow DSL2 process definitions, AWS Batch queue profiles, and FastQC |
-| **Agentic AI Tier** | [`agentic-ai/README.md`](agentic-ai/README.md) | Model Context Protocol (FastMCP) server & LangGraph compliance state auditor |
-| **Contribution Guide** | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Git feature branching, Conventional Commits, and PR review workflow |
-| **Engineering Backlog** | [`TODO.md`](TODO.md) | Active development phases and upcoming platform capabilities |
-| **Security Policy** | [`SECURITY.md`](SECURITY.md) | Security controls, KMS encryption, and vulnerability disclosure |
-| **Release History** | [`CHANGELOG.md`](CHANGELOG.md) | Semantic versioning changelog |
+Copyright © 2024–2026 Vivi Tsoumaki. Licensed under the [Apache License 2.0](LICENSE).
+
+> This platform is a reference implementation. Validate all clinical data pipelines and GxP controls against your organisation's regulatory obligations before use in a regulated environment.

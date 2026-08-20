@@ -112,7 +112,7 @@ jobs:
         run: ruff format --check .
 
       - name: Execute Mypy Static Type Verification
-        run: mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion governance tests
+        run: mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion governance agentic-ai tests
 
   pyspark-dataops-test-suite:
     name: "PySpark DataOps & Contract Quality Gate"
@@ -141,7 +141,7 @@ jobs:
 
       - name: Execute PySpark Unit & Integration Test Suite
         run: |
-          pytest --cov=analytical-layer --cov=governance --cov-report=term-missing --cov-report=xml tests/
+          pytest --cov=analytical-layer --cov=governance --cov=agentic-ai --cov-report=term-missing --cov-report=xml tests/
 
       - name: Upload Test Coverage Artifact
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1

@@ -37,8 +37,8 @@ Ensure your local development station has the following required toolchain versi
 
 | Tool | Required Version | Purpose |
 | --- | --- | --- |
-| **Python** | `3.11` (`>=3.10, <3.13`) | Governance validation, lineage tracking, and PySpark OMOP CDM mapping |
-| **Java / JDK** | `>=11` (17 recommended) | JVM runtime engine required by Nextflow and PySpark |
+| **Python** | `>=3.10, <3.13` (3.12 supported) | Governance validation, lineage tracking, and PySpark OMOP CDM mapping |
+| **Java / JDK** | `17` (LTS; `>=11` minimum) | JVM runtime engine required by Nextflow and PySpark |
 | **Terraform** | `>=1.5.0` | Declarative IaC infrastructure provisioning and governance |
 | **Nextflow** | `>=23.04.0` | Episodic containerized DSL2 workflow orchestration |
 | **Docker Engine** | Latest Stable | Local process execution context for Nextflow pipelines |
@@ -104,7 +104,7 @@ This repository follows a structured **Feature Branching Model** built around `m
    git push -u origin feature/omop-condition-mapping
    ```
 
-3. Open a Pull Request targetting the `dev` branch.
+3. Open a Pull Request targeting the `dev` branch.
 
 ---
 
@@ -194,6 +194,8 @@ Before opening a Pull Request, run the platform validation suite locally:
    ```bash
    pytest tests/unit/ -v
    pytest tests/integration/ -v
+   # Network tests (GitHub/S3) are opt-in; set LSDF_NETWORK_TESTS=1 to enable:
+   LSDF_NETWORK_TESTS=1 pytest tests/integration/ -m network
    ```
 
 2. **Governance & Audit Tracker Verification:**
@@ -203,7 +205,7 @@ Before opening a Pull Request, run the platform validation suite locally:
 
 3. **Analytical PySpark Normalization Execution:**
    ```bash
-   python analytical-layer/omop_cdm_v54/pipeline.py --mode demo --save_delta
+   python -m omop_cdm_v54.pipeline --mode demo --save-delta
    ```
 
 4. **Nextflow Pipeline Stub Verification:**

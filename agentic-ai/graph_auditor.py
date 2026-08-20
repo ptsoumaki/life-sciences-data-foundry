@@ -28,6 +28,15 @@ from mlflow.tracking import MlflowClient
 
 from governance.crypto import compute_sha256, is_valid_sha256
 
+__all__ = [
+    "AuditFinding",
+    "AuditState",
+    "GxPGraphAuditor",
+    "QASignoff",
+    "compute_sha256_checksum",
+    "is_valid_sha256",
+]
+
 # =====================================================================
 # State & Finding Types
 # =====================================================================
@@ -75,8 +84,11 @@ class AuditState(TypedDict, total=False):
 
 
 # =====================================================================
-# Helper Utilities (Re-exported from centralized governance.crypto)
+# Helper Utilities (Re-exported from governance.crypto)
+# Both names are declared in __all__ and may be imported directly
+# from this module by external callers and tests.
 # =====================================================================
+
 
 compute_sha256_checksum = compute_sha256
 

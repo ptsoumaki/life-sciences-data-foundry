@@ -12,12 +12,7 @@ from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
 
-from omop_cdm_v54.compat import HAS_DELTA
-
-try:
-    from delta.tables import DeltaTable
-except ImportError:
-    pass
+from omop_cdm_v54.compat import HAS_DELTA, DeltaTable
 
 
 class DeltaMedallionWriter:
@@ -122,6 +117,7 @@ class DeltaMedallionWriter:
         """
         path = self._get_table_path("gold", table_name)
 
+        # Infer clustering keys from column presence when not explicitly supplied.
         if cluster_by is None:
             if "person_id" in df.columns and "condition_concept_id" in df.columns:
                 cluster_by = ["person_id", "condition_concept_id"]
@@ -132,6 +128,7 @@ class DeltaMedallionWriter:
 
         writer = df.write.format("delta").mode(mode).option("delta.enableChangeDataFeed", "true")
 
+        # Deletion Vectors are unsupported on Windows local file systems.
         if os.name != "nt":
             writer = writer.option("delta.enableDeletionVectors", "true")
 
@@ -142,14 +139,15 @@ class DeltaMedallionWriter:
         uc_table = self._get_uc_table_name(table_name)
         if uc_table:
             if cluster_by and hasattr(writer, "clusterBy"):
+                # DataFrameWriter.clusterBy() API available (Delta 3.1+ / Spark 3.5+).
                 writer = writer.clusterBy(*cluster_by)
             writer.option("path", path).saveAsTable(uc_table)
             print(
                 f"[DELTA] Gold OMOP Table '{table_name}' saved to UC '{uc_table}' at {path} (clusterBy={cluster_by})"
             )
-            # If the Spark version doesn't support the DataFrameWriter.clusterBy API,
-            # execute the ALTER TABLE SQL on the UC table directly.
             if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA:
+                # clusterBy() API unavailable on this Spark/Delta version; apply Liquid
+                # Clustering post-write via ALTER TABLE on the UC catalog table name.
                 try:
                     cluster_cols_sql = ", ".join(cluster_by)
                     self.spark.sql(f"ALTER TABLE {uc_table} CLUSTER BY ({cluster_cols_sql})")
@@ -176,7 +174,8 @@ class DeltaMedallionWriter:
                 f"[DELTA] Gold OMOP Table '{table_name}' saved to {path} (mode={mode}, clusterBy={cluster_by})"
             )
 
-        # Fallback SQL for path-based non-UC clustering if DataFrameWriter API wasn't available
+        # clusterBy() API unavailable on this Spark/Delta version; apply Liquid Clustering
+        # post-write via ALTER TABLE SQL on the path-based (non-UC) table reference.
         if cluster_by and not hasattr(writer, "clusterBy") and HAS_DELTA:
             try:
                 cluster_cols_sql = ", ".join(cluster_by)

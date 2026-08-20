@@ -53,7 +53,8 @@ def transform_condition_occurrence(
     normalized_icd = upper(trim(col("icd10_code")))
     dotless_icd = regexp_replace(normalized_icd, "\\.", "")
 
-    # Build unified mapping covering both dotted and dotless variants to prevent redundant map generation in Catalyst
+    # Cover both dotted (E11.9) and dotless (E119) variants in one map to avoid
+    # generating two separate Catalyst map expressions for the same logical lookup.
     unified_mapping: dict[str, int] = {}
     for k, v in mapping_dict.items():
         if not str(k).startswith("_"):
@@ -67,7 +68,7 @@ def transform_condition_occurrence(
 
     concept_id_expr = build_concept_lookup(dotless_icd, unified_mapping, default_val=0)
 
-    # Composite primary key: encounter_id + icd10_code + parsed_diag_dt ensures uniqueness across multi-diagnosis encounters
+    # Composite PK: encounter + ICD-10 code + date ensures uniqueness across multi-diagnosis encounters.
     pk_expr = abs(
         xxhash64(concat_ws(":", col("encounter_id"), normalized_icd, col("parsed_diag_dt")))
     ).cast("long")

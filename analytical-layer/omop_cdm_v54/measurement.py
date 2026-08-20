@@ -1,6 +1,10 @@
 """
 Module: measurement.py
-Description: PySpark domain transformer mapping LOINC lab biomarkers and genomic quality metrics into OMOP CDM v5.4 MEASUREMENT table.
+Description: PySpark domain transformer mapping LOINC lab biomarkers and genomic quality
+             metrics into OMOP CDM v5.4 MEASUREMENT table.
+
+Public API:
+    transform_measurement -- Maps Silver lab rows to OMOP MEASUREMENT.
 """
 
 from pyspark.sql import DataFrame
@@ -49,6 +53,8 @@ def transform_measurement(
     normalized_loinc = upper(trim(col("loinc_code")))
     meas_concept_expr = build_concept_lookup(normalized_loinc, mapping_dict, default_val=0)
 
+    # Prefer the pre-parsed Silver column; fall back through try_cast to handle
+    # mixed date/datetime source strings without losing precision.
     cols = df_silver_labs.columns
     if "parsed_lab_datetime" in cols:
         meas_datetime = col("parsed_lab_datetime").cast("timestamp")
@@ -60,6 +66,7 @@ def transform_measurement(
     else:
         meas_datetime = lit(None).cast("timestamp")
 
+    # OMOP measurement_date is DateType; derive from the resolved timestamp when possible.
     if "parsed_lab_dt" in cols:
         meas_date = col("parsed_lab_dt").cast("date")
     elif "parsed_lab_datetime" in cols:
@@ -77,7 +84,9 @@ def transform_measurement(
         meas_datetime.alias(
             "measurement_datetime"
         ),  # OMOP CDM v5.4: timestamp when present in source; NULL when source has date only
-        lit(45754907).cast("integer").alias("measurement_type_concept_id"),  # Lab Result Concept
+        lit(45754907)
+        .cast("integer")
+        .alias("measurement_type_concept_id"),  # 45754907 = Lab result (OMOP Meas Type vocabulary)
         expr("try_cast(numeric_value as double)").alias("value_as_number"),
         lit(0).cast("integer").alias("value_as_concept_id"),
         col("unit_value").cast("string").alias("unit_source_value"),

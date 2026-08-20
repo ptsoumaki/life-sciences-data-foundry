@@ -4,7 +4,13 @@ Integration tests for end-to-end Medallion OMOP CDM v5.4 pipeline execution.
 
 import os
 
+import pytest
+
 from omop_cdm_v54.pipeline import run_omop_pipeline
+
+# Network tests hit live GitHub CSV endpoints and AWS S3 (1000 Genomes).
+# Opt in by setting LSDF_NETWORK_TESTS=1; skipped by default in CI and air-gapped environments.
+_NETWORK_TESTS_ENABLED = os.environ.get("LSDF_NETWORK_TESTS", "").lower() in ("1", "true", "yes")
 
 
 def test_run_omop_pipeline_demo_mode(spark, tmp_path):
@@ -39,9 +45,15 @@ def test_run_omop_pipeline_demo_mode(spark, tmp_path):
     assert os.path.exists(os.path.join(silver_dir, "clinical_demographics"))
 
 
+@pytest.mark.network
+@pytest.mark.skipif(
+    not _NETWORK_TESTS_ENABLED,
+    reason="Requires live GitHub/S3 access. Set LSDF_NETWORK_TESTS=1 to enable.",
+)
 def test_run_omop_pipeline_remote_mode(spark):
     """
     Verifies full pipeline execution in 'remote' open data mode.
+    Fetches Synthea CSVs from GitHub and 1000 Genomes VCF from AWS S3.
     """
     res = run_omop_pipeline(
         spark,

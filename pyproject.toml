@@ -79,10 +79,17 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
 ]
+markers = [
+    "network: marks tests requiring live GitHub/S3 network access (opt-in via LSDF_NETWORK_TESTS=1)",
+]
 
 [tool.coverage.run]
-source = ["omop_cdm_v54", "governance", "medallion", "agentic-ai"]
+source = ["omop_cdm_v54", "governance", "medallion"]
 omit = ["tests/*"]
+
+# agentic-ai/ contains loose scripts (not an installable package); track by path.
+[tool.coverage.paths]
+agentic = ["agentic-ai/"]
 
 [tool.coverage.report]
 exclude_lines = [

@@ -27,14 +27,20 @@ for p in [BASE_DIR, AGENTIC_DIR, ANALYTICAL_DIR]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
+MCPServer: Any
+
 try:
-    from mcp.server.mcpserver import MCPServer
+    from mcp.server.fastmcp import FastMCP as _FastMCP
+
+    MCPServer = _FastMCP
 except ImportError:
-    # Fallback for earlier FastMCP interfaces
     try:
-        from mcp.server.fastmcp import FastMCP as MCPServer  # type: ignore[no-redef]
+        from mcp.server.mcpserver import MCPServer as _MCPServerLegacy
+
+        MCPServer = _MCPServerLegacy
     except ImportError:
-        MCPServer = None  # type: ignore[assignment, misc]
+        MCPServer = None
+
 
 from governance.crypto import compute_sha256  # noqa: E402
 from omop_cdm_v54.vocabularies import (  # noqa: E402
@@ -44,6 +50,10 @@ from omop_cdm_v54.vocabularies import (  # noqa: E402
     load_concept_mappings,
 )
 
+__all__ = [
+    "OMOP_CDM_V54_SCHEMAS",
+    "FoundryMCPServer",
+]
 # Standard OMOP CDM v5.4 Table Schema Definitions
 OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
     "person": {
@@ -84,7 +94,7 @@ OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
             },
             {
                 "name": "birth_datetime",
-                "type": "string",
+                "type": "timestamp",
                 "nullable": True,
                 "description": "ISO-8601 UTC timestamp of birth.",
             },
@@ -188,25 +198,25 @@ OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
             },
             {
                 "name": "condition_start_date",
-                "type": "string",
+                "type": "date",
                 "nullable": False,
                 "description": "Date when the condition was diagnosed (YYYY-MM-DD).",
             },
             {
                 "name": "condition_start_datetime",
-                "type": "string",
+                "type": "timestamp",
                 "nullable": True,
                 "description": "Timestamp of condition onset in ISO-8601 format.",
             },
             {
                 "name": "condition_end_date",
-                "type": "string",
+                "type": "date",
                 "nullable": True,
                 "description": "Date when condition resolved (YYYY-MM-DD).",
             },
             {
                 "name": "condition_end_datetime",
-                "type": "string",
+                "type": "timestamp",
                 "nullable": True,
                 "description": "Timestamp of condition resolution.",
             },
@@ -214,7 +224,7 @@ OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
                 "name": "condition_type_concept_id",
                 "type": "integer",
                 "nullable": False,
-                "description": "Provenance concept (e.g. 32020=EHR encounter diagnosis).",
+                "description": "Provenance concept — always 32817 (EHR) for pipeline-generated EHR condition records.",
             },
             {
                 "name": "condition_source_value",
@@ -268,13 +278,13 @@ OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
             },
             {
                 "name": "measurement_date",
-                "type": "string",
+                "type": "date",
                 "nullable": False,
                 "description": "Date the assay/observation was performed (YYYY-MM-DD).",
             },
             {
                 "name": "measurement_datetime",
-                "type": "string",
+                "type": "timestamp",
                 "nullable": True,
                 "description": "ISO-8601 UTC timestamp of assay execution.",
             },
@@ -282,7 +292,7 @@ OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
                 "name": "measurement_type_concept_id",
                 "type": "integer",
                 "nullable": False,
-                "description": "Provenance concept (e.g. 44818702=Lab result).",
+                "description": "Provenance concept — always 45754907 (Lab result) for pipeline-generated lab measurements.",
             },
             {
                 "name": "operator_concept_id",

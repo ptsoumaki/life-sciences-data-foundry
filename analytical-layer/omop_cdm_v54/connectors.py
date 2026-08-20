@@ -22,7 +22,6 @@ import urllib.request
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, current_timestamp
-from pyspark.sql.session import SparkSession as PySparkSession
 
 # Public Open Data Remote URLs
 SYNTHEA_REMOTE_PATIENTS_URL = (
@@ -36,17 +35,17 @@ SYNTHEA_REMOTE_LABS_URL = (
 )
 GENOMES_1000_REMOTE_S3_PATH = "s3a://1000genomes/release/20130502/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz"
 
-# Maximum allowed HTTP response body size buffered into driver memory.
-# Synthea observations can reach several hundred MB; raise early rather than OOM-ing the driver.
+# Upper bound on the HTTP response body buffered into driver memory.
+# Synthea observations can reach several hundred MB; enforce this limit before
+# reading to avoid OOM — checked against the Content-Length header when present.
 MAX_HTTP_RESPONSE_BYTES = 256 * 1024 * 1024  # 256 MB
 
 
 def resolve_data_dir(data_dir: str | None = None) -> str:
-    """Resolves the default data directory path from argument, environment variable, or repo layout.
+    """Resolves the default data directory from argument, environment variable, or repo layout.
 
-    Prioritizes an explicitly supplied data_dir argument; falls back to the
-    LSDF_DATA_DIR environment variable if set and existing; otherwise resolves
-    to the canonical analytical-layer/data/ directory relative to this package.
+    Priority: explicit data_dir > LSDF_DATA_DIR env var > analytical-layer/data/ default.
+    Idempotent: passing an already-resolved path returns it unchanged.
 
     Args:
         data_dir: Optional explicit directory path.
@@ -62,7 +61,7 @@ def resolve_data_dir(data_dir: str | None = None) -> str:
     return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 
-def configure_s3a_anonymous_access(spark_builder: PySparkSession.Builder) -> PySparkSession.Builder:
+def configure_s3a_anonymous_access(spark_builder: SparkSession.Builder) -> SparkSession.Builder:
     """Adds anonymous AWS S3A credentials to a SparkSession builder.
 
     Configures the Hadoop AWS and AWS SDK JARs, selects the anonymous
@@ -116,6 +115,15 @@ def read_http_csv(spark: SparkSession, url: str, fallback_path: str | None = Non
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=30) as response:
+            # Reject oversized responses before reading; prefer Content-Length header
+            # check to avoid buffering data we will only discard immediately after.
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > MAX_HTTP_RESPONSE_BYTES:
+                raise ValueError(
+                    f"Remote CSV at {url} Content-Length ({int(content_length) // (1024 * 1024)} MB) "
+                    f"exceeds {MAX_HTTP_RESPONSE_BYTES // (1024 * 1024)} MB driver memory guard. "
+                    "Use a distributed S3A path for large files."
+                )
             content = response.read(MAX_HTTP_RESPONSE_BYTES + 1)
             if len(content) > MAX_HTTP_RESPONSE_BYTES:
                 raise ValueError(
@@ -283,9 +291,10 @@ def parse_vcf_to_dataframe(
 
     df_raw = spark.read.text(vcf_path).filter(~col("value").startswith("##"))
 
-    # Extract the #CHROM header before applying any row limit: Spark partition
-    # ordering is non-deterministic, so the header must be resolved independently.
-    header_row = df_raw.filter(col("value").startswith("#CHROM")).first()
+    # The #CHROM header always appears within the first few lines after ##-meta
+    # filtering. Capping the scan to 500 rows avoids a full distributed partition
+    # scan on large or remote (S3A) VCF files without any practical safety risk.
+    header_row = df_raw.limit(500).filter(col("value").startswith("#CHROM")).first()
     if not header_row:
         raise ValueError(f"No #CHROM header line found in VCF: {vcf_path}")
 
@@ -333,7 +342,7 @@ def load_genomics_data(
         try:
             return parse_vcf_to_dataframe(spark, GENOMES_1000_REMOTE_S3_PATH, max_rows=1000)
         except Exception as e:
-            if not file_path or not os.path.exists(file_path):
+            if not os.path.exists(file_path):
                 raise FileNotFoundError(
                     f"Remote S3A fetch from {GENOMES_1000_REMOTE_S3_PATH} failed and no local fallback exists: {e}"
                 ) from e

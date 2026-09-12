@@ -13,18 +13,31 @@ from typing import Any
 
 from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql.functions import (
+    coalesce,
     col,
     current_timestamp,
     expr,
+    from_json,
     lit,
     struct,
     to_json,
+    to_timestamp,
+    trim,
+    upper,
 )
 from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
     TimestampType,
+)
+
+from medallion.writer import DeltaMedallionWriter
+from omop_cdm_v54.compat import HAS_DELTA, DeltaTable
+from omop_cdm_v54.vocabularies import (
+    DEFAULT_ICD10_MAPPINGS,
+    DEFAULT_LOINC_MAPPINGS,
+    load_concept_mappings,
 )
 
 
@@ -228,12 +241,22 @@ class QuarantineDeltaWriter:
     def read_quarantine_table(self, table_name: str) -> DataFrame:
         """Reads a quarantine Delta Lake table by name."""
         path = self.get_quarantine_table_path(table_name)
+        if not os.path.exists(path):
+            return self.spark.createDataFrame([], QUARANTINE_RECORD_SCHEMA)
+
         try:
             return self.spark.read.format("delta").load(path)
         except Exception:
             # Fallback for local Windows environments lacking native hadoop.dll;
-            # Spark Parquet loader automatically skips hidden _delta_log metadata.
-            return self.spark.read.parquet(path)
+            # Loads underlying Parquet records directly via PyArrow without JVM filesystem link errors.
+            try:
+                import pyarrow.parquet as pq
+
+                table = pq.read_table(path)
+                pdf = table.to_pandas()
+                return self.spark.createDataFrame(pdf, QUARANTINE_RECORD_SCHEMA)
+            except Exception:
+                return self.spark.read.parquet(path)
 
 
 class GxPBreachError(RuntimeError):
@@ -326,4 +349,349 @@ def evaluate_batch_quarantine_threshold(
         )
 
     return result
+
+
+class QuarantineRemediationEngine:
+    """
+    Idempotent Clinical Quarantine Remediation & Replay Engine.
+    Allows clinical data stewards to:
+    1. Query unresolved quarantined records (status='QUARANTINED').
+    2. Re-evaluate records against updated vocabulary mappings (ICD-10, LOINC) or patched rules.
+    3. Idempotently promote corrected records into Silver tier Delta tables via Delta MERGE (SCD Type 1).
+    4. Mark remediated records as 'REMEDIATED' with a UTC timestamp in the quarantine Delta sink.
+    """
+
+    def __init__(self, spark: SparkSession, base_output_dir: str | None = None):
+        self.spark = spark
+        self.base_output_dir = base_output_dir
+        self.q_writer = QuarantineDeltaWriter(spark, base_output_dir=base_output_dir)
+        self.medallion_writer = DeltaMedallionWriter(spark, base_output_dir=base_output_dir)
+
+    def get_unresolved_records(self, table_name: str) -> DataFrame:
+        """Retrieves active quarantined records pending remediation."""
+        try:
+            df = self.q_writer.read_quarantine_table(table_name)
+            return df.filter(col("status") == "QUARANTINED")
+        except Exception:
+            return self.spark.createDataFrame([], QUARANTINE_RECORD_SCHEMA)
+
+    def mark_as_remediated(self, table_name: str, remediated_ids: list[str]) -> None:
+        """
+        Idempotently marks quarantine records as 'REMEDIATED' with remediation_timestamp
+        using Delta MERGE.
+        """
+        if not remediated_ids:
+            return
+
+        target_path = self.q_writer.get_quarantine_table_path(table_name)
+        remediation_ts = current_timestamp()
+
+        if HAS_DELTA and self.medallion_writer._is_delta_table(target_path):
+            try:
+                dt = DeltaTable.forPath(self.spark, target_path)
+                id_df = self.spark.createDataFrame([(i,) for i in remediated_ids], ["rem_id"])
+                dt.alias("target").merge(
+                    id_df.alias("source"), "target.quarantine_id = source.rem_id"
+                ).whenMatchedUpdate(
+                    set={
+                        "status": lit("REMEDIATED"),
+                        "remediation_timestamp": remediation_ts,
+                    }
+                ).execute()
+                print(
+                    f"[REMEDIATION] Marked {len(remediated_ids)} records as REMEDIATED in {target_path}"
+                )
+                return
+            except Exception as e:
+                print(f"[REMEDIATION NOTICE] Delta MERGE update notice: {e}")
+
+        # Fallback for local testing or non-Delta environments
+        try:
+            import datetime
+
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+
+            table = pq.read_table(target_path)
+            records = table.to_pylist()
+            now_dt = datetime.datetime.now(datetime.UTC)
+            rem_set = set(remediated_ids)
+            for r in records:
+                if r.get("quarantine_id") in rem_set:
+                    r["status"] = "REMEDIATED"
+                    r["remediation_timestamp"] = now_dt
+
+            for fname in os.listdir(target_path):
+                if fname.endswith(".parquet"):
+                    try:
+                        os.remove(os.path.join(target_path, fname))
+                    except OSError:
+                        pass
+
+            updated_table = pa.Table.from_pylist(records, schema=table.schema)
+            out_file = os.path.join(target_path, "part-00000-remediated.parquet")
+            pq.write_table(updated_table, out_file)
+            print(
+                f"[REMEDIATION] Overwritten {len(remediated_ids)} records as REMEDIATED in {target_path} (pyarrow fallback)"
+            )
+            return
+        except Exception as pyarrow_err:
+            print(f"[REMEDIATION NOTICE] PyArrow fallback notice: {pyarrow_err}")
+
+        # Secondary fallback via Spark DataFrame overwrite
+        try:
+            df = self.q_writer.read_quarantine_table(table_name)
+            id_list_sql = ", ".join(f"'{i}'" for i in remediated_ids)
+            df_updated = (
+                df.withColumn(
+                    "status",
+                    expr(
+                        f"case when quarantine_id in ({id_list_sql}) then 'REMEDIATED' else status end"
+                    ),
+                )
+                .withColumn(
+                    "remediation_timestamp",
+                    expr(
+                        f"case when quarantine_id in ({id_list_sql}) then current_timestamp() else remediation_timestamp end"
+                    ),
+                )
+            )
+            self.q_writer.write_quarantine_sink(df_updated, table_name, mode="overwrite")
+            print(
+                f"[REMEDIATION] Overwritten {len(remediated_ids)} records as REMEDIATED in {target_path}"
+            )
+        except Exception as e:
+            print(f"[REMEDIATION NOTICE] Fallback update notice: {e}")
+
+    def remediate_conditions(
+        self,
+        updated_concept_mappings: dict[str, int] | None = None,
+        mapping_file: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Re-evaluates quarantined condition/diagnosis records against updated ICD-10 concept mappings.
+        Corrected records are promoted to the Silver 'clinical_diagnoses' Delta table, and their
+        quarantine records are marked as REMEDIATED.
+        """
+        df_unresolved = self.get_unresolved_records(QUARANTINE_TABLE_CONDITIONS)
+        count = df_unresolved.count()
+        if count == 0:
+            return {
+                "table_name": QUARANTINE_TABLE_CONDITIONS,
+                "status": "NO_RECORDS",
+                "total_evaluated": 0,
+                "remediated_count": 0,
+                "unresolved_count": 0,
+            }
+
+        mappings_data = load_concept_mappings(mapping_file)
+        icd10_map = dict(mappings_data.get("icd10_to_snomed", DEFAULT_ICD10_MAPPINGS))
+        if updated_concept_mappings:
+            icd10_map.update(updated_concept_mappings)
+
+        payload_rdd = df_unresolved.select("raw_payload").rdd.map(lambda r: r[0])
+        json_schema = self.spark.read.json(payload_rdd).schema
+
+        df_unpacked = df_unresolved.withColumn(
+            "_unpacked", from_json(col("raw_payload"), json_schema)
+        ).select("quarantine_id", "_unpacked.*")
+
+        df_with_eval = df_unpacked.withColumn(
+            "parsed_diag_dt", expr("try_cast(diagnosis_date as date)")
+        )
+
+        valid_codes = [k.upper() for k, v in icd10_map.items() if v != 0]
+        all_valid_codes = list(set(valid_codes) | {c.replace(".", "") for c in valid_codes})
+
+        is_valid_date = col("parsed_diag_dt").isNotNull()
+        is_mapped_code = upper(trim(col("code"))).isin(all_valid_codes)
+        is_remediated_cond = is_valid_date & is_mapped_code
+
+        df_remediated = df_with_eval.filter(is_remediated_cond)
+        remediated_count = df_remediated.count()
+        unresolved_count = count - remediated_count
+
+        promoted_path = None
+        if remediated_count > 0:
+            remediated_ids = [
+                r.quarantine_id for r in df_remediated.select("quarantine_id").collect()
+            ]
+            silver_cols = [c for c in df_remediated.columns if c != "quarantine_id"]
+            df_silver_promoted = df_remediated.select(silver_cols)
+
+            merge_keys = [
+                k
+                for k in ["encounter_id", "patient_id", "diagnosis_date", "code"]
+                if k in df_silver_promoted.columns
+            ]
+            if not merge_keys:
+                merge_keys = df_silver_promoted.columns[:2]
+
+            promoted_path = self.medallion_writer.upsert_silver_table(
+                df_silver_promoted, "clinical_diagnoses", merge_keys=merge_keys
+            )
+            self.mark_as_remediated(QUARANTINE_TABLE_CONDITIONS, remediated_ids)
+
+        return {
+            "table_name": QUARANTINE_TABLE_CONDITIONS,
+            "status": "SUCCESS",
+            "total_evaluated": count,
+            "remediated_count": remediated_count,
+            "unresolved_count": unresolved_count,
+            "promoted_path": promoted_path,
+        }
+
+    def remediate_measurements(
+        self,
+        updated_loinc_mappings: dict[str, int] | None = None,
+        mapping_file: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Re-evaluates quarantined laboratory/measurement records against updated LOINC concept mappings
+        and physiological bounds. Corrected records are promoted to Silver 'lab_measurements'.
+        """
+        df_unresolved = self.get_unresolved_records(QUARANTINE_TABLE_MEASUREMENTS)
+        count = df_unresolved.count()
+        if count == 0:
+            return {
+                "table_name": QUARANTINE_TABLE_MEASUREMENTS,
+                "status": "NO_RECORDS",
+                "total_evaluated": 0,
+                "remediated_count": 0,
+                "unresolved_count": 0,
+            }
+
+        mappings_data = load_concept_mappings(mapping_file)
+        loinc_map = dict(mappings_data.get("loinc_to_measurement", DEFAULT_LOINC_MAPPINGS))
+        if updated_loinc_mappings:
+            loinc_map.update(updated_loinc_mappings)
+
+        payload_rdd = df_unresolved.select("raw_payload").rdd.map(lambda r: r[0])
+        json_schema = self.spark.read.json(payload_rdd).schema
+
+        df_unpacked = df_unresolved.withColumn(
+            "_unpacked", from_json(col("raw_payload"), json_schema)
+        ).select("quarantine_id", "_unpacked.*")
+
+        df_with_eval = (
+            df_unpacked.withColumn(
+                "parsed_lab_datetime",
+                coalesce(
+                    to_timestamp(expr("try_cast(lab_datetime as timestamp)")),
+                    to_timestamp(expr("try_cast(lab_datetime as date)")),
+                ),
+            )
+            .withColumn("parsed_lab_dt", col("parsed_lab_datetime").cast("date"))
+            .withColumn("numeric_value", expr("try_cast(value as double)"))
+        )
+
+        valid_codes = [k.upper() for k, v in loinc_map.items() if v != 0]
+        is_valid_date = col("parsed_lab_dt").isNotNull()
+        is_non_negative = col("numeric_value").isNull() | (col("numeric_value") >= 0.0)
+        is_mapped_code = (
+            upper(trim(col("code"))).isin(valid_codes)
+            if "code" in df_with_eval.columns
+            else lit(True)
+        )
+
+        is_remediated_meas = is_valid_date & is_non_negative & is_mapped_code
+        df_remediated = df_with_eval.filter(is_remediated_meas)
+        remediated_count = df_remediated.count()
+        unresolved_count = count - remediated_count
+
+        promoted_path = None
+        if remediated_count > 0:
+            remediated_ids = [
+                r.quarantine_id for r in df_remediated.select("quarantine_id").collect()
+            ]
+            silver_cols = [c for c in df_remediated.columns if c != "quarantine_id"]
+            df_silver_promoted = df_remediated.select(silver_cols)
+
+            merge_keys = [
+                k
+                for k in ["patient_id", "parsed_lab_dt", "code"]
+                if k in df_silver_promoted.columns
+            ]
+            if not merge_keys:
+                merge_keys = df_silver_promoted.columns[:2]
+
+            promoted_path = self.medallion_writer.upsert_silver_table(
+                df_silver_promoted, "lab_measurements", merge_keys=merge_keys
+            )
+            self.mark_as_remediated(QUARANTINE_TABLE_MEASUREMENTS, remediated_ids)
+
+        return {
+            "table_name": QUARANTINE_TABLE_MEASUREMENTS,
+            "status": "SUCCESS",
+            "total_evaluated": count,
+            "remediated_count": remediated_count,
+            "unresolved_count": unresolved_count,
+            "promoted_path": promoted_path,
+        }
+
+    def remediate_patients(self) -> dict[str, Any]:
+        """
+        Re-evaluates quarantined demographic patient records. Corrected records are promoted
+        to Silver 'clinical_demographics'.
+        """
+        df_unresolved = self.get_unresolved_records(QUARANTINE_TABLE_PATIENTS)
+        count = df_unresolved.count()
+        if count == 0:
+            return {
+                "table_name": QUARANTINE_TABLE_PATIENTS,
+                "status": "NO_RECORDS",
+                "total_evaluated": 0,
+                "remediated_count": 0,
+                "unresolved_count": 0,
+            }
+
+        payload_rdd = df_unresolved.select("raw_payload").rdd.map(lambda r: r[0])
+        json_schema = self.spark.read.json(payload_rdd).schema
+
+        df_unpacked = df_unresolved.withColumn(
+            "_unpacked", from_json(col("raw_payload"), json_schema)
+        ).select("quarantine_id", "_unpacked.*")
+
+        df_with_eval = df_unpacked.withColumn(
+            "parsed_birth_dt",
+            coalesce(
+                to_timestamp(expr("try_cast(birth_datetime as timestamp)")),
+                to_timestamp(expr("try_cast(birth_datetime as date)")),
+            ),
+        )
+
+        valid_gender = upper(trim(col("gender"))).isin("MALE", "FEMALE", "M", "F", "UNKNOWN")
+        is_valid_patient = col("parsed_birth_dt").isNotNull() & valid_gender
+        df_remediated = df_with_eval.filter(is_valid_patient)
+        remediated_count = df_remediated.count()
+        unresolved_count = count - remediated_count
+
+        promoted_path = None
+        if remediated_count > 0:
+            remediated_ids = [
+                r.quarantine_id for r in df_remediated.select("quarantine_id").collect()
+            ]
+            silver_cols = [c for c in df_remediated.columns if c != "quarantine_id"]
+            df_silver_promoted = df_remediated.select(silver_cols)
+
+            merge_keys = [
+                k for k in ["patient_id", "id", "person_id"] if k in df_silver_promoted.columns
+            ]
+            if not merge_keys:
+                merge_keys = df_silver_promoted.columns[:1]
+
+            promoted_path = self.medallion_writer.upsert_silver_table(
+                df_silver_promoted, "clinical_demographics", merge_keys=merge_keys
+            )
+            self.mark_as_remediated(QUARANTINE_TABLE_PATIENTS, remediated_ids)
+
+        return {
+            "table_name": QUARANTINE_TABLE_PATIENTS,
+            "status": "SUCCESS",
+            "total_evaluated": count,
+            "remediated_count": remediated_count,
+            "unresolved_count": unresolved_count,
+            "promoted_path": promoted_path,
+        }
+
 

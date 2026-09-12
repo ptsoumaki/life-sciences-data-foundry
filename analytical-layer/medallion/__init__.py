@@ -10,6 +10,7 @@ from .quarantine import (
     ClinicalFailureCode,
     GxPBreachError,
     QuarantineDeltaWriter,
+    QuarantineRemediationEngine,
     evaluate_batch_quarantine_threshold,
     format_quarantine_dataframe,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "DeltaMedallionWriter",
     "GxPBreachError",
     "QuarantineDeltaWriter",
+    "QuarantineRemediationEngine",
     "evaluate_batch_quarantine_threshold",
     "format_quarantine_dataframe",
 ]

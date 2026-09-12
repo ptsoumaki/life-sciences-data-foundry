@@ -13,17 +13,19 @@ from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 from medallion.quarantine import (
     QUARANTINE_RECORD_SCHEMA,
+    QUARANTINE_TABLE_CONDITIONS,
     QUARANTINE_TABLE_MEASUREMENTS,
     QUARANTINE_TABLE_PATIENTS,
     ClinicalFailureCode,
     GxPBreachError,
     QuarantineDeltaWriter,
+    QuarantineRemediationEngine,
     evaluate_batch_quarantine_threshold,
     format_quarantine_dataframe,
 )
 
 
-def test_clinical_failure_code_taxonomy():
+def test_clinical_failure_code_taxonomy(spark: SparkSession):
     """Verifies that all 5 standard GxP clinical failure codes are correctly configured."""
     expected_codes = {
         "SCHEMA_VIOLATION",
@@ -224,4 +226,147 @@ def test_evaluate_batch_quarantine_threshold_empty_ingest():
     )
     assert res["status"] == "COMPLIANT"
     assert res["rejection_ratio"] == 0.0
+
+
+def test_quarantine_remediation_engine_no_records(spark: SparkSession):
+    """Verifies remediation engine handles empty tables gracefully."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        engine = QuarantineRemediationEngine(spark, base_output_dir=tmp_dir)
+        res = engine.remediate_conditions()
+        assert res["status"] == "NO_RECORDS"
+        assert res["total_evaluated"] == 0
+        assert res["remediated_count"] == 0
+
+
+def test_quarantine_remediation_engine_conditions_with_updated_mapping(spark: SparkSession):
+    """Verifies remediation of quarantined conditions after expanding vocabulary mappings."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        writer = QuarantineDeltaWriter(spark, base_output_dir=tmp_dir)
+
+        # Create two quarantined records:
+        # Row 1: Valid date '2022-03-10', unmapped code 'E11.9_EXP' (remediable)
+        # Row 2: Corrupt date 'NOT_A_DATE', unmapped code 'OTHER' (irremediable)
+        schema = StructType(
+            [
+                StructField("patient_id", StringType(), True),
+                StructField("diagnosis_date", StringType(), True),
+                StructField("code", StringType(), True),
+                StructField("encounter_id", StringType(), True),
+            ]
+        )
+        raw_rows = [
+            ("P100", "2022-03-10", "E11.9_EXP", "ENC1"),
+            ("P200", "NOT_A_DATE", "OTHER", "ENC2"),
+        ]
+        df_raw = spark.createDataFrame(raw_rows, schema)
+
+        df_q = format_quarantine_dataframe(
+            df_raw,
+            table_name=QUARANTINE_TABLE_CONDITIONS,
+            failure_code=ClinicalFailureCode.UNMAPPED_TERMINOLOGY,
+            failure_reason="Unmapped diagnosis code",
+            mlflow_run_id="run-rem-test",
+        )
+
+        writer.write_quarantine_conditions(df_q, mode="overwrite")
+
+        engine = QuarantineRemediationEngine(spark, base_output_dir=tmp_dir)
+
+        # Remediate with updated concept mapping resolving 'E11.9_EXP' to SNOMED 201826
+        res = engine.remediate_conditions(updated_concept_mappings={"E11.9_EXP": 201826})
+
+        assert res["status"] == "SUCCESS"
+        assert res["total_evaluated"] == 2
+        assert res["remediated_count"] == 1
+        assert res["unresolved_count"] == 1
+
+        # Check quarantine table status updates
+        df_q_after = writer.read_quarantine_table(QUARANTINE_TABLE_CONDITIONS)
+        rows_after = df_q_after.collect()
+        remediated_row = next((r for r in rows_after if "E11.9_EXP" in r["raw_payload"]), None)
+        unresolved_row = next((r for r in rows_after if "NOT_A_DATE" in r["raw_payload"]), None)
+
+        assert remediated_row is not None
+        assert remediated_row["status"] == "REMEDIATED"
+        assert remediated_row["remediation_timestamp"] is not None
+
+        assert unresolved_row is not None
+        assert unresolved_row["status"] == "QUARANTINED"
+        assert unresolved_row["remediation_timestamp"] is None
+
+
+def test_quarantine_remediation_engine_idempotency(spark: SparkSession):
+    """Verifies running remediation twice is idempotent and does not re-process remediated rows."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        writer = QuarantineDeltaWriter(spark, base_output_dir=tmp_dir)
+
+        schema = StructType(
+            [
+                StructField("patient_id", StringType(), True),
+                StructField("diagnosis_date", StringType(), True),
+                StructField("code", StringType(), True),
+            ]
+        )
+        df_raw = spark.createDataFrame([("P100", "2021-05-20", "I10_EXP")], schema)
+
+        df_q = format_quarantine_dataframe(
+            df_raw,
+            table_name=QUARANTINE_TABLE_CONDITIONS,
+            failure_code=ClinicalFailureCode.UNMAPPED_TERMINOLOGY,
+            failure_reason="Unmapped code",
+        )
+        writer.write_quarantine_conditions(df_q, mode="overwrite")
+
+        engine = QuarantineRemediationEngine(spark, base_output_dir=tmp_dir)
+
+        # First remediation run: resolves the row
+        res1 = engine.remediate_conditions(updated_concept_mappings={"I10_EXP": 316866})
+        assert res1["remediated_count"] == 1
+
+        # Second remediation run: 0 unresolved records remain
+        res2 = engine.remediate_conditions(updated_concept_mappings={"I10_EXP": 316866})
+        assert res2["status"] == "NO_RECORDS"
+        assert res2["total_evaluated"] == 0
+        assert res2["remediated_count"] == 0
+
+
+def test_quarantine_remediation_engine_measurements(spark: SparkSession):
+    """Verifies remediation of lab measurements with updated LOINC mapping."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        writer = QuarantineDeltaWriter(spark, base_output_dir=tmp_dir)
+
+        schema = StructType(
+            [
+                StructField("patient_id", StringType(), True),
+                StructField("lab_datetime", StringType(), True),
+                StructField("code", StringType(), True),
+                StructField("value", StringType(), True),
+            ]
+        )
+        # Row 1: valid date and positive value, unmapped LOINC '99999-9' (remediable)
+        # Row 2: negative value '-10' (irremediable out-of-bounds)
+        df_raw = spark.createDataFrame(
+            [
+                ("P1", "2023-01-01T12:00:00Z", "99999-9", "5.5"),
+                ("P2", "2023-01-01T12:00:00Z", "99999-9", "-10.0"),
+            ],
+            schema,
+        )
+
+        df_q = format_quarantine_dataframe(
+            df_raw,
+            table_name=QUARANTINE_TABLE_MEASUREMENTS,
+            failure_code=ClinicalFailureCode.UNMAPPED_TERMINOLOGY,
+            failure_reason="Pending LOINC vocabulary review",
+        )
+        writer.write_quarantine_measurements(df_q, mode="overwrite")
+
+        engine = QuarantineRemediationEngine(spark, base_output_dir=tmp_dir)
+        res = engine.remediate_measurements(updated_loinc_mappings={"99999-9": 3004410})
+
+        assert res["status"] == "SUCCESS"
+        assert res["total_evaluated"] == 2
+        assert res["remediated_count"] == 1
+        assert res["unresolved_count"] == 1
+
 

@@ -8,7 +8,9 @@ from .quarantine import (
     QUARANTINE_TABLE_MEASUREMENTS,
     QUARANTINE_TABLE_PATIENTS,
     ClinicalFailureCode,
+    GxPBreachError,
     QuarantineDeltaWriter,
+    evaluate_batch_quarantine_threshold,
     format_quarantine_dataframe,
 )
 from .writer import DeltaMedallionWriter
@@ -20,6 +22,8 @@ __all__ = [
     "QUARANTINE_TABLE_PATIENTS",
     "ClinicalFailureCode",
     "DeltaMedallionWriter",
+    "GxPBreachError",
     "QuarantineDeltaWriter",
+    "evaluate_batch_quarantine_threshold",
     "format_quarantine_dataframe",
 ]

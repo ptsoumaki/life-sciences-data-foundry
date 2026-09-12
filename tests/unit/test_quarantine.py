@@ -7,6 +7,7 @@ import os
 import tempfile
 import uuid
 
+import pytest
 from pyspark.sql import SparkSession
 from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
@@ -15,7 +16,9 @@ from medallion.quarantine import (
     QUARANTINE_TABLE_MEASUREMENTS,
     QUARANTINE_TABLE_PATIENTS,
     ClinicalFailureCode,
+    GxPBreachError,
     QuarantineDeltaWriter,
+    evaluate_batch_quarantine_threshold,
     format_quarantine_dataframe,
 )
 
@@ -165,3 +168,60 @@ def test_quarantine_delta_writer_persist_and_verify(spark: SparkSession):
         assert add_action.get("path").endswith(".parquet")
         stats = json.loads(add_action.get("stats", "{}"))
         assert stats.get("numRecords") == 1
+
+
+def test_evaluate_batch_quarantine_threshold_compliant():
+    """Verifies that batch with quarantine ratio within threshold is marked COMPLIANT."""
+    res = evaluate_batch_quarantine_threshold(
+        total_ingested=1000,
+        total_quarantined=15,
+        threshold=0.02,
+        failure_counts_by_code={"SCHEMA_VIOLATION": 10, "OUT_OF_BOUNDS_LAB": 5},
+        abort_on_breach=False,
+    )
+
+    assert res["status"] == "COMPLIANT"
+    assert res["is_breach"] is False
+    assert res["rejection_ratio"] == 0.015
+    assert res["threshold"] == 0.02
+    assert res["total_quarantined"] == 15
+    assert res["total_ingested"] == 1000
+
+
+def test_evaluate_batch_quarantine_threshold_breach_warning():
+    """Verifies that batch exceeding threshold is marked BREACH and does not raise if abort_on_breach=False."""
+    res = evaluate_batch_quarantine_threshold(
+        total_ingested=1000,
+        total_quarantined=35,
+        threshold=0.02,
+        failure_counts_by_code={"SCHEMA_VIOLATION": 25, "OUT_OF_BOUNDS_LAB": 10},
+        abort_on_breach=False,
+    )
+
+    assert res["status"] == "BREACH"
+    assert res["is_breach"] is True
+    assert res["rejection_ratio"] == 0.035
+    assert res["threshold"] == 0.02
+
+
+def test_evaluate_batch_quarantine_threshold_abort_on_breach():
+    """Verifies that exceeding threshold raises GxPBreachError when abort_on_breach=True."""
+    with pytest.raises(GxPBreachError, match="GxP Batch Quality Breach"):
+        evaluate_batch_quarantine_threshold(
+            total_ingested=500,
+            total_quarantined=50,  # 10% >> 2%
+            threshold=0.02,
+            abort_on_breach=True,
+        )
+
+
+def test_evaluate_batch_quarantine_threshold_empty_ingest():
+    """Verifies safe handling of 0 ingested records."""
+    res = evaluate_batch_quarantine_threshold(
+        total_ingested=0,
+        total_quarantined=0,
+        threshold=0.02,
+    )
+    assert res["status"] == "COMPLIANT"
+    assert res["rejection_ratio"] == 0.0
+

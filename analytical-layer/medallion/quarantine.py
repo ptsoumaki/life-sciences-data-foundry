@@ -9,6 +9,7 @@ Author: Vivi Tsoumaki
 
 import os
 from enum import StrEnum
+from typing import Any
 
 from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql.functions import (
@@ -233,3 +234,96 @@ class QuarantineDeltaWriter:
             # Fallback for local Windows environments lacking native hadoop.dll;
             # Spark Parquet loader automatically skips hidden _delta_log metadata.
             return self.spark.read.parquet(path)
+
+
+class GxPBreachError(RuntimeError):
+    """Raised when batch quarantine rejection ratio breaches configured GxP quality thresholds."""
+
+    pass
+
+
+def evaluate_batch_quarantine_threshold(
+    total_ingested: int,
+    total_quarantined: int,
+    threshold: float = 0.02,
+    failure_counts_by_code: dict[str, int] | None = None,
+    abort_on_breach: bool = False,
+    mlflow_run_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Computes batch quarantine rejection ratio and enforces GxP compliance breach threshold gates:
+    Rejection Ratio = total_quarantined / total_ingested
+
+    Logs breach metrics and compliance status to MLflow for FDA 21 CFR Part 11 auditing.
+    Raises GxPBreachError if the threshold is breached and abort_on_breach is True.
+
+    Args:
+        total_ingested: Total count of ingested rows across all clinical domains.
+        total_quarantined: Total count of records routed to quarantine.
+        threshold: Tolerable quarantine ratio limit (default 0.02 = 2.0%).
+        failure_counts_by_code: Optional breakdown of failures by ClinicalFailureCode.
+        abort_on_breach: When True, raises GxPBreachError on threshold violation.
+        mlflow_run_id: Optional MLflow run ID for explicit run metric logging.
+
+    Returns:
+        Dictionary containing threshold evaluation results and telemetry metrics.
+    """
+    rejection_ratio = (total_quarantined / total_ingested) if total_ingested > 0 else 0.0
+    is_breach = rejection_ratio > threshold
+    status = "BREACH" if is_breach else "COMPLIANT"
+
+    breakdown = failure_counts_by_code or {}
+
+    # MLflow audit logging
+    try:
+        import mlflow
+
+        active = mlflow.active_run()
+        if active or mlflow_run_id:
+            mlflow.log_metric("quarantine_total_ingested", total_ingested)
+            mlflow.log_metric("quarantine_total_quarantined", total_quarantined)
+            mlflow.log_metric("quarantine_rejection_ratio", rejection_ratio)
+            mlflow.log_metric("quarantine_threshold_limit", threshold)
+            mlflow.log_metric("gxp_breach_detected", 1.0 if is_breach else 0.0)
+
+            for code, count in breakdown.items():
+                clean_code = str(code).lower()
+                mlflow.log_metric(f"quarantine_count_{clean_code}", count)
+
+            mlflow.set_tag("gxp_compliance_status", status)
+
+            if is_breach:
+                mlflow.set_tag(
+                    "gxp_breach_reason",
+                    f"Quarantine ratio {rejection_ratio:.4f} exceeded threshold {threshold:.4f}",
+                )
+    except Exception as e:
+        print(f"[MLFLOW NOTICE] Quarantine threshold logging notice: {e}")
+
+    result = {
+        "status": status,
+        "is_breach": is_breach,
+        "total_ingested": total_ingested,
+        "total_quarantined": total_quarantined,
+        "rejection_ratio": rejection_ratio,
+        "threshold": threshold,
+        "failure_breakdown": breakdown,
+    }
+
+    if is_breach:
+        msg = (
+            f"GxP Batch Quality Breach! Quarantine rejection ratio {rejection_ratio:.2%} "
+            f"exceeded configured tolerance threshold of {threshold:.2%} "
+            f"({total_quarantined}/{total_ingested} records quarantined). Failure breakdown: {breakdown}"
+        )
+        print(f"[GxP BREACH WARNING] {msg}")
+        if abort_on_breach:
+            raise GxPBreachError(msg)
+    else:
+        print(
+            f"[GxP QUALITY GATE] Batch within tolerance: {rejection_ratio:.2%} quarantined "
+            f"(threshold: {threshold:.2%}). Status: COMPLIANT."
+        )
+
+    return result
+

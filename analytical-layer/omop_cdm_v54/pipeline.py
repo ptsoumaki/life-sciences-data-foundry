@@ -229,11 +229,13 @@ def run_omop_pipeline(
     df_diag_parsed = df_raw_diagnoses.withColumn(
         "parsed_diag_dt", expr("try_cast(diagnosis_date as date)")
     ).cache()
-    valid_diag_condition = col("parsed_diag_dt").isNotNull() & col("code").isNotNull()
+    diag_code_col = col("icd10_code") if "icd10_code" in df_diag_parsed.columns else col("code")
+    valid_diag_condition = col("parsed_diag_dt").isNotNull() & diag_code_col.isNotNull()
     df_silver_diagnoses = df_diag_parsed.filter(valid_diag_condition)
     df_quarantine_diagnoses = df_diag_parsed.filter(~valid_diag_condition)
 
     # Filter Labs — parse timestamp, date, and validate physiological non-negativity for numeric biomarkers.
+    lab_val_col_name = "numeric_value" if "numeric_value" in df_raw_labs.columns else "value"
     df_labs_parsed = (
         df_raw_labs.withColumn(
             "parsed_lab_datetime",
@@ -243,7 +245,7 @@ def run_omop_pipeline(
             ),
         )
         .withColumn("parsed_lab_dt", col("parsed_lab_datetime").cast("date"))
-        .withColumn("numeric_value", expr("try_cast(value as double)"))
+        .withColumn("numeric_value", expr(f"try_cast({lab_val_col_name} as double)"))
     ).cache()
 
     valid_lab_condition = col("parsed_lab_dt").isNotNull() & (

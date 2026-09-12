@@ -14,12 +14,14 @@ This document describes the automated testing strategy, GxP data contract valida
 │    ├── LOINC laboratory measurement transformations         │
 │    ├── VCF v4.2 genomic variant feature extraction          │
 │    ├── Dynamic PySpark vocabulary dictionary lookups        │
+│    ├── GxP dead-letter quarantine (test_quarantine.py)      │
 │    ├── Centralized SHA-256 crypto tests (test_crypto.py)    │
 │    └── LangGraph GxP auditor tests (test_graph_auditor.py)  │
 ├─────────────────────────────────────────────────────────────┤
 │ 2. End-to-End Integration Tests (tests/integration/)        │
 │    ├── Full Medallion pipeline execution (Demo & Remote)    │
 │    ├── Delta Lake ACID persistence & Liquid Clustering      │
+│    ├── Quarantine routing & breach gates (test_quarantine)  │
 │    └── Runtime Great Expectations assertion enforcement     │
 ├─────────────────────────────────────────────────────────────┤
 │ 3. GxP Compliance & Lineage Auditing (governance/ & AI)     │
@@ -38,17 +40,23 @@ This document describes the automated testing strategy, GxP data contract valida
 ## 🚀 Running Test Suites Locally
 
 ### 1. Unit Tests (PySpark, Governance & Agentic AI)
-Executes unit tests verifying domain transformers, vocabulary resolution, cryptographic digests, and LangGraph audit state machines:
+Executes unit tests verifying domain transformers, vocabulary resolution, cryptographic digests, dead-letter quarantine, and LangGraph audit state machines:
 
 ```bash
 pytest tests/unit/ -v
+
+# Run quarantine unit suite specifically
+pytest tests/unit/test_quarantine.py -v
 ```
 
 ### 2. End-to-End Integration Tests
-Runs the complete Medallion pipeline using `pytest-spark` fixtures, validating Delta Lake writes and data contract enforcement:
+Runs the complete Medallion pipeline using `pytest-spark` fixtures, validating Delta Lake writes, quarantine breach thresholds, and data contract enforcement:
 
 ```bash
 pytest tests/integration/ -v
+
+# Run quarantine & remediation integration tests specifically
+pytest tests/integration/test_quarantine_integration.py -v
 ```
 
 ### 3. Generate Code Coverage Report

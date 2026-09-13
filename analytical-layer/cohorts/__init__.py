@@ -14,11 +14,14 @@ from cohorts.builder import (
     get_hypertension_cohort_definition,
     get_type_2_diabetes_cohort_definition,
 )
+from cohorts.deid import RESTRICTED_ZIP3_PREFIXES, HIPAADeIdentifier
 
 __all__ = [
     "COHORT_SCHEMA",
+    "RESTRICTED_ZIP3_PREFIXES",
     "CohortCriteria",
     "CohortDefinition",
+    "HIPAADeIdentifier",
     "OHDSICohortBuilder",
     "get_genomic_oncology_cohort_definition",
     "get_hypertension_cohort_definition",

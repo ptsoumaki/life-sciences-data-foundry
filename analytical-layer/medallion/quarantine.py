@@ -9,7 +9,7 @@ Author: Vivi Tsoumaki
 
 import os
 from enum import StrEnum
-from typing import Any
+from typing import Any, cast
 
 from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql.functions import (
@@ -118,7 +118,9 @@ def format_quarantine_dataframe(
         spark = df.sparkSession
         return spark.createDataFrame([], QUARANTINE_RECORD_SCHEMA)
 
-    code_val = failure_code.value if isinstance(failure_code, ClinicalFailureCode) else str(failure_code)
+    code_val = (
+        failure_code.value if isinstance(failure_code, ClinicalFailureCode) else str(failure_code)
+    )
     run_id = mlflow_run_id or get_active_mlflow_run_id()
 
     # Pack all existing columns into a verbatim raw JSON string
@@ -267,9 +269,7 @@ class QuarantineDeltaWriter:
                 import pandas as pd
 
                 for ts_col in ["failure_timestamp", "remediation_timestamp"]:
-                    if ts_col in pdf.columns and pd.api.types.is_datetime64tz_dtype(
-                        pdf[ts_col]
-                    ):
+                    if ts_col in pdf.columns and pd.api.types.is_datetime64tz_dtype(pdf[ts_col]):
                         pdf[ts_col] = pdf[ts_col].dt.tz_convert(None)
                 return self.spark.createDataFrame(pdf, QUARANTINE_RECORD_SCHEMA)
             except Exception:
@@ -434,11 +434,12 @@ class QuarantineRemediationEngine:
         try:
             import datetime
 
+            import pandas as pd
             import pyarrow as pa
             import pyarrow.parquet as pq
 
             df_current = self.q_writer.read_quarantine_table(table_name)
-            pdf = df_current.toPandas()
+            pdf = cast(pd.DataFrame, df_current.toPandas())
             # Use a timezone-naive UTC datetime to match the datetime64[ns] dtype that
             # pandas infers for the null-initialised remediation_timestamp column.
             now_dt = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
@@ -468,19 +469,16 @@ class QuarantineRemediationEngine:
         try:
             df = self.q_writer.read_quarantine_table(table_name)
             id_list_sql = ", ".join(f"'{i}'" for i in remediated_ids)
-            df_updated = (
-                df.withColumn(
-                    "status",
-                    expr(
-                        f"case when quarantine_id in ({id_list_sql}) then 'REMEDIATED' else status end"
-                    ),
-                )
-                .withColumn(
-                    "remediation_timestamp",
-                    expr(
-                        f"case when quarantine_id in ({id_list_sql}) then current_timestamp() else remediation_timestamp end"
-                    ),
-                )
+            df_updated = df.withColumn(
+                "status",
+                expr(
+                    f"case when quarantine_id in ({id_list_sql}) then 'REMEDIATED' else status end"
+                ),
+            ).withColumn(
+                "remediation_timestamp",
+                expr(
+                    f"case when quarantine_id in ({id_list_sql}) then current_timestamp() else remediation_timestamp end"
+                ),
             )
             self.q_writer.write_quarantine_sink(df_updated, table_name, mode="overwrite")
             print(

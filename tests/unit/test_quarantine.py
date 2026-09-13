@@ -368,5 +368,3 @@ def test_quarantine_remediation_engine_measurements(spark: SparkSession):
         assert res["total_evaluated"] == 2
         assert res["remediated_count"] == 1
         assert res["unresolved_count"] == 1
-
-

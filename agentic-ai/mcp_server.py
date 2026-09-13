@@ -13,6 +13,7 @@ Author: Vivi Tsoumaki
 import argparse
 import asyncio
 import glob
+import importlib
 import json
 import os
 import sys
@@ -27,17 +28,18 @@ for p in [BASE_DIR, AGENTIC_DIR, ANALYTICAL_DIR]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-MCPServer: Any
+MCPServer: Any = None
 
 try:
-    from mcp.server.fastmcp import FastMCP as _FastMCP
-
-    MCPServer = _FastMCP
+    _fastmcp_mod = importlib.import_module("mcp.server.fastmcp")
+    MCPServer = getattr(_fastmcp_mod, "FastMCP", None)
 except ImportError:
-    try:
-        from mcp.server.mcpserver import MCPServer as _MCPServerLegacy
+    pass
 
-        MCPServer = _MCPServerLegacy
+if MCPServer is None:
+    try:
+        _mcpserver_mod = importlib.import_module("mcp.server.mcpserver")
+        MCPServer = getattr(_mcpserver_mod, "MCPServer", None)
     except ImportError:
         MCPServer = None
 

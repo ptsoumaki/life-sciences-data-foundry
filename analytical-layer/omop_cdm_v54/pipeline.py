@@ -41,6 +41,27 @@ except ImportError:
     DeltaMedallionWriter = None  # type: ignore[assignment, misc]
 
 try:
+    from medallion.quarantine import (
+        QUARANTINE_TABLE_CONDITIONS,
+        QUARANTINE_TABLE_MEASUREMENTS,
+        QUARANTINE_TABLE_PATIENTS,
+        ClinicalFailureCode,
+        GxPBreachError,
+        QuarantineDeltaWriter,
+        evaluate_batch_quarantine_threshold,
+        format_quarantine_dataframe,
+    )
+except ImportError:
+    ClinicalFailureCode = None  # type: ignore[assignment, misc]
+    GxPBreachError = RuntimeError  # type: ignore[assignment, misc]
+    QuarantineDeltaWriter = None  # type: ignore[assignment, misc]
+    evaluate_batch_quarantine_threshold = None  # type: ignore[assignment]
+    format_quarantine_dataframe = None  # type: ignore[assignment]
+    QUARANTINE_TABLE_PATIENTS = "quarantine_patients"
+    QUARANTINE_TABLE_CONDITIONS = "quarantine_conditions"
+    QUARANTINE_TABLE_MEASUREMENTS = "quarantine_measurements"
+
+try:
     from governance.mlflow_tracker import evaluate_data_contract
 except ImportError:
     evaluate_data_contract = None  # type: ignore[assignment]
@@ -140,13 +161,15 @@ def run_omop_pipeline(
     run_maintenance: bool = False,
     enable_contract_enforcement: bool = True,
     rules_path: str = "governance/rules.json",
+    quarantine_threshold: float = 0.02,
+    abort_on_breach: bool = False,
 ) -> dict[str, Any]:
     """Executes the Bronze → Silver → Gold Medallion OMOP CDM v5.4 pipeline.
 
     Ingests raw clinical and genomic data (Bronze), applies GxP timestamp normalisation
     and quality filters (Silver), transforms to OMOP CDM v5.4 relational structures
-    (Gold), and optionally enforces a Great Expectations data contract gate before
-    persisting Delta Lake sinks.
+    (Gold), evaluates batch quarantine rejection thresholds, and optionally enforces a
+    Great Expectations data contract gate before persisting Delta Lake sinks.
 
     Args:
         spark: Active SparkSession.
@@ -157,6 +180,8 @@ def run_omop_pipeline(
         run_maintenance: Execute OPTIMIZE and VACUUM after Gold table writes when True.
         enable_contract_enforcement: Run Great Expectations GxP contract gate when True.
         rules_path: Path to the Great Expectations rules JSON specification.
+        quarantine_threshold: Batch quarantine rejection ratio tolerance threshold (default: 0.02 = 2.0%).
+        abort_on_breach: Abort downstream execution via GxPBreachError when rejection ratio exceeds threshold.
 
     Returns:
         Dict with Gold-tier DataFrames keyed by "person", "condition_occurrence", and
@@ -201,12 +226,20 @@ def run_omop_pipeline(
     df_quarantine_clinical = df_clinical_parsed.filter(~valid_clinical_condition)
 
     # Filter Diagnoses — parse to DateType directly (OMOP condition_start_date is `date`, not `datetime`).
-    df_silver_diagnoses = df_raw_diagnoses.withColumn(
+    df_diag_parsed = df_raw_diagnoses.withColumn(
         "parsed_diag_dt", expr("try_cast(diagnosis_date as date)")
-    ).filter(col("parsed_diag_dt").isNotNull())
+    ).cache()
+    # Diagnoses use 'icd10_code' in the synthetic demo schema and 'code' in normalised remote schemas.
+    # Note: remediate_conditions() in quarantine.py always unpacks the 'code' column from raw_payload;
+    # if real data retains 'icd10_code', the vocabulary re-match step will not resolve those records.
+    diag_code_col = col("icd10_code") if "icd10_code" in df_diag_parsed.columns else col("code")
+    valid_diag_condition = col("parsed_diag_dt").isNotNull() & diag_code_col.isNotNull()
+    df_silver_diagnoses = df_diag_parsed.filter(valid_diag_condition)
+    df_quarantine_diagnoses = df_diag_parsed.filter(~valid_diag_condition)
 
-    # Filter Labs — parse timestamp and date (OMOP measurement_date is `date`, measurement_datetime is `timestamp`).
-    df_silver_labs = (
+    # Filter Labs — parse timestamp, date, and validate physiological non-negativity for numeric biomarkers.
+    lab_val_col_name = "numeric_value" if "numeric_value" in df_raw_labs.columns else "value"
+    df_labs_parsed = (
         df_raw_labs.withColumn(
             "parsed_lab_datetime",
             coalesce(
@@ -215,20 +248,102 @@ def run_omop_pipeline(
             ),
         )
         .withColumn("parsed_lab_dt", col("parsed_lab_datetime").cast("date"))
-        .filter(col("parsed_lab_dt").isNotNull())
+        .withColumn("numeric_value", expr(f"try_cast({lab_val_col_name} as double)"))
+    ).cache()
+
+    valid_lab_condition = col("parsed_lab_dt").isNotNull() & (
+        col("numeric_value").isNull() | (col("numeric_value") >= 0.0)
     )
+    df_silver_labs = df_labs_parsed.filter(valid_lab_condition)
+    df_quarantine_labs = df_labs_parsed.filter(~valid_lab_condition)
 
     # Filter Genomics — include standard PASS and uncomputed '.' variant quality filters.
     df_silver_genomics = df_raw_genomics.filter(col("filter").isin("PASS", "."))
 
-    # Materialize counts now; the cached DataFrame absorbs both filter passes without re-scanning.
+    # Materialize counts and calculate batch quality metrics
+    _raw_patients_count = df_raw_patients.count()
+    _raw_diag_count = df_raw_diagnoses.count()
+    _raw_labs_count = df_raw_labs.count()
+    _raw_genomics_count = df_raw_genomics.count()
+    total_ingested = _raw_patients_count + _raw_diag_count + _raw_labs_count + _raw_genomics_count
+
     _silver_clinical_count = df_silver_clinical.count()
-    _qc_count = df_quarantine_clinical.count()
+    _qc_patients_count = df_quarantine_clinical.count()
+    _qc_diag_count = df_quarantine_diagnoses.count()
+    _qc_labs_count = df_quarantine_labs.count()
+    total_quarantined = _qc_patients_count + _qc_diag_count + _qc_labs_count
+
+    # Release cached Bronze DataFrames — all downstream split counts are now materialised and
+    # these caches are no longer needed. Freeing them before Gold transforms prevents
+    # long-running sessions from accumulating unnecessary executor memory pressure.
+    df_clinical_parsed.unpersist()
+    df_diag_parsed.unpersist()
+    df_labs_parsed.unpersist()
+
     print(f"[METRIC] Silver Clinical Records Accepted: {_silver_clinical_count}")
-    print(f"[METRIC] Clinical Records Quarantined:     {_qc_count}")
+    print(f"[METRIC] Clinical Records Quarantined:     {_qc_patients_count}")
     print(f"[METRIC] Silver Diagnoses Records Accepted: {df_silver_diagnoses.count()}")
+    print(f"[METRIC] Diagnoses Records Quarantined:    {_qc_diag_count}")
     print(f"[METRIC] Silver Lab Biomarkers Accepted:    {df_silver_labs.count()}")
+    print(f"[METRIC] Lab Biomarkers Quarantined:       {_qc_labs_count}")
     print(f"[METRIC] Silver Genomic Variants Accepted:  {df_silver_genomics.count()}")
+    print(f"[METRIC] Total Ingested Records:           {total_ingested}")
+    print(f"[METRIC] Total Quarantined Records:         {total_quarantined}")
+
+    # Format dead-letter quarantine records preserving raw JSON payloads
+    df_q_patients_formatted = (
+        format_quarantine_dataframe(
+            df_quarantine_clinical,
+            QUARANTINE_TABLE_PATIENTS,
+            ClinicalFailureCode.SCHEMA_VIOLATION
+            if ClinicalFailureCode is not None
+            else "SCHEMA_VIOLATION",
+            "Missing valid birth timestamp or invalid gender specification",
+        )
+        if format_quarantine_dataframe is not None and _qc_patients_count > 0
+        else None
+    )
+
+    df_q_conditions_formatted = (
+        format_quarantine_dataframe(
+            df_quarantine_diagnoses,
+            QUARANTINE_TABLE_CONDITIONS,
+            ClinicalFailureCode.SCHEMA_VIOLATION
+            if ClinicalFailureCode is not None
+            else "SCHEMA_VIOLATION",
+            "Missing or unparseable clinical diagnosis date or missing diagnosis code",
+        )
+        if format_quarantine_dataframe is not None and _qc_diag_count > 0
+        else None
+    )
+
+    df_q_labs_formatted = (
+        format_quarantine_dataframe(
+            df_quarantine_labs,
+            QUARANTINE_TABLE_MEASUREMENTS,
+            ClinicalFailureCode.OUT_OF_BOUNDS_LAB
+            if ClinicalFailureCode is not None
+            else "OUT_OF_BOUNDS_LAB",
+            "Unparseable lab measurement date or out-of-bounds numeric biomarker value",
+        )
+        if format_quarantine_dataframe is not None and _qc_labs_count > 0
+        else None
+    )
+
+    # -------------------------------------------------------------------------
+    # 2.5 BATCH QUALITY THRESHOLD & GXP BREACH ENFORCEMENT GATE
+    # -------------------------------------------------------------------------
+    if evaluate_batch_quarantine_threshold is not None:
+        evaluate_batch_quarantine_threshold(
+            total_ingested=total_ingested,
+            total_quarantined=total_quarantined,
+            threshold=quarantine_threshold,
+            failure_counts_by_code={
+                "SCHEMA_VIOLATION": _qc_patients_count + _qc_diag_count,
+                "OUT_OF_BOUNDS_LAB": _qc_labs_count,
+            },
+            abort_on_breach=abort_on_breach,
+        )
 
     # -------------------------------------------------------------------------
     # 3. GOLD TIER: OMOP CDM v5.4 Target Table Generation
@@ -294,8 +409,15 @@ def run_omop_pipeline(
         writer.write_silver_table(df_silver_labs, "lab_measurements")
         writer.write_silver_table(df_silver_genomics, "genomic_variants")
 
-        if _qc_count > 0:
-            writer.write_quarantine_table(df_quarantine_clinical, "quarantine_clinical")
+        # Write Dedicated Delta Lake Quarantine Sinks
+        if QuarantineDeltaWriter is not None:
+            q_writer = QuarantineDeltaWriter(spark, base_output_dir=output_dir)
+            if df_q_patients_formatted is not None:
+                q_writer.write_quarantine_patients(df_q_patients_formatted)
+            if df_q_conditions_formatted is not None:
+                q_writer.write_quarantine_conditions(df_q_conditions_formatted)
+            if df_q_labs_formatted is not None:
+                q_writer.write_quarantine_measurements(df_q_labs_formatted)
 
         # Write Gold Sinks with Liquid Clustering (CLUSTER BY (person_id, concept_id))
         person_path = writer.write_gold_omop_table(
@@ -386,6 +508,18 @@ if __name__ == "__main__":
         default="governance/rules.json",
         help="Path to Great Expectations rules JSON specification file",
     )
+    parser.add_argument(
+        "--quarantine_threshold",
+        type=float,
+        default=0.02,
+        help="Batch quarantine rejection ratio tolerance threshold (default: 0.02 = 2.0%)",
+    )
+    parser.add_argument(
+        "--abort_on_breach",
+        action="store_true",
+        default=False,
+        help="Abort pipeline execution if batch quarantine rejection ratio exceeds tolerance threshold",
+    )
     args = parser.parse_args()
 
     mode_val = os.getenv("DATA_MODE", args.mode)
@@ -401,5 +535,7 @@ if __name__ == "__main__":
         run_maintenance=args.run_maintenance,
         enable_contract_enforcement=args.enable_contract_enforcement,
         rules_path=args.rules_path,
+        quarantine_threshold=args.quarantine_threshold,
+        abort_on_breach=args.abort_on_breach,
     )
     spark.stop()

@@ -84,13 +84,13 @@ This document tracks active development phases and engineering priorities for th
 
 ## 🛡️ Phase 8: Data Contract Failure & GxP Quarantine Routines
 
-- [ ] **Dead-Letter Delta Lake Quarantine Sinks (`analytical-layer/medallion/quarantine.py`)**
+- [x] **Dead-Letter Delta Lake Quarantine Sinks (`analytical-layer/medallion/quarantine.py`)**
   - Implement dedicated Delta Lake quarantine table sinks (`quarantine_conditions`, `quarantine_measurements`, `quarantine_patients`) to isolate non-compliant records with verbatim raw JSON payloads, failure timestamps, and MLflow run IDs.
-- [ ] **Standardized Clinical Failure Taxonomy & Error Codes**
+- [x] **Standardized Clinical Failure Taxonomy & Error Codes**
   - Implement structured clinical failure codes (`SCHEMA_VIOLATION`, `UNMAPPED_TERMINOLOGY`, `OUT_OF_BOUNDS_LAB`, `TEMPORAL_ANOMALY`, `ORPHAN_FOREIGN_KEY`) with deterministic error reason attribution.
-- [ ] **Batch Quality Threshold & GxP Breach Enforcement Gate**
+- [x] **Batch Quality Threshold & GxP Breach Enforcement Gate**
   - Compute batch quarantine rejection ratios ($\frac{\text{Quarantined Rows}}{\text{Total Ingestion Rows}}$); abort downstream Gold persistence and log compliance breach events in MLflow when exceeding configurable tolerance limits (e.g., $>2\%$).
-- [ ] **Idempotent Quarantine Remediation & Replay Engine**
+- [x] **Idempotent Quarantine Remediation & Replay Engine**
   - Develop a clinical data remediation utility allowing data stewards to re-evaluate quarantined records against updated vocabulary mappings and promote corrected rows into Silver tiers without data loss.
 
 ---

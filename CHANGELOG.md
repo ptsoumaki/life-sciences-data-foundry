@@ -5,6 +5,39 @@ All notable changes to the Life Sciences Data Foundry project are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.10] - 2026-09-13
+
+### Added
+- **Dead-Letter Quarantine Sinks & Forensic Audit Taxonomy (`analytical-layer/medallion/writer.py`)**:
+  - Implemented dedicated Delta Lake dead-letter quarantine sinks (`quarantine_patients`, `quarantine_conditions`, `quarantine_measurements`) isolating invalid records from Silver analytical tables.
+  - Implemented `format_quarantine_dataframe()` standardizing quarantine schemas with `quarantine_id` (UUID), `raw_payload` (verbatim raw JSON preserving original untransformed payloads for ALCOA+ forensic auditability), `failure_code`, `failure_reason`, `quarantine_timestamp` (UTC), `mlflow_run_id`, and `status` (`QUARANTINED` / `REMEDIATED`).
+  - Standardized `ClinicalFailureCode` enum establishing an audit taxonomy across 5 failure categories: `SCHEMA_VIOLATION`, `UNMAPPED_TERMINOLOGY`, `OUT_OF_BOUNDS_LAB`, `TEMPORAL_ANOMALY`, and `ORPHAN_FOREIGN_KEY`.
+- **GxP Batch Quality Threshold Gate (`analytical-layer/omop_cdm_v54/pipeline.py`)**:
+  - Integrated `evaluate_batch_quarantine_threshold()` into the pipeline execution stream, calculating empirical batch rejection ratios ($\frac{\text{Quarantined}}{\text{Quarantined} + \text{Silver Valid}}$).
+  - Enforced automated quality halting: aborts pipeline execution with `GxPBreachError` when rejection ratio exceeds the configured threshold (default 5%), preventing contaminated downstream Gold data products.
+  - Automatically logs `rejection_ratio`, `quarantine_count`, `silver_valid_count`, and `quarantine_threshold` metrics to active MLflow runs.
+- **Quarantine Remediation & Replay Engine (`analytical-layer/medallion/quarantine.py`)**:
+  - Implemented `QuarantineRemediationEngine` providing automated, audit-trailed re-evaluation of quarantined records against updated vocabulary mappings (ICD-10 to SNOMED, LOINC).
+  - Promotes remediated records into Silver Delta tables via idempotent Delta MERGE SCD Type 1 upserts (`upsert_silver_table()`).
+  - Updates quarantine records to `REMEDIATED` status with UTC timestamps and emits remediation metrics (`remediated_count`, `remediation_rate`) to MLflow runs.
+- **End-to-End Quarantine Integration & Unit Test Suites (`tests/integration/test_quarantine_integration.py`, `tests/unit/test_quarantine.py`)**:
+  - Added 3 end-to-end integration tests validating dead-letter sink routing with raw JSON payload preservation, batch quality threshold enforcement and `GxPBreachError` abort, and idempotent remediation replay into Silver.
+  - Added unit test suite covering `ClinicalFailureCode`, `format_quarantine_dataframe()`, and threshold evaluation logic.
+- **Documentation & DataOps Guidance**:
+  - Updated `README.md` with dead-letter quarantine architecture details and FDA 21 CFR Part 11 / ALCOA+ compliance mapping.
+  - Expanded `docs/quality/testing-and-dataops.md` with testing commands and operational architecture for quarantine workflows.
+
+### Changed
+- **Spark Executor Memory Optimization (`analytical-layer/omop_cdm_v54/pipeline.py`)**:
+  - Explicitly unpersisted cached Bronze parsed DataFrames (`df_clinical_parsed`, `df_diag_parsed`, `df_labs_parsed`) immediately after Silver/Quarantine count materialization to release Spark executor memory before executing Gold transformations.
+- **Cross-Platform Parquet & Delta Fallback Resilience**:
+  - Hardened PySpark & PyArrow fallback routines in `QuarantineRemediationEngine` and `MedallionWriter` to seamlessly support local development and Windows environments without native Hadoop `winutils.exe`/`hadoop.dll` binaries while preserving Delta Lake MERGE as the enterprise production standard.
+  - Enforced timezone-naive UTC timestamp handling across PySpark DataFrame conversions to prevent Py4J/PySpark `TimestampType` conversion errors.
+- **Flexible Ingestion Column Schema Resolution**:
+  - Enhanced clinical condition and measurement remediation parsers to handle schema variations gracefully (e.g. `icd10_code` vs `code`, `numeric_value` vs `value`, and dash-stripped LOINC variants).
+
+---
+
 ## [0.2.9] - 2026-08-20
 
 ### Added

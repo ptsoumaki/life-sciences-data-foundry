@@ -87,7 +87,7 @@ class DeltaMedallionWriter:
         mode: str = "append",
     ) -> str:
         """
-        Writes rejected/quarantined records to the Silver Quarantine Delta table with schema evolution.
+        Writes quarantined records to a Silver-tier Delta table with schema evolution.
         """
         path = self._get_table_path("silver", table_name)
         writer = df.write.format("delta").mode(mode).option("mergeSchema", "true")
@@ -238,6 +238,35 @@ class DeltaMedallionWriter:
 
         print(
             f"[DELTA MERGE] Gold Table '{table_name}' updated via Delta MERGE on keys={merge_keys}"
+        )
+        return path
+
+    def upsert_silver_table(
+        self,
+        df: DataFrame,
+        table_name: str,
+        merge_keys: list[str],
+    ) -> str:
+        """
+        Executes Idempotent Upsert (Delta MERGE INTO / SCD Type 1) into Silver tier tables.
+        Used for promoting remediated quarantine records without creating duplicates.
+        """
+        path = self._get_table_path("silver", table_name)
+        formatted_path = path.replace("\\", "/")
+
+        if not self._is_delta_table(formatted_path):
+            return self.write_silver_table(df, table_name, mode="append")
+
+        target_table = DeltaTable.forPath(self.spark, formatted_path)
+        df_dedup = df.dropDuplicates(subset=merge_keys)
+        merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in merge_keys])
+
+        target_table.alias("target").merge(
+            df_dedup.alias("source"), merge_condition
+        ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+
+        print(
+            f"[DELTA MERGE] Silver Table '{table_name}' updated via Delta MERGE on keys={merge_keys}"
         )
         return path
 

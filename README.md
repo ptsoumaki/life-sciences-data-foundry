@@ -1,7 +1,7 @@
 # Enterprise Life Sciences Data Engineering Foundry 🧬
 
 [![DataOps CI/CD Gate](https://github.com/ptsoumaki/life-sciences-data-foundry/actions/workflows/tf-lint.yml/badge.svg)](https://github.com/ptsoumaki/life-sciences-data-foundry/actions/workflows/tf-lint.yml)
-![Version](https://img.shields.io/badge/version-0.2.9-informational)
+![Version](https://img.shields.io/badge/version-0.2.10-informational)
 ![Compliance](https://img.shields.io/badge/Compliance-FDA%2021%20CFR%20Part%2011-blue)
 ![Architecture](https://img.shields.io/badge/Architecture-OMOP%20CDM%20v5.4%20%7C%20Medallion-orange)
 ![Storage](https://img.shields.io/badge/Storage-Delta%20Lake%203.1-green)
@@ -19,6 +19,7 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
 | **Clinical Normalization** | PySpark ETL/ELT producing OMOP CDM `PERSON`, `MEASUREMENT`, `CONDITION_OCCURRENCE` |
 | **Medallion Delta Lakehouse** | ACID transactions, Liquid Clustering, Change Data Feed, SCD Type 1 upserts |
 | **GxP Data Contracts** | Decoupled Great Expectations rules + MLflow SHA-256 provenance (FDA 21 CFR Part 11) |
+| **GxP Quarantine & Remediation** | Dedicated Delta Lake dead-letter sinks, clinical failure taxonomy, batch breach gates, and idempotent replay |
 | **Agentic Compliance Audit** | LangGraph state-graph auditor + FastMCP server with HITL 21 CFR §11.50 sign-off |
 | **Cloud-Native IaC** | Databricks Asset Bundles + Terraform provisioning AWS S3 WORM (`COMPLIANCE` mode) |
 
@@ -33,6 +34,7 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
 | **OHDSI OMOP CDM v5.4** | [`analytical-layer/omop_cdm_v54/`](analytical-layer/omop_cdm_v54/) | Cross-institutional RWE cohort analytics across global clinical networks |
 | **FDA 21 CFR Part 11** | [`governance/rules.json`](governance/rules.json) · [`mlflow_tracker.py`](governance/mlflow_tracker.py) · [`crypto.py`](governance/crypto.py) | Electronic records integrity, SHA-256 cryptographic lineage, data contracts |
 | **Delta Lake ACID** | [`analytical-layer/medallion/`](analytical-layer/medallion/) | Transactional reliability, schema evolution, time-travel, Liquid Clustering |
+| **GxP Quarantine & Remediation** | [`analytical-layer/medallion/quarantine.py`](analytical-layer/medallion/quarantine.py) | Dead-letter Delta sinks, ALCOA+ raw JSON preservation, batch quality gates, vocabulary replay |
 | **Agentic GxP Audit / MCP** | [`agentic-ai/graph_auditor.py`](agentic-ai/graph_auditor.py) · [`mcp_server.py`](agentic-ai/mcp_server.py) | Autonomous lineage audit with HITL electronic sign-offs & AI discovery interface |
 | **AWS S3 Object Lock** | [`terraform/storage_and_compute.tf`](terraform/storage_and_compute.tf) | WORM storage preventing unauthorized deletion of clinical records |
 

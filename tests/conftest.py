@@ -11,10 +11,6 @@ from pyspark.sql import SparkSession
 from omop_cdm_v54.compat import HAS_DELTA, configure_spark_with_delta_pip
 from omop_cdm_v54.pipeline import configure_windows_hadoop_environment
 
-os.environ["PYSPARK_PYTHON"] = sys.executable
-os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
-configure_windows_hadoop_environment()
-
 
 @pytest.fixture(scope="session")
 def spark():

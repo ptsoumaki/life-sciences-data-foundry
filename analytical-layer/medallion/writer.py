@@ -87,7 +87,7 @@ class DeltaMedallionWriter:
         mode: str = "append",
     ) -> str:
         """
-        Writes rejected/quarantined records to the Silver Quarantine Delta table with schema evolution.
+        Writes quarantined records to a Silver-tier Delta table with schema evolution.
         """
         path = self._get_table_path("silver", table_name)
         writer = df.write.format("delta").mode(mode).option("mergeSchema", "true")

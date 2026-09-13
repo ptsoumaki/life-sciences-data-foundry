@@ -229,6 +229,9 @@ def run_omop_pipeline(
     df_diag_parsed = df_raw_diagnoses.withColumn(
         "parsed_diag_dt", expr("try_cast(diagnosis_date as date)")
     ).cache()
+    # Diagnoses use 'icd10_code' in the synthetic demo schema and 'code' in normalised remote schemas.
+    # Note: remediate_conditions() in quarantine.py always unpacks the 'code' column from raw_payload;
+    # if real data retains 'icd10_code', the vocabulary re-match step will not resolve those records.
     diag_code_col = col("icd10_code") if "icd10_code" in df_diag_parsed.columns else col("code")
     valid_diag_condition = col("parsed_diag_dt").isNotNull() & diag_code_col.isNotNull()
     df_silver_diagnoses = df_diag_parsed.filter(valid_diag_condition)
@@ -269,6 +272,13 @@ def run_omop_pipeline(
     _qc_diag_count = df_quarantine_diagnoses.count()
     _qc_labs_count = df_quarantine_labs.count()
     total_quarantined = _qc_patients_count + _qc_diag_count + _qc_labs_count
+
+    # Release cached Bronze DataFrames — all downstream split counts are now materialised and
+    # these caches are no longer needed. Freeing them before Gold transforms prevents
+    # long-running sessions from accumulating unnecessary executor memory pressure.
+    df_clinical_parsed.unpersist()
+    df_diag_parsed.unpersist()
+    df_labs_parsed.unpersist()
 
     print(f"[METRIC] Silver Clinical Records Accepted: {_silver_clinical_count}")
     print(f"[METRIC] Clinical Records Quarantined:     {_qc_patients_count}")

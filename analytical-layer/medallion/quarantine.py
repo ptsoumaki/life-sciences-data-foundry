@@ -197,13 +197,20 @@ class QuarantineDeltaWriter:
         mode: str = "append",
     ) -> str:
         """
-        Persists dead-letter quarantine records to a dedicated Delta Lake sink with Change Data Feed
-        and schema evolution enabled.
+        Persists dead-letter quarantine records to a dedicated Delta Lake sink with schema
+        evolution enabled.
+
+        ``delta.enableChangeDataFeed`` is passed as a write option and is persisted as a Delta
+        table property only on the initial table creation. Subsequent appends to an existing sink
+        silently ignore this option. To retroactively enable Change Data Feed on an existing table::
+
+            ALTER TABLE delta.`<table_path>`
+            SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')
 
         Args:
             df: Standardized quarantine DataFrame.
             table_name: Target quarantine table identifier.
-            mode: Write mode ('append' default for dead-letter accumulator, 'overwrite' for staging).
+            mode: Write mode ('append' default for dead-letter accumulation, 'overwrite' for staging).
 
         Returns:
             Resolved storage path of the persisted Delta Lake quarantine table.
@@ -254,6 +261,16 @@ class QuarantineDeltaWriter:
 
                 table = pq.read_table(path)
                 pdf = table.to_pandas()
+                # Convert timezone-aware timestamp columns to timezone-naive UTC so they
+                # are compatible with PySpark's timezone-naive TimestampType.
+                # tz_convert(None) is a no-op on columns that are already tz-naive.
+                import pandas as pd
+
+                for ts_col in ["failure_timestamp", "remediation_timestamp"]:
+                    if ts_col in pdf.columns and pd.api.types.is_datetime64tz_dtype(
+                        pdf[ts_col]
+                    ):
+                        pdf[ts_col] = pdf[ts_col].dt.tz_convert(None)
                 return self.spark.createDataFrame(pdf, QUARANTINE_RECORD_SCHEMA)
             except Exception:
                 return self.spark.read.parquet(path)
@@ -297,29 +314,35 @@ def evaluate_batch_quarantine_threshold(
 
     breakdown = failure_counts_by_code or {}
 
-    # MLflow audit logging
+    # MLflow audit logging — defined as a closure to share the computed metrics variables.
+    def _emit_mlflow_metrics() -> None:
+        mlflow.log_metric("quarantine_total_ingested", total_ingested)
+        mlflow.log_metric("quarantine_total_quarantined", total_quarantined)
+        mlflow.log_metric("quarantine_rejection_ratio", rejection_ratio)
+        mlflow.log_metric("quarantine_threshold_limit", threshold)
+        mlflow.log_metric("gxp_breach_detected", 1.0 if is_breach else 0.0)
+        for code, count in breakdown.items():
+            clean_code = str(code).lower()
+            mlflow.log_metric(f"quarantine_count_{clean_code}", count)
+        mlflow.set_tag("gxp_compliance_status", status)
+        if is_breach:
+            mlflow.set_tag(
+                "gxp_breach_reason",
+                f"Quarantine ratio {rejection_ratio:.4f} exceeded threshold {threshold:.4f}",
+            )
+
     try:
         import mlflow
 
         active = mlflow.active_run()
-        if active or mlflow_run_id:
-            mlflow.log_metric("quarantine_total_ingested", total_ingested)
-            mlflow.log_metric("quarantine_total_quarantined", total_quarantined)
-            mlflow.log_metric("quarantine_rejection_ratio", rejection_ratio)
-            mlflow.log_metric("quarantine_threshold_limit", threshold)
-            mlflow.log_metric("gxp_breach_detected", 1.0 if is_breach else 0.0)
-
-            for code, count in breakdown.items():
-                clean_code = str(code).lower()
-                mlflow.log_metric(f"quarantine_count_{clean_code}", count)
-
-            mlflow.set_tag("gxp_compliance_status", status)
-
-            if is_breach:
-                mlflow.set_tag(
-                    "gxp_breach_reason",
-                    f"Quarantine ratio {rejection_ratio:.4f} exceeded threshold {threshold:.4f}",
-                )
+        if active:
+            # Log directly into the caller-managed active run.
+            _emit_mlflow_metrics()
+        elif mlflow_run_id:
+            # Re-attach to the specified run; avoids auto-creating an orphan run under
+            # the default experiment when no active context exists.
+            with mlflow.start_run(run_id=mlflow_run_id):
+                _emit_mlflow_metrics()
     except Exception as e:
         print(f"[MLFLOW NOTICE] Quarantine threshold logging notice: {e}")
 
@@ -405,21 +428,24 @@ class QuarantineRemediationEngine:
             except Exception as e:
                 print(f"[REMEDIATION NOTICE] Delta MERGE update notice: {e}")
 
-        # Fallback for local testing or non-Delta environments
+        # PyArrow fallback for local/non-Delta environments where the JVM Delta MERGE path failed.
+        # Reads via the quarantine table reader (which has its own fallback chain) to ensure only
+        # committed data is processed, not stale Parquet files left behind before VACUUM runs.
         try:
             import datetime
 
             import pyarrow as pa
             import pyarrow.parquet as pq
 
-            table = pq.read_table(target_path)
-            records = table.to_pylist()
-            now_dt = datetime.datetime.now(datetime.UTC)
+            df_current = self.q_writer.read_quarantine_table(table_name)
+            pdf = df_current.toPandas()
+            # Use a timezone-naive UTC datetime to match the datetime64[ns] dtype that
+            # pandas infers for the null-initialised remediation_timestamp column.
+            now_dt = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
             rem_set = set(remediated_ids)
-            for r in records:
-                if r.get("quarantine_id") in rem_set:
-                    r["status"] = "REMEDIATED"
-                    r["remediation_timestamp"] = now_dt
+            mask = pdf["quarantine_id"].isin(rem_set)
+            pdf.loc[mask, "status"] = "REMEDIATED"
+            pdf.loc[mask, "remediation_timestamp"] = now_dt
 
             for fname in os.listdir(target_path):
                 if fname.endswith(".parquet"):
@@ -428,7 +454,7 @@ class QuarantineRemediationEngine:
                     except OSError:
                         pass
 
-            updated_table = pa.Table.from_pylist(records, schema=table.schema)
+            updated_table = pa.Table.from_pandas(pdf)
             out_file = os.path.join(target_path, "part-00000-remediated.parquet")
             pq.write_table(updated_table, out_file)
             print(
@@ -586,10 +612,14 @@ class QuarantineRemediationEngine:
         )
 
         valid_codes = [k.upper() for k, v in loinc_map.items() if v != 0]
+        # Include dash-stripped variants (e.g. '8480-6' and '84806') to handle format
+        # inconsistencies between stored LOINC codes and vocabulary map keys.
+        # Matches the dot-stripping expansion applied to ICD-10 codes in remediate_conditions.
+        all_valid_loinc_codes = list(set(valid_codes) | {c.replace("-", "") for c in valid_codes})
         is_valid_date = col("parsed_lab_dt").isNotNull()
         is_non_negative = col("numeric_value").isNull() | (col("numeric_value") >= 0.0)
         is_mapped_code = (
-            upper(trim(col("code"))).isin(valid_codes)
+            upper(trim(col("code"))).isin(all_valid_loinc_codes)
             if "code" in df_with_eval.columns
             else lit(True)
         )
@@ -693,5 +723,3 @@ class QuarantineRemediationEngine:
             "unresolved_count": unresolved_count,
             "promoted_path": promoted_path,
         }
-
-

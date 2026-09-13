@@ -1,7 +1,7 @@
 # Enterprise Life Sciences Data Engineering Foundry 🧬
 
 [![DataOps CI/CD Gate](https://github.com/ptsoumaki/life-sciences-data-foundry/actions/workflows/tf-lint.yml/badge.svg)](https://github.com/ptsoumaki/life-sciences-data-foundry/actions/workflows/tf-lint.yml)
-![Version](https://img.shields.io/badge/version-0.2.9-informational)
+![Version](https://img.shields.io/badge/version-0.2.10-informational)
 ![Compliance](https://img.shields.io/badge/Compliance-FDA%2021%20CFR%20Part%2011-blue)
 ![Architecture](https://img.shields.io/badge/Architecture-OMOP%20CDM%20v5.4%20%7C%20Medallion-orange)
 ![Storage](https://img.shields.io/badge/Storage-Delta%20Lake%203.1-green)

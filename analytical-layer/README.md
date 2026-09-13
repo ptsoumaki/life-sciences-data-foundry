@@ -13,9 +13,10 @@ analytical-layer/
 │   ├── clinical_patients.csv         # Demographics (Synthea / MIMIC-IV format)
 │   ├── genomic_variants.vcf          # VCF v4.2 variant annotations (ClinVar / 1000 Genomes)
 │   └── lab_measurements.csv          # LOINC lab biomarker observations
-├── medallion/                        # DELTA LAKE PERFORMANCE & STORAGE OPTIMIZATION
+├── medallion/                        # DELTA LAKE PERFORMANCE, STORAGE & GXP QUARANTINE
 │   ├── __init__.py                   # Package exports
-│   └── writer.py                     # DeltaMedallionWriter with Liquid Clustering & Schema Evolution
+│   ├── quarantine.py                 # QuarantineRemediationEngine & dead-letter replay
+│   └── writer.py                     # DeltaMedallionWriter, quarantine sinks & schema evolution
 ├── omop_cdm_v54/                     # MODULAR PYSPARK OMOP CDM v5.4 DOMAIN PACKAGE
 │   ├── __init__.py                   # Package exports & versioning
 │   ├── compat.py                     # Delta Lake & PySpark runtime compatibility layer
@@ -49,15 +50,15 @@ The ingested datasets located under [`analytical-layer/data/`](data/) are struct
 ```text
 ┌─────────────────────────────────────────────────────────┐
 │ BRONZE TIER: Real-World Ingestion Data Streams          │
-│   ├── Clinical patient demographics (clinical_patients.csv)│
+│   ├── Clinical patient demographics (clinical_patients) │
 │   ├── ICD-10 diagnosis events (clinical_diagnoses.csv)  │
 │   ├── LOINC lab observations (lab_measurements.csv)     │
-│   └── VCF v4.2 genomic variant calls (genomic_variants.vcf)│
+│   └── VCF v4.2 genomic variant calls (genomic_variants) │
 ├─────────────────────────────────────────────────────────┤
-│ SILVER TIER: GxP Data Quality Contract Validation       │
+│ SILVER TIER: GxP Data Quality & Quarantine Validation   │
 │   ├── ISO-8601 timestamp parsing & validation           │
-│   ├── Demographics & status quarantine filters          │
-│   └── Failed records → Quarantine Delta dataset         │
+│   ├── Quality contract filtering & batch breach gates   │
+│   └── Non-compliant records → Quarantine Delta sinks    │
 ├─────────────────────────────────────────────────────────┤
 │ GOLD TIER: OHDSI OMOP CDM v5.4 Relational Tables        │
 │   ├── PERSON (demographics & concept IDs)               │
@@ -70,21 +71,16 @@ The ingested datasets located under [`analytical-layer/data/`](data/) are struct
 
 ---
 
-## ⚡ Delta Lake Performance & Storage Optimization (`medallion/writer.py`)
+## ⚡ Delta Lake Storage & GxP Quarantine Engine (`medallion/`)
 
-The [`analytical-layer/medallion/writer.py`](medallion/writer.py) package implements enterprise-grade storage features:
+The [`analytical-layer/medallion/`](medallion/) package provides storage optimization and GxP regulatory resilience across Medallion tiers:
 
-1. **Liquid Clustering (`CLUSTER BY`)**:
-   - Replaces traditional static Hive partitioning with multi-dimensional **Liquid Clustering** (`CLUSTER BY (person_id, concept_id)`).
-   - Dynamically re-sorts data on write to optimize query predicate pushdowns without partition file fragmentation.
-2. **Schema Evolution Contracts (`mergeSchema=True`)**:
-   - Enforces schema evolution options across Silver and Gold write streams, accommodating new clinical attributes and VCF genomic variant metadata without job failure.
-3. **Idempotent MERGE / Upsert (`DeltaTable.merge()`)**:
-   - Implements atomic SCD Type 1 upserts (`upsert_gold_omop_table`) on primary clinical keys (`person_id`, `measurement_id`, `condition_occurrence_id`) to prevent record duplication during batch re-runs.
-4. **Change Data Feed (CDF)**:
-   - Configures `delta.enableChangeDataFeed = true` to allow FastMCP / LangGraph AI audit agents to track row-level mutations.
-5. **GxP Storage Metrology**:
-   - Exposes `get_table_telemetry()` to extract transaction history (`dt.history()`), file counts, total byte size, and active clustering columns for GxP audit tracking.
+1. **Liquid Clustering (`CLUSTER BY`)**: Replaces static Hive partitioning with dynamic multi-dimensional clustering (`person_id`, `concept_id`), optimizing predicate pushdowns without file fragmentation.
+2. **Schema Evolution Contracts (`mergeSchema=True`)**: Enforces controlled schema evolution across Silver and Gold write streams for evolving clinical attributes and variant metadata.
+3. **Idempotent MERGE / Upserts (`DeltaTable.merge()`)**: Atomic SCD Type 1 upserts on primary clinical keys (`person_id`, `condition_occurrence_id`, `measurement_id`) to prevent duplicate records during batch replays.
+4. **Dead-Letter Quarantine Sinks**: Isolates non-compliant records into dedicated Delta sinks (`quarantine_patients`, `conditions`, `measurements`), preserving raw JSON payloads (ALCOA+ audit trail) categorized by standardized `ClinicalFailureCode` taxonomies.
+5. **Batch Breach Gates & Remediation**: Halts pipeline execution with `GxPBreachError` on batch rejection threshold breaches, while `QuarantineRemediationEngine` supports automated replay and promotion into Silver upon terminology updates.
+6. **GxP Storage Telemetry**: Exposes `get_table_telemetry()` for Delta transaction history, Change Data Feed (CDF), byte sizes, and clustering layout audits.
 
 ---
 

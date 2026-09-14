@@ -112,9 +112,10 @@ class OHDSICohortBuilder:
         self,
         definition: CohortDefinition,
         df_person: DataFrame,
-        df_condition: DataFrame,
-        df_measurement: DataFrame,
+        df_condition: DataFrame | None = None,
+        df_measurement: DataFrame | None = None,
         study_end_date: str | None = None,
+        df_condition_occurrence: DataFrame | None = None,
     ) -> DataFrame:
         """Constructs an OHDSI COHORT table DataFrame based on declarative criteria.
 
@@ -124,10 +125,17 @@ class OHDSICohortBuilder:
             df_condition: Gold-tier OMOP CDM CONDITION_OCCURRENCE DataFrame.
             df_measurement: Gold-tier OMOP CDM MEASUREMENT DataFrame.
             study_end_date: Optional fixed study termination date string (YYYY-MM-DD).
+            df_condition_occurrence: Alias for df_condition.
 
         Returns:
             PySpark DataFrame conforming to COHORT_SCHEMA.
         """
+        df_cond = df_condition if df_condition is not None else df_condition_occurrence
+        if df_cond is None:
+            df_cond = self.spark.createDataFrame([], df_person.schema)
+        if df_measurement is None:
+            df_measurement = self.spark.createDataFrame([], df_person.schema)
+
         crit = definition.criteria
 
         # ---------------------------------------------------------------------
@@ -135,11 +143,9 @@ class OHDSICohortBuilder:
         # ---------------------------------------------------------------------
         candidate_dfs: list[DataFrame] = []
 
-        if crit.index_condition_concept_ids and "condition_concept_id" in df_condition.columns:
+        if crit.index_condition_concept_ids and "condition_concept_id" in df_cond.columns:
             cond_candidates = (
-                df_condition.filter(
-                    col("condition_concept_id").isin(crit.index_condition_concept_ids)
-                )
+                df_cond.filter(col("condition_concept_id").isin(crit.index_condition_concept_ids))
                 .select(
                     col("person_id").alias("subject_id"),
                     to_date(col("condition_start_date")).alias("index_date"),
@@ -211,7 +217,7 @@ class OHDSICohortBuilder:
         if crit.prior_observation_days > 0:
             # Calculate patient-level earliest baseline observation date from conditions or measurements
             cond_starts = (
-                df_condition.groupBy("person_id")
+                df_cond.groupBy("person_id")
                 .agg(spark_min(to_date(col("condition_start_date"))).alias("earliest_cond"))
                 .withColumnRenamed("person_id", "obs_person_id")
             )
@@ -233,7 +239,7 @@ class OHDSICohortBuilder:
         # 4. Clinical Exclusion Criteria (prior conditions before T0)
         # ---------------------------------------------------------------------
         if crit.exclusion_condition_concept_ids:
-            excl_conds = df_condition.filter(
+            excl_conds = df_cond.filter(
                 col("condition_concept_id").isin(crit.exclusion_condition_concept_ids)
             ).select(
                 col("person_id").alias("excl_subj_id"),

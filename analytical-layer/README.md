@@ -8,6 +8,12 @@ This component implements the **Clinical Normalization & Medallion Engine** — 
 
 ```text
 analytical-layer/
+├── cohorts/                          # GOLD-TIER ANALYTICAL COHORTS & TRANSLATIONAL ENDPOINTS
+│   ├── __init__.py                   # Package exports & schemas
+│   ├── builder.py                    # OHDSI phenotyping engine & cohort builder (T0 index, rules)
+│   ├── deid.py                       # HIPAA Safe Harbor de-identification transformer (date shifting, age capping)
+│   ├── features.py                   # Patient feature store projections (CCI, comorbidity counts, biomarkers)
+│   └── survival.py                   # Time-to-Event marts (OS, TTP, EFS, Kaplan-Meier estimation)
 ├── data/                             # Real-World Clinical & Multi-Omics Ingestion Data
 │   ├── clinical_diagnoses.csv        # ICD-10-CM clinical diagnosis events
 │   ├── clinical_patients.csv         # Demographics (Synthea / MIMIC-IV format)
@@ -107,17 +113,50 @@ The [`analytical-layer/medallion/`](medallion/) package provides storage optimiz
 
 ---
 
+## 📊 Gold-Tier Analytical Cohorts & Translational Endpoints (`cohorts/`)
+
+The [`analytical-layer/cohorts/`](cohorts/) package provides an enterprise, GxP-compliant clinical and multi-omics phenotyping engine:
+
+1. **Declarative OHDSI Phenotyping Engine (`builder.py`)**:
+   - `OHDSICohortBuilder`: Evaluates index condition / biomarker events ($T_0$), continuous prior observation lookback windows, demographic filters (age, gender), clinical exclusion conditions, biomarker cutoffs, and ClinVar multi-omics criteria.
+   - Outputs standard OHDSI `COHORT` tables (`cohort_definition_id`, `subject_id`, `cohort_start_date`, `cohort_end_date`) persisted with Delta Lake Liquid Clustering (`CLUSTER BY (cohort_definition_id, subject_id)`).
+   - Preconfigured reference definitions: `get_type_2_diabetes_cohort_definition()`, `get_hypertension_cohort_definition()`, `get_genomic_oncology_cohort_definition()`.
+
+2. **HIPAA Safe Harbor De-Identification Transformer (`deid.py`)**:
+   - Implements strict 45 CFR §164.514(b)(2) Safe Harbor standards:
+     - **Deterministic Keyed Pseudonymization**: Maps patient identifiers using salt-seeded 64-bit hashing (`xxhash64`).
+     - **Interval-Preserving Date Shifting**: Computes patient-specific $\pm \Delta$ days date shift, uniformly shifting all longitudinal dates while strictly preserving inter-event intervals, treatment durations, and survival follow-up times.
+     - **Age Capping (89+)**: Identifies individuals aged $\ge 90$ at index and caps age attributes to 89, nullifying birth datetimes.
+     - **Geographic Truncation**: Truncates ZIP codes to 3 digits (ZIP3) with automatic zeroing of low-population prefixes (<20,000 residents).
+
+3. **Time-to-Event (TTE) & Survival Analysis Marts (`survival.py`)**:
+   - `SurvivalMartBuilder`: Computes biostatistical analytical frames for **Overall Survival (OS)**, **Time-to-Progression (TTP)**, and **Event-Free Survival (EFS)** with administrative (`study_end_date`), observational, and max follow-up right-censoring.
+   - Incorporates clinical covariates (age at index, gender) and multi-omics ClinVar genomic strata (`has_pathogenic_variant`).
+   - `compute_kaplan_meier_summary()`: Generates non-parametric Kaplan-Meier survival curves, at-risk numbers, event counts, and Greenwood standard errors directly in distributed PySpark.
+
+4. **ML-Ready Patient Feature Store Projections (`features.py`)**:
+   - `PatientFeatureStore`: Compiles wide, numerical, scikit-learn / XGBoost-ready matrices anchored around index date $T_0$.
+   - **Charlson Comorbidity Index (CCI)**: Calculates standardized clinical comorbidity risk with Deyo/Quan hierarchical rule exclusions (complicated diabetes, severe liver, metastatic tumor).
+   - **Rolling Lookback Windows**: Multi-window condition counts (30d, 180d, 365d, lifetime).
+   - **Baseline Biomarker Panels**: Latest observations, 365-day mean/min/max, and explicit missingness indicators for HbA1c, glucose, cholesterol, and creatinine.
+   - **Genomic Embeddings**: Binary and count ClinVar pathogenic mutation features.
+
+---
+
 ## Execution Modes
 
-The pipeline supports **Dual Ingestion Modes** via Open Data Connectors ([`omop_cdm_v54/connectors.py`](omop_cdm_v54/connectors.py)) and custom dataset directory targeting:
+The pipeline supports **Dual Ingestion Modes** via Open Data Connectors ([`omop_cdm_v54/connectors.py`](omop_cdm_v54/connectors.py)), cohort generation, and custom dataset directory targeting:
 
 ```bash
 # Mode A: Execute with local synthetic demo dataset (Default / Instant offline demo)
 python analytical-layer/omop_cdm_v54/pipeline.py --mode demo
 
-# Mode B: Stream directly from remote public AWS Open Data S3 & NCBI endpoints
+# Mode B: Execute with full Gold Cohort, Survival Mart, and Feature Store generation
+python analytical-layer/omop_cdm_v54/pipeline.py --mode demo --build_cohorts
+
+# Mode C: Stream directly from remote public AWS Open Data S3 & NCBI endpoints
 python analytical-layer/omop_cdm_v54/pipeline.py --mode remote
 
-# Mode C: Execute on your own custom real-world dataset directory
+# Mode D: Execute on your own custom real-world dataset directory
 python analytical-layer/omop_cdm_v54/pipeline.py --mode demo --data_dir /path/to/my_clinical_data
 ```

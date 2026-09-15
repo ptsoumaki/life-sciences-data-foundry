@@ -247,9 +247,19 @@ class PatientFeatureStore:
         df_features: DataFrame,
         df_condition_occurrence: DataFrame | None,
     ) -> DataFrame:
-        """Computes Charlson Comorbidity Index with hierarchy rules and rolling condition counts."""
+        """Computes Charlson Comorbidity Index with hierarchy rules and rolling condition counts.
+
+        Args:
+            df_features: Feature DataFrame anchored at cohort_start_date (T0), already containing
+                demographic columns.
+            df_condition_occurrence: Optional OMOP CONDITION_OCCURRENCE DataFrame.
+
+        Returns:
+            ``df_features`` extended with CCI category flags, ``charlson_comorbidity_index``,
+            and rolling condition count columns for each configured lookback window.
+        """
         if df_condition_occurrence is None or df_condition_occurrence.rdd.isEmpty():
-            # Attach zeros for all CCI categories, total CCI, and condition counts
+            # Attach zeros for all CCI categories, total CCI, and condition counts.
             df_res = df_features
             for cat in CHARLSON_CATEGORIES:
                 df_res = df_res.withColumn(f"cci_{cat}", lit(0).cast(IntegerType()))
@@ -279,17 +289,17 @@ class PatientFeatureStore:
             )
         )
 
-        # Aggregate rolling condition counts
+        # Aggregate rolling condition counts driven by the configured lookback windows.
+        # This ensures column names match the empty-cohort schema produced by
+        # _build_empty_feature_matrix(), preventing downstream schema divergence.
+        window_aggs = [
+            spark_sum(when(col("days_prior_to_index") <= days, lit(1)).otherwise(lit(0))).alias(
+                f"condition_count_{days}d"
+            )
+            for days in self.config.lookback_windows_days
+        ]
         cond_counts = cond_prior.groupBy("subject_id").agg(
-            spark_sum(when(col("days_prior_to_index") <= 30, lit(1)).otherwise(lit(0))).alias(
-                "condition_count_30d"
-            ),
-            spark_sum(when(col("days_prior_to_index") <= 180, lit(1)).otherwise(lit(0))).alias(
-                "condition_count_180d"
-            ),
-            spark_sum(when(col("days_prior_to_index") <= 365, lit(1)).otherwise(lit(0))).alias(
-                "condition_count_365d"
-            ),
+            *window_aggs,
             countDistinct(
                 when(col("days_prior_to_index") <= 365, col("condition_concept_id")).otherwise(
                     lit(None)
@@ -298,15 +308,14 @@ class PatientFeatureStore:
             spark_count(lit(1)).alias("condition_count_lifetime"),
         )
 
-        df_joined = df_features.join(cond_counts, on="subject_id", how="left").fillna(
-            {
-                "condition_count_30d": 0,
-                "condition_count_180d": 0,
-                "condition_count_365d": 0,
-                "distinct_condition_count_365d": 0,
-                "condition_count_lifetime": 0,
-            }
-        )
+        fill_defaults: dict[str, int] = {
+            "distinct_condition_count_365d": 0,
+            "condition_count_lifetime": 0,
+        }
+        for days in self.config.lookback_windows_days:
+            fill_defaults[f"condition_count_{days}d"] = 0
+
+        df_joined = df_features.join(cond_counts, on="subject_id", how="left").fillna(fill_defaults)
 
         # Build indicators for each Charlson category
         cat_aggs = []
@@ -375,7 +384,17 @@ class PatientFeatureStore:
         df_features: DataFrame,
         df_measurement: DataFrame | None,
     ) -> DataFrame:
-        """Computes baseline numerical biomarker metrics (latest, mean, min, max) and missingness flags."""
+        """Computes baseline numerical biomarker metrics (latest, mean, min, max) and missingness flags.
+
+        Args:
+            df_features: Feature DataFrame anchored at cohort_start_date (T0).
+            df_measurement: Optional OMOP MEASUREMENT DataFrame.
+
+        Returns:
+            ``df_features`` extended with ``latest_<bio>``, ``mean_<bio>_365d``,
+            ``min_<bio>_365d``, ``max_<bio>_365d``, and ``is_missing_<bio>`` columns
+            for each configured biomarker.
+        """
         df_res = df_features
 
         if df_measurement is None or df_measurement.rdd.isEmpty():
@@ -471,7 +490,16 @@ class PatientFeatureStore:
         df_features: DataFrame,
         df_measurement: DataFrame | None,
     ) -> DataFrame:
-        """Extracts binary and count ClinVar pathogenic variant embeddings."""
+        """Extracts binary and count ClinVar pathogenic variant embeddings.
+
+        Args:
+            df_features: Feature DataFrame anchored at cohort_start_date (T0).
+            df_measurement: Optional OMOP MEASUREMENT DataFrame.
+
+        Returns:
+            ``df_features`` extended with ``has_pathogenic_variant`` (binary 0/1 indicator)
+            and ``num_pathogenic_variants`` (integer count of qualifying records).
+        """
         if df_measurement is None or df_measurement.rdd.isEmpty():
             return df_features.withColumn(
                 "has_pathogenic_variant", lit(0).cast(IntegerType())
@@ -486,7 +514,9 @@ class PatientFeatureStore:
             df_measurement.filter(pathogenic_expr)
             .groupBy(col("person_id").cast(LongType()).alias("subject_id"))
             .agg(
-                lit(1).cast(IntegerType()).alias("has_pathogenic_variant"),
+                # spark_max(lit(1)) is used instead of lit(1) to ensure this is a valid
+                # aggregate expression across all Spark versions.
+                spark_max(lit(1)).cast(IntegerType()).alias("has_pathogenic_variant"),
                 spark_count(lit(1)).cast(IntegerType()).alias("num_pathogenic_variants"),
             )
         )

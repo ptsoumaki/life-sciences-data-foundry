@@ -5,6 +5,42 @@ All notable changes to the Life Sciences Data Foundry project are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-15
+
+### Added
+- **Configurable OHDSI Phenotyping Engine (`analytical-layer/cohorts/builder.py`)**:
+  - `OHDSICohortBuilder` executing declarative `CohortCriteria` rules (index event selection `FIRST`/`LAST`, continuous prior observation lookback windows, age and gender demographic filters, clinical exclusion conditions, baseline biomarker cutoffs, multi-omics ClinVar pathogenic variant criteria) against Gold-tier OMOP CDM v5.4 DataFrames.
+  - Standard OHDSI `COHORT` table output schema (`cohort_definition_id`, `subject_id`, `cohort_start_date`, `cohort_end_date`) with Delta Lake Liquid Clustering persistence.
+  - Three reference phenotype factory functions: `get_type_2_diabetes_cohort_definition()`, `get_hypertension_cohort_definition()`, `get_genomic_oncology_cohort_definition()`.
+- **HIPAA Safe Harbor De-Identification Transformer (`analytical-layer/cohorts/deid.py`)**:
+  - Deterministic keyed pseudonymization (`xxhash64`) with configurable salt via `LSDF_DEID_SALT` environment variable.
+  - Patient-specific date shifting (±Δ days) preserving exact longitudinal event intervals and survival durations.
+  - Age 89+ capping (HIPAA §164.514(b)(2)) and ZIP3 geographic masking with restricted prefix enforcement.
+- **Time-to-Event (TTE) & Survival Analysis Marts (`analytical-layer/cohorts/survival.py`)**:
+  - `SurvivalMartBuilder` producing individual-level TTE frames for Overall Survival (OS), Time-to-Progression (TTP), and Event-Free Survival (EFS) endpoints with administrative and observational right-censoring.
+  - Distributed non-parametric Kaplan-Meier product-limit estimator (`compute_kaplan_meier_summary`) with Greenwood standard errors, stratified by genomic biomarker status.
+- **ML-Ready Patient Feature Store (`analytical-layer/cohorts/features.py`)**:
+  - `PatientFeatureStore` generating wide, numerically-encoded feature matrices with weighted Charlson Comorbidity Index (CCI) with hierarchical suppression rules, multi-window rolling condition counts, longitudinal baseline biomarker aggregations (latest, mean, min, max, missingness indicators), and ClinVar pathogenic variant embeddings.
+- **Unit Test Suite (`tests/unit/test_cohort_builder.py`, `test_deid.py`, `test_survival.py`, `test_features.py`)**:
+  - 25 unit tests verifying phenotyping criteria, exclusion logic, biomarker cutoffs, genomic carrier filtering, HIPAA pseudonymization determinism, date-shift interval preservation, KM product-limit estimation, Greenwood SE, CCI hierarchical suppression, rolling lookback windows, and biomarker missingness imputation.
+
+### Fixed
+- **`builder.py` (B1)**: Empty `df_cond`/`df_measurement` fallback DataFrames now use domain-correct minimal schemas (`condition_concept_id`, `measurement_concept_id`, `value_*`) instead of `df_person.schema`, preventing `AnalysisException` on downstream column references.
+- **`deid.py` (B3)**: `HIPAADeIdentifier.__init__` now emits `warnings.warn` when falling back to the insecure demo salt (`LSDF_DEID_SALT` unset), surfacing a GxP/HIPAA compliance notice at instantiation.
+- **`deid.py` (B4)**: Replaced `df.count() == 0` empty-check guards with `df.rdd.isEmpty()` in all three public methods, eliminating three unnecessary full Spark jobs per call.
+- **`deid.py` (B5)**: `birth_datetime` is now nulled with `lit(None).cast(original_dataType)`, preserving the column's declared type and Delta Lake merge schema contracts.
+- **`survival.py` (B6)**: EFS `first_event_date` corrected from `least(coalesce(prog, death), coalesce(death, prog))` to `coalesce(least(prog, death), prog, death)`, correctly capturing a single non-null date when one operand is null (`least(x, null) = null` in Spark SQL).
+- **`features.py` (B8)**: Rolling condition count aggregation now driven by `config.lookback_windows_days` instead of hardcoded `30/180/365` constants, ensuring schema consistency between the live and empty-cohort paths.
+- **`features.py` (B9)**: `has_pathogenic_variant` aggregation expression corrected from `lit(1)` (non-aggregate) to `spark_max(lit(1))` (valid aggregate expression across all Spark versions).
+
+### Changed
+- **`builder.py`**: `save_cohort` exception handler migrated from bare `print()` to `logging.getLogger(__name__).warning()`, consistent with the platform logging standard.
+- **`builder.py`**: `df_condition_occurrence` parameter documented as a legacy alias for `df_condition`.
+- **`survival.py`**: Added `__init__` docstring to `SurvivalMartBuilder`; added inline comment clarifying lazy Column evaluation semantics of `is_study_end_expr`.
+- **`features.py`**: Added `Args`/`Returns` docstring sections to `_attach_charlson_and_condition_counts`, `_attach_biomarker_features`, and `_attach_genomic_features`.
+
+---
+
 ## [0.2.10] - 2026-09-13
 
 ### Added

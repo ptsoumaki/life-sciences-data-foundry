@@ -8,6 +8,7 @@ Author: Vivi Tsoumaki
 """
 
 import os
+import warnings
 
 from pyspark.sql import Column, DataFrame
 from pyspark.sql.functions import (
@@ -69,7 +70,20 @@ class HIPAADeIdentifier:
                   env var or a deterministic fallback for demo/development.
             max_shift_days: Maximum bound for uniform date shifting (default ±365 days).
         """
-        self.salt = salt or os.environ.get("LSDF_DEID_SALT", "LSDF_GxP_SALT_2026_DEFAULT")
+        resolved_salt = salt or os.environ.get("LSDF_DEID_SALT")
+        if resolved_salt is None:
+            # GxP / HIPAA NOTICE: No salt was provided and LSDF_DEID_SALT is unset.
+            # Falling back to a publicly-visible demo seed. This MUST NOT be used in
+            # production — set the LSDF_DEID_SALT environment variable to a secret,
+            # randomly-generated value before processing real patient data.
+            warnings.warn(
+                "HIPAADeIdentifier: LSDF_DEID_SALT environment variable is not set. "
+                "Using an insecure demo salt. Set LSDF_DEID_SALT before processing "
+                "real patient data.",
+                stacklevel=2,
+            )
+            resolved_salt = "LSDF_GxP_SALT_2026_DEFAULT"
+        self.salt = resolved_salt
         self.max_shift_days = max(1, max_shift_days)
 
     def _get_patient_shift_col(self, id_col: str) -> Column:
@@ -99,7 +113,7 @@ class HIPAADeIdentifier:
         Returns:
             De-identified DataFrame with shifted dates and pseudonymous subject_ids.
         """
-        if df_cohort.count() == 0:
+        if df_cohort.rdd.isEmpty():
             return df_cohort
 
         shift_col = self._get_patient_shift_col("subject_id")
@@ -135,7 +149,7 @@ class HIPAADeIdentifier:
         Returns:
             De-identified PERSON DataFrame.
         """
-        if df_person.count() == 0:
+        if df_person.rdd.isEmpty():
             return df_person
 
         pseudo_id_col = self._get_pseudonymized_id_col("person_id")
@@ -148,9 +162,12 @@ class HIPAADeIdentifier:
             when(col("raw_age") >= 90, lit(reference_year - 89)).otherwise(col("year_of_birth")),
         )
 
-        # Truncate or remove birth_datetime for HIPAA compliance
+        # Truncate or remove birth_datetime for HIPAA compliance.
+        # Cast the null to the column's original declared type to preserve the Delta Lake
+        # schema contract (birth_datetime is commonly TimestampType, not StringType).
         if "birth_datetime" in df_deid.columns:
-            df_deid = df_deid.withColumn("birth_datetime", lit(None).cast("string"))
+            original_dt_type = df_deid.schema["birth_datetime"].dataType
+            df_deid = df_deid.withColumn("birth_datetime", lit(None).cast(original_dt_type))
 
         # Mask postal/ZIP codes if present
         if "zip" in df_deid.columns:
@@ -179,7 +196,7 @@ class HIPAADeIdentifier:
         Returns:
             De-identified DataFrame with shifted dates and pseudonymous person IDs.
         """
-        if df_table.count() == 0:
+        if df_table.rdd.isEmpty():
             return df_table
 
         shift_col = self._get_patient_shift_col(person_id_col)

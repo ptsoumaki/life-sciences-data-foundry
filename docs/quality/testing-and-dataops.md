@@ -16,13 +16,18 @@ This document describes the automated testing strategy, GxP data contract valida
 │    ├── Dynamic PySpark vocabulary dictionary lookups        │
 │    ├── GxP dead-letter quarantine (test_quarantine.py)      │
 │    ├── Centralized SHA-256 crypto tests (test_crypto.py)    │
-│    └── LangGraph GxP auditor tests (test_graph_auditor.py)  │
+│    ├── LangGraph GxP auditor tests (test_graph_auditor.py)  │
+│    ├── OHDSI cohort phenotyping (test_cohort_builder.py)    │
+│    ├── HIPAA Safe Harbor de-id (test_deid.py)               │
+│    ├── Survival analysis marts (test_survival.py)           │
+│    └── Patient feature store & CCI (test_features.py)       │
 ├─────────────────────────────────────────────────────────────┤
 │ 2. End-to-End Integration Tests (tests/integration/)        │
 │    ├── Full Medallion pipeline execution (Demo & Remote)    │
 │    ├── Delta Lake ACID persistence & Liquid Clustering      │
 │    ├── Quarantine routing & breach gates (test_quarantine)  │
-│    └── Runtime Great Expectations assertion enforcement     │
+│    ├── Runtime Great Expectations assertion enforcement     │
+│    └── Analytical cohort lifecycle (test_cohorts)           │
 ├─────────────────────────────────────────────────────────────┤
 │ 3. GxP Compliance & Lineage Auditing (governance/ & AI)     │
 │    ├── Decoupled JSON data contracts (rules.json)           │
@@ -40,20 +45,26 @@ This document describes the automated testing strategy, GxP data contract valida
 ## 🚀 Running Test Suites Locally
 
 ### 1. Unit Tests (PySpark, Governance & Agentic AI)
-Executes unit tests verifying domain transformers, vocabulary resolution, cryptographic digests, dead-letter quarantine, and LangGraph audit state machines:
+Executes unit tests verifying domain transformers, vocabulary resolution, cryptographic digests, dead-letter quarantine, LangGraph audit state machines, and analytical cohorts:
 
 ```bash
 pytest tests/unit/ -v
+
+# Run analytical cohort and survival unit suites specifically
+pytest tests/unit/test_cohort_builder.py tests/unit/test_deid.py tests/unit/test_survival.py tests/unit/test_features.py -v
 
 # Run quarantine unit suite specifically
 pytest tests/unit/test_quarantine.py -v
 ```
 
 ### 2. End-to-End Integration Tests
-Runs the complete Medallion pipeline using `pytest-spark` fixtures, validating Delta Lake writes, quarantine breach thresholds, and data contract enforcement:
+Runs the complete Medallion pipeline using `pytest-spark` fixtures, validating Delta Lake writes, quarantine breach thresholds, data contract enforcement, and analytical cohorts:
 
 ```bash
 pytest tests/integration/ -v
+
+# Run cohort and feature store integration tests specifically
+pytest tests/integration/test_cohorts_integration.py -v
 
 # Run quarantine & remediation integration tests specifically
 pytest tests/integration/test_quarantine_integration.py -v

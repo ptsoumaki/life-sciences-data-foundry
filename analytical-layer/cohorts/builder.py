@@ -7,6 +7,7 @@ Description: Configurable OHDSI Phenotyping Engine and Cohort Builder for PySpar
 Author: Vivi Tsoumaki
 """
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Literal
@@ -30,6 +31,7 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import (
     DateType,
     LongType,
+    StringType,
     StructField,
     StructType,
 )
@@ -125,16 +127,43 @@ class OHDSICohortBuilder:
             df_condition: Gold-tier OMOP CDM CONDITION_OCCURRENCE DataFrame.
             df_measurement: Gold-tier OMOP CDM MEASUREMENT DataFrame.
             study_end_date: Optional fixed study termination date string (YYYY-MM-DD).
-            df_condition_occurrence: Alias for df_condition.
+            df_condition_occurrence: Legacy alias for ``df_condition``; prefer ``df_condition``.
+                When both are provided, ``df_condition`` takes precedence.
 
         Returns:
             PySpark DataFrame conforming to COHORT_SCHEMA.
         """
         df_cond = df_condition if df_condition is not None else df_condition_occurrence
         if df_cond is None:
-            df_cond = self.spark.createDataFrame([], df_person.schema)
+            # Use a minimal CONDITION_OCCURRENCE schema so that all downstream column
+            # references (condition_concept_id, condition_start_date) resolve safely
+            # without raising AnalysisException on an unrelated PERSON schema.
+            df_cond = self.spark.createDataFrame(
+                [],
+                StructType(
+                    [
+                        StructField("person_id", LongType(), nullable=False),
+                        StructField("condition_concept_id", LongType(), nullable=True),
+                        StructField("condition_start_date", StringType(), nullable=True),
+                    ]
+                ),
+            )
         if df_measurement is None:
-            df_measurement = self.spark.createDataFrame([], df_person.schema)
+            # Use a minimal MEASUREMENT schema so that measurement_concept_id and
+            # value_* column references resolve safely without an AnalysisException.
+            df_measurement = self.spark.createDataFrame(
+                [],
+                StructType(
+                    [
+                        StructField("person_id", LongType(), nullable=False),
+                        StructField("measurement_concept_id", LongType(), nullable=True),
+                        StructField("measurement_date", StringType(), nullable=True),
+                        StructField("value_as_number", LongType(), nullable=True),
+                        StructField("value_as_concept_id", LongType(), nullable=True),
+                        StructField("value_source_value", StringType(), nullable=True),
+                    ]
+                ),
+            )
 
         crit = definition.criteria
 
@@ -310,6 +339,12 @@ class OHDSICohortBuilder:
         # 6. Multi-Omics Genomic Variant Criteria
         # ---------------------------------------------------------------------
         if crit.require_pathogenic_variant:
+            # Filter on the OMOP genomic measurement concept (crit.genomic_concept_id)
+            # and confirm pathogenicity via free-text value_source_value containing
+            # "PATHOGENIC" *or* via value_as_concept_id == 35917873, which is the
+            # standard OMOP concept for "Pathogenic" ClinVar clinical significance.
+            # Note: 35917873 here is the *pathogenicity classification concept*, not
+            # the same as crit.genomic_concept_id (the measurement type concept).
             genomic_carriers = (
                 df_measurement.filter(
                     (col("measurement_concept_id") == crit.genomic_concept_id)
@@ -362,6 +397,8 @@ class OHDSICohortBuilder:
         """
         target_path = os.path.join(base_output_dir, "cohort")
 
+        _log = logging.getLogger(__name__)
+
         if HAS_DELTA and DeltaMedallionWriter is not None:
             try:
                 (
@@ -371,19 +408,22 @@ class OHDSICohortBuilder:
                     .clusterBy("cohort_definition_id", "subject_id")
                     .save(target_path)
                 )
-                print(
-                    f"[COHORT SINK] Successfully persisted COHORT table to Delta Lake: {target_path}"
+                _log.info(
+                    "[COHORT SINK] Successfully persisted COHORT table to Delta Lake: %s",
+                    target_path,
                 )
                 return target_path
             except Exception as delta_err:
-                print(
-                    f"[COHORT SINK WARNING] Delta Liquid Clustering write encountered error: {delta_err}. Falling back to Parquet."
+                _log.warning(
+                    "[COHORT SINK] Delta Liquid Clustering write encountered error: %s. "
+                    "Falling back to Parquet.",
+                    delta_err,
                 )
 
-        # Fallback to standard Parquet persistence for environments without Delta/Liquid Clustering
+        # Fallback to standard Parquet persistence for environments without Delta/Liquid Clustering.
         os.makedirs(target_path, exist_ok=True)
         df_cohort.write.mode(mode).parquet(target_path)
-        print(f"[COHORT SINK] Persisted COHORT table as Parquet: {target_path}")
+        _log.info("[COHORT SINK] Persisted COHORT table as Parquet: %s", target_path)
         return target_path
 
 

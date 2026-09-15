@@ -121,6 +121,12 @@ class SurvivalMartBuilder:
     """
 
     def __init__(self, spark: SparkSession, config: SurvivalConfig | None = None) -> None:
+        """Initializes the survival mart builder.
+
+        Args:
+            spark: Active PySpark SparkSession.
+            config: Optional SurvivalConfig. Defaults to Overall Survival with standard settings.
+        """
         self.spark = spark
         self.config = config or SurvivalConfig()
 
@@ -243,7 +249,7 @@ class SurvivalMartBuilder:
             df_base = df_base.withColumn("has_pathogenic_variant", lit(0).cast(IntegerType()))
 
         # 6. Determine Effective Censor Cutoff Date
-        # Precedence: study_end_date > obs_period_end > cohort_end_date > cohort_start_date + default_censor_window_days
+        # Precedence: study_end_date > obs_period_end > cohort_end_date
         fallback_censor = coalesce(
             col("obs_period_end"),
             col("cohort_end_date"),
@@ -251,6 +257,10 @@ class SurvivalMartBuilder:
         if self.config.study_end_date:
             admin_end = to_date(lit(self.config.study_end_date))
             effective_censor_expr = least(fallback_censor, admin_end)
+            # is_study_end_expr is a lazy Column expression; it references
+            # "effective_censor_date" which is added to df_base one line below.
+            # This is safe because PySpark Column expressions are not evaluated
+            # until an action (collect/write) is triggered.
             is_study_end_expr = col("effective_censor_date") == admin_end
         else:
             effective_censor_expr = fallback_censor
@@ -311,10 +321,14 @@ class SurvivalMartBuilder:
                 )
             )
 
-        else:  # EVENT_FREE_SURVIVAL (EFS: First of progression or death is an event)
-            first_event_date = least(
-                coalesce(col("progression_date"), col("death_date")),
-                coalesce(col("death_date"), col("progression_date")),
+        else:  # EVENT_FREE_SURVIVAL (EFS: first of progression or death constitutes an event)
+            # Use coalesce(least(...), individual_fallbacks) so that a single non-null
+            # date is captured even when least() returns null due to the other operand
+            # being null (Spark SQL: least(x, null) = null).
+            first_event_date = coalesce(
+                least(col("progression_date"), col("death_date")),
+                col("progression_date"),
+                col("death_date"),
             )
             has_efs_event = (
                 first_event_date.isNotNull()

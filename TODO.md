@@ -97,13 +97,13 @@ This document tracks active development phases and engineering priorities for th
 
 ## 📊 Phase 9: Gold-Tier Analytical Cohorts & Translational Endpoints
 
-- [ ] **Configurable OHDSI Phenotyping Engine (`analytical-layer/cohorts/builder.py`)**
+- [x] **Configurable OHDSI Phenotyping Engine (`analytical-layer/cohorts/builder.py`)**
   - Implement temporal inclusion/exclusion rules (index date $T_0$, baseline lookback windows, biomarker cutoffs, multi-omics variant criteria) outputting standard OHDSI `COHORT` structures (`cohort_definition_id`, `subject_id`, `cohort_start_date`, `cohort_end_date`).
-- [ ] **HIPAA Safe Harbor De-Identification Transformer (`analytical-layer/cohorts/deid.py`)**
+- [x] **HIPAA Safe Harbor De-Identification Transformer (`analytical-layer/cohorts/deid.py`)**
   - Build deterministic patient pseudonymization, salt-seeded date shifting ($\pm \Delta$ days preserving longitudinal event intervals), age 89+ capping, and ZIP3 masking.
-- [ ] **Time-to-Event (TTE) & Survival Analysis Marts (`analytical-layer/cohorts/survival.py`)**
+- [x] **Time-to-Event (TTE) & Survival Analysis Marts (`analytical-layer/cohorts/survival.py`)**
   - Generate Overall Survival (OS) and Time-to-Progression (TTP) analytical frames (time, event indicator, covariates) stratified by genomic biomarkers for Kaplan-Meier modeling.
-- [ ] **ML-Ready Patient Feature Store Projections (`analytical-layer/cohorts/features.py`)**
+- [x] **ML-Ready Patient Feature Store Projections (`analytical-layer/cohorts/features.py`)**
   - Construct wide longitudinal feature matrices with rolling comorbidity counts, Charlson Comorbidity Index (CCI), latest biomarker observations, and variant indicator features.
 
 ---

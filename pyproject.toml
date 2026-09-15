@@ -33,7 +33,7 @@ dev = [
 # Note: directories with hyphens (analytical-layer, agentic-ai) are not valid Python package
 # names and cannot be imported directly; only their underscore-named sub-packages are exposed.
 where = ["analytical-layer", "."]
-include = ["omop_cdm_v54*", "medallion*", "governance*"]
+include = ["omop_cdm_v54*", "medallion*", "governance*", "cohorts*"]
 exclude = ["tests*"]
 
 [tool.ruff]

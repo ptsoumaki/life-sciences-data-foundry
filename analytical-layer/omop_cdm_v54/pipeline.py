@@ -163,6 +163,7 @@ def run_omop_pipeline(
     rules_path: str = "governance/rules.json",
     quarantine_threshold: float = 0.02,
     abort_on_breach: bool = False,
+    build_cohorts: bool = False,
 ) -> dict[str, Any]:
     """Executes the Bronze → Silver → Gold Medallion OMOP CDM v5.4 pipeline.
 
@@ -455,15 +456,74 @@ def run_omop_pipeline(
             writer.optimize_table(meas_path)
             writer.vacuum_table(meas_path, retention_hours=168.0)
 
+    cohort_results: dict[str, Any] = {}
+    if build_cohorts:
+        print(
+            "\n[INFO] [COHORT ENGINE] Constructing Gold Analytical Cohorts & Translational Endpoints..."
+        )
+        try:
+            from cohorts.builder import OHDSICohortBuilder, get_type_2_diabetes_cohort_definition
+            from cohorts.deid import HIPAADeIdentifier
+            from cohorts.features import PatientFeatureStore
+            from cohorts.survival import SurvivalConfig, SurvivalEndpoint, SurvivalMartBuilder
+
+            builder = OHDSICohortBuilder(spark)
+            t2d_def = get_type_2_diabetes_cohort_definition()
+            df_cohort_t2d = builder.build_cohort(
+                definition=t2d_def,
+                df_condition_occurrence=df_omop_condition,
+                df_person=df_omop_person,
+                df_measurement=df_omop_measurement,
+            )
+            cohort_results["cohort_t2d"] = df_cohort_t2d
+
+            deid = HIPAADeIdentifier()
+            df_cohort_deid = deid.deidentify_cohort(df_cohort_t2d)
+            cohort_results["cohort_deid"] = df_cohort_deid
+
+            surv_builder = SurvivalMartBuilder(
+                spark, SurvivalConfig(endpoint=SurvivalEndpoint.OVERALL_SURVIVAL)
+            )
+            df_surv = surv_builder.build_survival_frame(
+                df_cohort=df_cohort_t2d,
+                df_person=df_omop_person,
+                df_condition_occurrence=df_omop_condition,
+                df_measurement=df_omop_measurement,
+            )
+            cohort_results["survival_mart"] = df_surv
+
+            feat_store = PatientFeatureStore(spark)
+            df_features = feat_store.build_feature_matrix(
+                df_cohort=df_cohort_t2d,
+                df_person=df_omop_person,
+                df_condition_occurrence=df_omop_condition,
+                df_measurement=df_omop_measurement,
+            )
+            cohort_results["patient_features"] = df_features
+
+            if save_delta and output_dir:
+                cohort_dir = os.path.join(output_dir, "gold")
+                builder.save_cohort(df_cohort_t2d, cohort_dir)
+                surv_builder.save_survival_mart(df_surv, cohort_dir)
+                feat_store.save_feature_matrix(df_features, cohort_dir)
+
+            print(
+                "[COHORT ENGINE] Gold Cohort generation and analytical marts persisted successfully."
+            )
+        except Exception as e:
+            print(f"[COHORT ENGINE WARNING] Cohort build encountered error: {e}")
+
     print(
         f"[SUCCESS] OHDSI OMOP CDM v5.4 Pipeline Execution Mode [{mode.upper()}] Completed Successfully."
     )
 
-    return {
+    final_result = {
         "person": df_omop_person,
         "condition_occurrence": df_omop_condition,
         "measurement": df_omop_measurement,
     }
+    final_result.update(cohort_results)
+    return final_result
 
 
 if __name__ == "__main__":
@@ -520,6 +580,12 @@ if __name__ == "__main__":
         default=False,
         help="Abort pipeline execution if batch quarantine rejection ratio exceeds tolerance threshold",
     )
+    parser.add_argument(
+        "--build_cohorts",
+        action="store_true",
+        default=False,
+        help="Construct Gold-tier analytical cohorts, survival marts, and patient feature stores",
+    )
     args = parser.parse_args()
 
     mode_val = os.getenv("DATA_MODE", args.mode)
@@ -537,5 +603,6 @@ if __name__ == "__main__":
         rules_path=args.rules_path,
         quarantine_threshold=args.quarantine_threshold,
         abort_on_breach=args.abort_on_breach,
+        build_cohorts=args.build_cohorts,
     )
     spark.stop()

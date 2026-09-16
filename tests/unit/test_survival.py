@@ -8,13 +8,6 @@ import tempfile
 from datetime import date
 
 import pytest
-from cohorts.survival import (
-    KAPLAN_MEIER_SCHEMA,
-    SURVIVAL_FRAME_SCHEMA,
-    SurvivalConfig,
-    SurvivalEndpoint,
-    SurvivalMartBuilder,
-)
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     IntegerType,
@@ -22,6 +15,14 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+)
+
+from cohorts.survival import (
+    KAPLAN_MEIER_SCHEMA,
+    SURVIVAL_FRAME_SCHEMA,
+    SurvivalConfig,
+    SurvivalEndpoint,
+    SurvivalMartBuilder,
 )
 
 

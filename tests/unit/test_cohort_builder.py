@@ -8,15 +8,6 @@ import tempfile
 from datetime import date
 
 import pytest
-from cohorts.builder import (
-    COHORT_SCHEMA,
-    CohortCriteria,
-    CohortDefinition,
-    OHDSICohortBuilder,
-    get_genomic_oncology_cohort_definition,
-    get_hypertension_cohort_definition,
-    get_type_2_diabetes_cohort_definition,
-)
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DoubleType,
@@ -25,6 +16,16 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+)
+
+from cohorts.builder import (
+    COHORT_SCHEMA,
+    CohortCriteria,
+    CohortDefinition,
+    OHDSICohortBuilder,
+    get_genomic_oncology_cohort_definition,
+    get_hypertension_cohort_definition,
+    get_type_2_diabetes_cohort_definition,
 )
 
 

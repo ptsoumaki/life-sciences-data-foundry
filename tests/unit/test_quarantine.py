@@ -437,4 +437,3 @@ def test_quarantine_remediation_with_pipeline_schema_columns(spark: SparkSession
         assert res_meas["total_evaluated"] == 2
         assert res_meas["remediated_count"] == 1
         assert res_meas["unresolved_count"] == 1
-

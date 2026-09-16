@@ -7,9 +7,6 @@ import shutil
 import tempfile
 
 import pytest
-from cohorts.features import (
-    PatientFeatureStore,
-)
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DoubleType,
@@ -18,6 +15,10 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+)
+
+from cohorts.features import (
+    PatientFeatureStore,
 )
 
 

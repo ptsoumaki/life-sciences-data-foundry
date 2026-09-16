@@ -3,7 +3,6 @@ Unit tests for the HIPAA Safe Harbor De-Identification Transformer (cohorts/deid
 """
 
 import pytest
-from cohorts.deid import HIPAADeIdentifier
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, datediff, to_date
 from pyspark.sql.types import (
@@ -13,6 +12,8 @@ from pyspark.sql.types import (
     StructField,
     StructType,
 )
+
+from cohorts.deid import HIPAADeIdentifier
 
 
 @pytest.fixture

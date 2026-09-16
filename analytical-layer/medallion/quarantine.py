@@ -527,8 +527,13 @@ class QuarantineRemediationEngine:
         valid_codes = [k.upper() for k, v in icd10_map.items() if v != 0]
         all_valid_codes = list(set(valid_codes) | {c.replace(".", "") for c in valid_codes})
 
+        code_col_name = "icd10_code" if "icd10_code" in df_with_eval.columns else "code"
         is_valid_date = col("parsed_diag_dt").isNotNull()
-        is_mapped_code = upper(trim(col("code"))).isin(all_valid_codes)
+        is_mapped_code = (
+            upper(trim(col(code_col_name))).isin(all_valid_codes)
+            if code_col_name in df_with_eval.columns
+            else lit(False)
+        )
         is_remediated_cond = is_valid_date & is_mapped_code
 
         df_remediated = df_with_eval.filter(is_remediated_cond)
@@ -545,7 +550,14 @@ class QuarantineRemediationEngine:
 
             merge_keys = [
                 k
-                for k in ["encounter_id", "patient_id", "diagnosis_date", "code"]
+                for k in [
+                    "encounter_id",
+                    "patient_id",
+                    "raw_patient_id",
+                    "diagnosis_date",
+                    "icd10_code",
+                    "code",
+                ]
                 if k in df_silver_promoted.columns
             ]
             if not merge_keys:
@@ -586,7 +598,11 @@ class QuarantineRemediationEngine:
             }
 
         mappings_data = load_concept_mappings(mapping_file)
-        loinc_map = dict(mappings_data.get("loinc_to_measurement", DEFAULT_LOINC_MAPPINGS))
+        loinc_map = dict(
+            mappings_data.get("loinc_to_concept")
+            or mappings_data.get("loinc_to_measurement")
+            or DEFAULT_LOINC_MAPPINGS
+        )
         if updated_loinc_mappings:
             loinc_map.update(updated_loinc_mappings)
 
@@ -597,6 +613,7 @@ class QuarantineRemediationEngine:
             "_unpacked", from_json(col("raw_payload"), json_schema)
         ).select("quarantine_id", "_unpacked.*")
 
+        lab_val_col_name = "numeric_value" if "numeric_value" in df_unpacked.columns else "value"
         df_with_eval = (
             df_unpacked.withColumn(
                 "parsed_lab_datetime",
@@ -606,7 +623,7 @@ class QuarantineRemediationEngine:
                 ),
             )
             .withColumn("parsed_lab_dt", col("parsed_lab_datetime").cast("date"))
-            .withColumn("numeric_value", expr("try_cast(value as double)"))
+            .withColumn("numeric_value", expr(f"try_cast({lab_val_col_name} as double)"))
         )
 
         valid_codes = [k.upper() for k, v in loinc_map.items() if v != 0]
@@ -616,10 +633,11 @@ class QuarantineRemediationEngine:
         all_valid_loinc_codes = list(set(valid_codes) | {c.replace("-", "") for c in valid_codes})
         is_valid_date = col("parsed_lab_dt").isNotNull()
         is_non_negative = col("numeric_value").isNull() | (col("numeric_value") >= 0.0)
+        meas_code_col_name = "loinc_code" if "loinc_code" in df_with_eval.columns else "code"
         is_mapped_code = (
-            upper(trim(col("code"))).isin(all_valid_loinc_codes)
-            if "code" in df_with_eval.columns
-            else lit(True)
+            upper(trim(col(meas_code_col_name))).isin(all_valid_loinc_codes)
+            if meas_code_col_name in df_with_eval.columns
+            else lit(False)
         )
 
         is_remediated_meas = is_valid_date & is_non_negative & is_mapped_code
@@ -637,7 +655,14 @@ class QuarantineRemediationEngine:
 
             merge_keys = [
                 k
-                for k in ["patient_id", "parsed_lab_dt", "code"]
+                for k in [
+                    "lab_event_id",
+                    "patient_id",
+                    "raw_patient_id",
+                    "parsed_lab_dt",
+                    "loinc_code",
+                    "code",
+                ]
                 if k in df_silver_promoted.columns
             ]
             if not merge_keys:

@@ -96,10 +96,10 @@ def survival_test_data(spark: SparkSession):
     )
     # Patient 1 and Patient 3 have pathogenic ClinVar variants
     meas_rows = [
-        (1, 2000000001, "Pathogenic; Likely Pathogenic", 35917873),
-        (2, 2000000001, "Benign", 35917874),
-        (3, 2000000001, "PATHOGENIC", 35917873),
-        (4, 2000000001, "Uncertain Significance", 0),
+        (1, 35917873, "Pathogenic; Likely Pathogenic", 36768280),
+        (2, 35917873, "Benign", 4049393),
+        (3, 35917873, "PATHOGENIC", 4181412),
+        (4, 35917873, "Uncertain Significance", 4078249),
     ]
     df_meas = spark.createDataFrame(meas_rows, meas_schema)
 

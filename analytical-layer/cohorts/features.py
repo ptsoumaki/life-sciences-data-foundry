@@ -139,11 +139,11 @@ CHARLSON_CATEGORIES: dict[str, dict[str, Any]] = {
     },
 }
 
-# Standard Baseline Biomarker Concepts
+# Standard Baseline Biomarker Concepts aligned with governance/concept_mappings.json
 DEFAULT_BIOMARKER_MAP: dict[str, int] = {
-    "hba1c": 4184637,  # LOINC 4548-4 (Hemoglobin A1c)
-    "glucose": 3004501,  # LOINC 1558-6 (Fasting Glucose)
-    "cholesterol": 3027114,  # LOINC 2093-3 (Total Cholesterol)
+    "hba1c": 3004410,  # LOINC 4548-4 (Hemoglobin A1c)
+    "glucose": 3000483,  # LOINC 2345-7 (Serum Glucose)
+    "cholesterol": 3004249,  # LOINC 2093-3 (Total Cholesterol)
     "creatinine": 3016723,  # LOINC 2160-0 (Serum Creatinine)
 }
 
@@ -154,7 +154,7 @@ class FeatureStoreConfig:
 
     lookback_windows_days: list[int] = field(default_factory=lambda: [30, 180, 365])
     biomarkers: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_BIOMARKER_MAP))
-    genomic_concept_id: int = 2000000001
+    genomic_concept_id: int = 35917873  # Standard OMOP genomic variant concept ID
     impute_missing_biomarkers_with_zero: bool = True
 
 
@@ -507,7 +507,7 @@ class PatientFeatureStore:
 
         pathogenic_expr = (col("measurement_concept_id") == self.config.genomic_concept_id) & (
             upper(col("value_source_value")).contains("PATHOGENIC")
-            | (col("value_as_concept_id") == 35917873)
+            | col("value_as_concept_id").isin([4181412, 36768280])
         )
 
         genomic_agg = (

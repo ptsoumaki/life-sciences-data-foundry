@@ -341,16 +341,14 @@ class OHDSICohortBuilder:
         if crit.require_pathogenic_variant:
             # Filter on the OMOP genomic measurement concept (crit.genomic_concept_id)
             # and confirm pathogenicity via free-text value_source_value containing
-            # "PATHOGENIC" *or* via value_as_concept_id == 35917873, which is the
-            # standard OMOP concept for "Pathogenic" ClinVar clinical significance.
-            # Note: 35917873 here is the *pathogenicity classification concept*, not
-            # the same as crit.genomic_concept_id (the measurement type concept).
+            # "PATHOGENIC" *or* via standard OMOP concept for ClinVar Pathogenic/Likely Pathogenic
+            # (concept IDs 4181412 and 36768280 per governance/concept_mappings.json).
             genomic_carriers = (
                 df_measurement.filter(
                     (col("measurement_concept_id") == crit.genomic_concept_id)
                     & (
                         upper(col("value_source_value")).contains("PATHOGENIC")
-                        | (col("value_as_concept_id") == 35917873)
+                        | col("value_as_concept_id").isin([4181412, 36768280])
                     )
                 )
                 .select(col("person_id").alias("subject_id"))

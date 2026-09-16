@@ -98,18 +98,18 @@ def feature_test_data(spark: SparkSession):
         ]
     )
     meas_rows = [
-        # Patient 1: HbA1c baseline measurements (concept 4184637)
-        (1, 4184637, "2022-01-15", 7.2, "HbA1c", 0),
-        (1, 4184637, "2022-05-10", 8.4, "HbA1c", 0),  # Latest
-        # Patient 1: Glucose (concept 3004501)
-        (1, 3004501, "2022-05-10", 145.0, "Glucose", 0),
+        # Patient 1: HbA1c baseline measurements (concept 3004410)
+        (1, 3004410, "2022-01-15", 7.2, "HbA1c", 0),
+        (1, 3004410, "2022-05-10", 8.4, "HbA1c", 0),  # Latest
+        # Patient 1: Glucose (concept 3000483)
+        (1, 3000483, "2022-05-10", 145.0, "Glucose", 0),
         # Patient 1: ClinVar pathogenic variant
-        (1, 2000000001, "2022-01-01", None, "Pathogenic", 35917873),
-        (1, 2000000001, "2022-03-01", None, "Pathogenic; Likely Pathogenic", 35917873),
+        (1, 35917873, "2022-01-01", None, "Pathogenic", 4181412),
+        (1, 35917873, "2022-03-01", None, "Pathogenic; Likely Pathogenic", 36768280),
         # Patient 2: Only Glucose
-        (2, 3004501, "2022-04-12", 110.0, "Glucose", 0),
+        (2, 3000483, "2022-04-12", 110.0, "Glucose", 0),
         # Patient 3: ClinVar Benign (not pathogenic)
-        (3, 2000000001, "2021-12-01", None, "Benign", 35917874),
+        (3, 35917873, "2021-12-01", None, "Benign", 4049393),
     ]
     df_meas = spark.createDataFrame(meas_rows, meas_schema)
 

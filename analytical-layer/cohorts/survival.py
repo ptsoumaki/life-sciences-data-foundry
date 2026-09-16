@@ -109,7 +109,7 @@ class SurvivalConfig:
     censor_at_death: bool = True
     study_end_date: str | None = None
     max_followup_days: int | None = None
-    genomic_concept_id: int = 2000000001
+    genomic_concept_id: int = 35917873  # Standard OMOP genomic variant concept ID
     default_censor_window_days: int = 730
 
 
@@ -233,7 +233,7 @@ class SurvivalMartBuilder:
         if df_measurement is not None and not df_measurement.rdd.isEmpty():
             pathogenic_expr = (col("measurement_concept_id") == self.config.genomic_concept_id) & (
                 upper(col("value_source_value")).contains("PATHOGENIC")
-                | (col("value_as_concept_id") == 35917873)
+                | col("value_as_concept_id").isin([4181412, 36768280])
             )
             genomic_carriers = (
                 df_measurement.filter(pathogenic_expr)

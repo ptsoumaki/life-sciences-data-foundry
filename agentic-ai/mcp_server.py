@@ -384,6 +384,192 @@ OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    "quarantine_patients": {
+        "table_name": "QUARANTINE_PATIENTS",
+        "description": "Dead-letter quarantine repository for non-compliant, malformed, or unvalidated patient demographic records.",
+        "primary_key": "quarantine_id",
+        "clustering_keys": ["failure_code", "status"],
+        "columns": [
+            {
+                "name": "quarantine_id",
+                "type": "string",
+                "nullable": False,
+                "description": "Unique cryptographic UUID identifier for the quarantined patient record.",
+            },
+            {
+                "name": "table_name",
+                "type": "string",
+                "nullable": False,
+                "description": "Originating source table name ('patients' / 'clinical_demographics').",
+            },
+            {
+                "name": "raw_payload",
+                "type": "string",
+                "nullable": False,
+                "description": "Verbatim serialized JSON payload of the rejected record ensuring zero data loss.",
+            },
+            {
+                "name": "failure_code",
+                "type": "string",
+                "nullable": False,
+                "description": "Standardized clinical failure code taxonomy (e.g. SCHEMA_VIOLATION, TEMPORAL_ANOMALY).",
+            },
+            {
+                "name": "failure_reason",
+                "type": "string",
+                "nullable": False,
+                "description": "Deterministic human-readable explanation of rejection rationale.",
+            },
+            {
+                "name": "failure_timestamp",
+                "type": "timestamp",
+                "nullable": False,
+                "description": "ISO-8601 UTC timestamp when the record was quarantined.",
+            },
+            {
+                "name": "mlflow_run_id",
+                "type": "string",
+                "nullable": False,
+                "description": "MLflow run ID for FDA 21 CFR Part 11 cryptographic traceability.",
+            },
+            {
+                "name": "status",
+                "type": "string",
+                "nullable": False,
+                "description": "Remediation lifecycle state: 'QUARANTINED' or 'REMEDIATED'.",
+            },
+            {
+                "name": "remediation_timestamp",
+                "type": "timestamp",
+                "nullable": True,
+                "description": "ISO-8601 UTC timestamp when the record was remediated and promoted to Silver.",
+            },
+        ],
+    },
+    "quarantine_conditions": {
+        "table_name": "QUARANTINE_CONDITIONS",
+        "description": "Dead-letter quarantine repository for non-compliant, unmapped, or invalid clinical condition/diagnosis records.",
+        "primary_key": "quarantine_id",
+        "clustering_keys": ["failure_code", "status"],
+        "columns": [
+            {
+                "name": "quarantine_id",
+                "type": "string",
+                "nullable": False,
+                "description": "Unique cryptographic UUID identifier for the quarantined condition record.",
+            },
+            {
+                "name": "table_name",
+                "type": "string",
+                "nullable": False,
+                "description": "Originating source table name ('diagnoses' / 'clinical_diagnoses').",
+            },
+            {
+                "name": "raw_payload",
+                "type": "string",
+                "nullable": False,
+                "description": "Verbatim serialized JSON payload of the rejected condition record.",
+            },
+            {
+                "name": "failure_code",
+                "type": "string",
+                "nullable": False,
+                "description": "Standardized clinical failure code taxonomy (e.g. UNMAPPED_TERMINOLOGY, TEMPORAL_ANOMALY).",
+            },
+            {
+                "name": "failure_reason",
+                "type": "string",
+                "nullable": False,
+                "description": "Deterministic human-readable explanation of condition rejection rationale.",
+            },
+            {
+                "name": "failure_timestamp",
+                "type": "timestamp",
+                "nullable": False,
+                "description": "ISO-8601 UTC timestamp when the condition was quarantined.",
+            },
+            {
+                "name": "mlflow_run_id",
+                "type": "string",
+                "nullable": False,
+                "description": "MLflow run ID for FDA 21 CFR Part 11 cryptographic traceability.",
+            },
+            {
+                "name": "status",
+                "type": "string",
+                "nullable": False,
+                "description": "Remediation lifecycle state: 'QUARANTINED' or 'REMEDIATED'.",
+            },
+            {
+                "name": "remediation_timestamp",
+                "type": "timestamp",
+                "nullable": True,
+                "description": "ISO-8601 UTC timestamp when the condition was remediated and promoted to Silver.",
+            },
+        ],
+    },
+    "quarantine_measurements": {
+        "table_name": "QUARANTINE_MEASUREMENTS",
+        "description": "Dead-letter quarantine repository for unmapped, out-of-bounds, or non-compliant lab measurements.",
+        "primary_key": "quarantine_id",
+        "clustering_keys": ["failure_code", "status"],
+        "columns": [
+            {
+                "name": "quarantine_id",
+                "type": "string",
+                "nullable": False,
+                "description": "Unique cryptographic UUID identifier for the quarantined measurement record.",
+            },
+            {
+                "name": "table_name",
+                "type": "string",
+                "nullable": False,
+                "description": "Originating source table name ('labs' / 'lab_measurements').",
+            },
+            {
+                "name": "raw_payload",
+                "type": "string",
+                "nullable": False,
+                "description": "Verbatim serialized JSON payload of the rejected lab observation.",
+            },
+            {
+                "name": "failure_code",
+                "type": "string",
+                "nullable": False,
+                "description": "Standardized clinical failure code taxonomy (e.g. OUT_OF_BOUNDS_LAB, UNMAPPED_TERMINOLOGY).",
+            },
+            {
+                "name": "failure_reason",
+                "type": "string",
+                "nullable": False,
+                "description": "Deterministic human-readable explanation of measurement rejection rationale.",
+            },
+            {
+                "name": "failure_timestamp",
+                "type": "timestamp",
+                "nullable": False,
+                "description": "ISO-8601 UTC timestamp when the measurement was quarantined.",
+            },
+            {
+                "name": "mlflow_run_id",
+                "type": "string",
+                "nullable": False,
+                "description": "MLflow run ID for FDA 21 CFR Part 11 cryptographic traceability.",
+            },
+            {
+                "name": "status",
+                "type": "string",
+                "nullable": False,
+                "description": "Remediation lifecycle state: 'QUARANTINED' or 'REMEDIATED'.",
+            },
+            {
+                "name": "remediation_timestamp",
+                "type": "timestamp",
+                "nullable": True,
+                "description": "ISO-8601 UTC timestamp when the measurement was remediated and promoted to Silver.",
+            },
+        ],
+    },
 }
 
 
@@ -600,10 +786,10 @@ def tool_query_vocabulary_mappings(
 
 
 def tool_inspect_omop_table_schema(table_name: str) -> dict[str, Any]:
-    """Returns official OMOP CDM v5.4 schema definitions, column data types, and primary keys.
+    """Returns official OMOP CDM v5.4 and quarantine dead-letter schema definitions, column data types, and primary keys.
 
     Args:
-        table_name: Name of OMOP CDM table ('person', 'condition_occurrence', 'measurement', 'cohort').
+        table_name: Name of OMOP CDM or quarantine table ('person', 'condition_occurrence', 'measurement', 'cohort', 'quarantine_patients', 'quarantine_conditions', 'quarantine_measurements').
 
     Returns:
         Schema dictionary including columns, types, nullability, and primary/clustering keys.

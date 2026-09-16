@@ -174,12 +174,21 @@ def test_tool_query_vocabulary_mappings():
 
 
 def test_tool_inspect_omop_table_schema():
-    """Validates retrieving official OMOP CDM v5.4 table schemas."""
-    for tbl in ["person", "condition_occurrence", "measurement", "cohort"]:
+    """Validates retrieving official OMOP CDM v5.4 and quarantine table schemas."""
+    for tbl in [
+        "person",
+        "condition_occurrence",
+        "measurement",
+        "cohort",
+        "quarantine_patients",
+        "quarantine_conditions",
+        "quarantine_measurements",
+    ]:
         schema = tool_inspect_omop_table_schema(tbl)
         assert schema["table_name"] == tbl.upper()
         assert len(schema["columns"]) > 0
         assert "primary_key" in schema
+        assert "columns" in schema
 
     invalid_tbl = tool_inspect_omop_table_schema("unknown_table")
     assert "error" in invalid_tbl

@@ -63,7 +63,7 @@ This component implements the **Agentic Compliance Auditing Tier** — an autono
   * `tool_lookup_demographic_concept`: Resolves gender, race, and ethnicity terms to standard OMOP concept IDs.
   * `tool_lookup_genomic_variant_concept`: Resolves ClinVar clinical significance terms (`Pathogenic`, `Benign`) to OMOP concepts.
   * `tool_query_vocabulary_mappings`: Queries dynamic concept lookup dictionaries across all domains.
-  * `tool_inspect_omop_table_schema`: Returns official OMOP CDM v5.4 table schemas, column types, nullability, and primary keys (`PERSON`, `CONDITION_OCCURRENCE`, `MEASUREMENT`, `COHORT`).
+  * `tool_inspect_omop_table_schema`: Returns table schemas, column types, nullability, primary keys, and Liquid Clustering configurations (`PERSON`, `CONDITION_OCCURRENCE`, `MEASUREMENT`, `COHORT`, and GxP dead-letter quarantine sinks `QUARANTINE_PATIENTS`, `QUARANTINE_CONDITIONS`, `QUARANTINE_MEASUREMENTS`).
   * `tool_get_pipeline_execution_state`: Queries MLflow for execution metrics, expectation pass rates, and GxP gate status.
   * `tool_inspect_delta_table_log`: Inspects Delta Lake `_delta_log/*.json` transaction commits, schema evolution, and timestamps.
   * `tool_verify_gxp_audit_lineage`: Runs the LangGraph `GxPGraphAuditor` state graph to evaluate 21 CFR Part 11 compliance.

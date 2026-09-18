@@ -108,7 +108,7 @@ ruff check .
 ruff format --check .
 
 # Strict static type checking across all packages
-mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion governance agentic-ai tests
+mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion analytical-layer/cohorts governance agentic-ai tests
 ```
 
 ### 8. Terraform IaC Validation

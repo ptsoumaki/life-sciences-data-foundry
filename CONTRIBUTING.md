@@ -205,7 +205,7 @@ Before opening a Pull Request, run the platform validation suite locally:
 
 3. **Analytical PySpark Normalization Execution:**
    ```bash
-   python -m omop_cdm_v54.pipeline --mode demo --save-delta
+   python -m omop_cdm_v54.pipeline --mode demo --save-delta --build-cohorts
    ```
 
 4. **Nextflow Pipeline Stub Verification:**

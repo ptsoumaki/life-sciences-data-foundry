@@ -437,3 +437,47 @@ def test_quarantine_remediation_with_pipeline_schema_columns(spark: SparkSession
         assert res_meas["total_evaluated"] == 2
         assert res_meas["remediated_count"] == 1
         assert res_meas["unresolved_count"] == 1
+
+
+def test_quarantine_remediation_patients_with_raw_patient_id(spark: SparkSession):
+    """Verifies patient remediation and promotion to Silver when raw_patient_id is the identifier column."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        writer = QuarantineDeltaWriter(spark, base_output_dir=tmp_dir)
+
+        patient_schema = StructType(
+            [
+                StructField("raw_patient_id", StringType(), True),
+                StructField("birth_datetime", StringType(), True),
+                StructField("gender", StringType(), True),
+                StructField("race", StringType(), True),
+                StructField("ethnicity", StringType(), True),
+            ]
+        )
+        # Row 1: valid date and gender (remediable)
+        # Row 2: invalid gender 'INVALID_GENDER' (irremediable)
+        patient_raw = spark.createDataFrame(
+            [
+                ("PAT_RAW_001", "1980-05-12", "MALE", "White", "Not Hispanic"),
+                ("PAT_RAW_002", "1992-08-20", "INVALID_GENDER", "Asian", "Not Hispanic"),
+            ],
+            patient_schema,
+        )
+        df_q_pat = format_quarantine_dataframe(
+            patient_raw,
+            table_name=QUARANTINE_TABLE_PATIENTS,
+            failure_code=ClinicalFailureCode.SCHEMA_VIOLATION,
+            failure_reason="Raw demographics validation failure",
+        )
+        writer.write_quarantine_patients(df_q_pat, mode="overwrite")
+
+        engine = QuarantineRemediationEngine(spark, base_output_dir=tmp_dir)
+        res = engine.remediate_patients()
+
+        assert res["status"] == "SUCCESS"
+        assert res["total_evaluated"] == 2
+        assert res["remediated_count"] == 1
+        assert res["unresolved_count"] == 1
+        assert res["promoted_path"] is not None
+
+        assert "clinical_demographics" in res["promoted_path"]
+        assert os.path.exists(res["promoted_path"])

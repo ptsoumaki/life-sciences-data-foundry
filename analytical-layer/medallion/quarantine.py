@@ -728,7 +728,9 @@ class QuarantineRemediationEngine:
             df_silver_promoted = df_remediated.select(silver_cols)
 
             merge_keys = [
-                k for k in ["patient_id", "id", "person_id"] if k in df_silver_promoted.columns
+                k
+                for k in ["raw_patient_id", "patient_id", "id", "person_id"]
+                if k in df_silver_promoted.columns
             ]
             if not merge_keys:
                 merge_keys = df_silver_promoted.columns[:1]

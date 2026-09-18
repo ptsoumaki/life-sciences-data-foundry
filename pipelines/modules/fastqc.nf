@@ -10,6 +10,12 @@ process FASTQC {
     output:
     path "*_fastqc.{zip,html}", emit: qc_reports
 
+    stub:
+    """
+    touch ${fastq.baseName}_fastqc.zip
+    touch ${fastq.baseName}_fastqc.html
+    """
+
     script:
     """
     fastqc --quiet ${fastq}

@@ -169,13 +169,16 @@ class HIPAADeIdentifier:
             original_dt_type = df_deid.schema["birth_datetime"].dataType
             df_deid = df_deid.withColumn("birth_datetime", lit(None).cast(original_dt_type))
 
-        # Mask postal/ZIP codes if present
-        if "zip" in df_deid.columns:
-            zip3_col = substring(col("zip").cast("string"), 1, 3)
-            df_deid = df_deid.withColumn(
-                "zip",
-                when(zip3_col.isin(list(RESTRICTED_ZIP3_PREFIXES)), lit("000")).otherwise(zip3_col),
-            )
+        # Mask postal/ZIP codes if present (HIPAA Safe Harbor: 3-digit ZIP truncation & restricted prefix suppression)
+        for zip_col_name in ("zip", "zip_code", "postal_code"):
+            if zip_col_name in df_deid.columns:
+                zip3_col = substring(col(zip_col_name).cast("string"), 1, 3)
+                df_deid = df_deid.withColumn(
+                    zip_col_name,
+                    when(zip3_col.isin(list(RESTRICTED_ZIP3_PREFIXES)), lit("000")).otherwise(
+                        zip3_col
+                    ),
+                )
 
         df_deid = df_deid.withColumn("person_id", pseudo_id_col).drop("raw_age")
         return df_deid

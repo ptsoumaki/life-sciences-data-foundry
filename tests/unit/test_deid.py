@@ -161,6 +161,37 @@ def test_geographic_masking_zip3(spark: SparkSession, sample_person_df):
     assert "036" not in zips
 
 
+def test_geographic_masking_zip_code_column(spark: SparkSession):
+    """Verifies that zip_code and postal_code column variants are truncated to ZIP3 and masked."""
+    schema = StructType(
+        [
+            StructField("person_id", LongType(), False),
+            StructField("year_of_birth", IntegerType(), False),
+            StructField("gender_concept_id", IntegerType(), False),
+            StructField("zip_code", StringType(), True),
+            StructField("postal_code", StringType(), True),
+        ]
+    )
+    data = [
+        (201, 1985, 8507, "94107", "03699"),
+        (202, 1990, 8532, "05901", "10021"),
+    ]
+    df_raw = spark.createDataFrame(data, schema)
+    deid = HIPAADeIdentifier(salt="TEST_SALT_ZIP_VARIANTS")
+    df_deid = deid.deidentify_person(df_raw, reference_year=2026)
+
+    rows = df_deid.collect()
+    p201 = next(r for r in rows if r["year_of_birth"] == 1985)
+    # 94107 -> 941, 03699 -> 000 (restricted prefix)
+    assert p201["zip_code"] == "941"
+    assert p201["postal_code"] == "000"
+
+    p202 = next(r for r in rows if r["year_of_birth"] == 1990)
+    # 05901 -> 000 (restricted prefix 059), 10021 -> 100
+    assert p202["zip_code"] == "000"
+    assert p202["postal_code"] == "100"
+
+
 def test_deidentify_longitudinal_table(spark: SparkSession):
     """Verifies consistent multi-column date shifting on clinical condition occurrences."""
     schema = StructType(

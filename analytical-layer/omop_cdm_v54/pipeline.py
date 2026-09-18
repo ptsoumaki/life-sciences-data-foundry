@@ -231,8 +231,6 @@ def run_omop_pipeline(
         "parsed_diag_dt", expr("try_cast(diagnosis_date as date)")
     ).cache()
     # Diagnoses use 'icd10_code' in the synthetic demo schema and 'code' in normalised remote schemas.
-    # Note: remediate_conditions() in quarantine.py always unpacks the 'code' column from raw_payload;
-    # if real data retains 'icd10_code', the vocabulary re-match step will not resolve those records.
     diag_code_col = col("icd10_code") if "icd10_code" in df_diag_parsed.columns else col("code")
     valid_diag_condition = col("parsed_diag_dt").isNotNull() & diag_code_col.isNotNull()
     df_silver_diagnoses = df_diag_parsed.filter(valid_diag_condition)
@@ -501,8 +499,9 @@ def run_omop_pipeline(
             )
             cohort_results["patient_features"] = df_features
 
-            if save_delta and output_dir:
-                cohort_dir = os.path.join(output_dir, "gold")
+            if save_delta:
+                effective_output_dir = output_dir or "data/delta_warehouse"
+                cohort_dir = os.path.join(effective_output_dir, "gold")
                 builder.save_cohort(df_cohort_t2d, cohort_dir)
                 surv_builder.save_survival_mart(df_surv, cohort_dir)
                 feat_store.save_feature_matrix(df_features, cohort_dir)
@@ -543,9 +542,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--save_delta",
+        "--save-delta",
+        dest="save_delta",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Persist Medallion datasets into Delta Lake sinks (use --no-save_delta to skip)",
+        help="Persist Medallion datasets into Delta Lake sinks (use --no-save-delta to skip)",
     )
     parser.add_argument(
         "--output_dir", type=str, default=None, help="Custom path for Delta Lake warehouse storage"
@@ -558,6 +559,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--enable_contract_enforcement",
+        "--enable-contract-enforcement",
+        dest="enable_contract_enforcement",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Enforce Great Expectations data quality contracts before Gold persistence",
@@ -582,6 +585,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--build_cohorts",
+        "--build-cohorts",
+        dest="build_cohorts",
         action="store_true",
         default=False,
         help="Construct Gold-tier analytical cohorts, survival marts, and patient feature stores",

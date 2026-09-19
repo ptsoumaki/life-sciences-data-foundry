@@ -72,3 +72,4 @@ The repository is structured into modular layers:
   .\.venv\Scripts\ruff.exe format --check .
   ```
 - Any new features, transformers, or connectors must be accompanied by comprehensive unit tests under `tests/unit/`.
+- When creating commits, adhere to Conventional Commits and always use bullet points (`- `) in the commit description (body) whenever more than one concept or change is presented.

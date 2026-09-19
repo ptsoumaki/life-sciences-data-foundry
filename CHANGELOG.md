@@ -5,6 +5,30 @@ All notable changes to the Life Sciences Data Foundry project are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Repository Agent Architecture & Guidelines (`AGENTS.md`)**:
+  - Established centralized agent guidelines covering system architecture, OHDSI OMOP CDM v5.4 standards, FDA 21 CFR Part 11 / GxP constraints, zero data loss provability, and PySpark conventions.
+- **GxP Workspace Skills (`.agents/skills/`)**:
+  - Implemented 7 modular workspace agent skills: `omop-cdm-normalizer`, `gxp-quarantine-remediation`, `cohort-phenotyping-survival`, `gxp-compliance-auditor`, `databricks-bundle-ops`, `gxp-git-commit`, and `pr-creator`.
+- **Connector Unit Test Suite (`tests/unit/test_connectors.py`)**:
+  - Added unit test suite covering Synthea clinical diagnoses, demographics, lab measurements, and VCF parsing with schema column normalization.
+- **Delta Writer Unit Test Suite (`tests/unit/test_writer.py`)**:
+  - Added unit test suite covering `DeltaMedallionWriter` write operations, schema evolution options, and exception handling.
+- **Engineering Roadmap (`ROADMAP.md`)**:
+  - Renamed `TODO.md` to `ROADMAP.md` and added Phase 11 for GxP-Validated Feature Store & Drift Monitoring Engine.
+
+### Fixed
+- **Surrogate Key Derivation**: Expanded `xxhash64` collision space to signed 64-bit (`xxhash64(...).cast("long")`) across all OMOP domain transformers (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`) and analytical cohort builders without `abs()`.
+- **Concept Lookup Performance**: Added module-level in-memory caching and synchronization verification to `build_concept_lookup()` in `vocabularies.py`.
+- **Genomic Quarantine Tracking**: Integrated genomic variant quarantine tracking and metrics logging in `pipeline.py`.
+- **PySpark Eager Action Elimination**: Replaced eager `df.rdd.isEmpty()` checks with non-eager single-partition checks (`df.limit(1).count() == 0`) across `deid.py` and `features.py`.
+- **Synthea Code Resolution**: Added graceful column resolution supporting both `code` and `icd10_code` in `connectors.py`.
+- **Exception Narrowing**: Replaced bare exceptions with specific `AnalysisException`, `Py4JJavaError`, and `OSError` in `writer.py`, and `MlflowException` in `mlflow_tracker.py`.
+- **DABs Environment Isolation**: Updated `databricks.yml` target root paths to include target environment subdirectories (`/Workspace/Projects/life-sciences-data-foundry/${bundle.target}`).
+- **Configuration Hardening**: Added `agentic-ai` to `packages` discovery in `pyproject.toml` and documented `LSDF_DEID_SALT` in `.env.example`.
+
 ## [0.3.0] - 2026-09-15
 
 ### Added
@@ -211,7 +235,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation & Repository Governance** *(Merged PR #28, PR #29 & PR #31)*:
   - Added `CONTRIBUTING.md` with conventional commit specifications, GxP merge guidelines, and development setup *(PR #29)*.
   - Renamed repository to `life-sciences-data-foundry` and updated architectural documentation *(PR #31)*.
-  - Added `TODO.md` engineering roadmap tracking document linked from main `README.md` *(PR #28)*.
+  - Added `ROADMAP.md` (originally `TODO.md`) engineering roadmap tracking document linked from main `README.md` *(PR #28)*.
 
 ---
 

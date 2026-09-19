@@ -22,6 +22,19 @@ All commit messages must adhere to the Conventional Commits specification:
 Regulatory-Traceability: <standards or compliance references>
 ```
 
+### Multi-Concept Commit Description Rule
+**Always use bullet points (`- `)** in the commit description (body) whenever more than one concept or change is presented:
+
+```
+<type>(<scope>): <concise imperative subject>
+
+- <First concept, architectural rationale, or functional change>
+- <Second concept, architectural rationale, or functional change>
+- <Third concept, architectural rationale, or functional change>
+
+Regulatory-Traceability: <standards or compliance references>
+```
+
 ### Allowed Types
 - `feat`: New capability, domain transformer, or OMOP mapping target.
 - `fix`: Bug fix, error resolution, or data contract patch.

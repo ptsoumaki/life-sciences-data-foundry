@@ -20,7 +20,9 @@ This document describes the automated testing strategy, GxP data contract valida
 │    ├── OHDSI cohort phenotyping (test_cohort_builder.py)    │
 │    ├── HIPAA Safe Harbor de-id (test_deid.py)               │
 │    ├── Survival analysis marts (test_survival.py)           │
-│    └── Patient feature store & CCI (test_features.py)       │
+│    ├── Patient feature store & CCI (test_features.py)       │
+│    ├── Open data connectors (test_connectors.py)            │
+│    └── Delta Medallion writer & merge (test_writer.py)      │
 ├─────────────────────────────────────────────────────────────┤
 │ 2. End-to-End Integration Tests (tests/integration/)        │
 │    ├── Full Medallion pipeline execution (Demo & Remote)    │

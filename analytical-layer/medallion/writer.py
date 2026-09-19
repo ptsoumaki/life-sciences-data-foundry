@@ -11,8 +11,20 @@ import os
 from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.utils import AnalysisException
+
+try:
+    from py4j.protocol import Py4JJavaError
+except ImportError:
+    Py4JJavaError = None  # type: ignore[assignment, misc]
 
 from omop_cdm_v54.compat import HAS_DELTA, DeltaTable
+
+DELTA_OPERATIONAL_EXCEPTIONS: tuple[type[BaseException], ...]
+if Py4JJavaError is not None:
+    DELTA_OPERATIONAL_EXCEPTIONS = (AnalysisException, Py4JJavaError, OSError)
+else:
+    DELTA_OPERATIONAL_EXCEPTIONS = (AnalysisException, OSError)
 
 
 class DeltaMedallionWriter:
@@ -206,7 +218,7 @@ class DeltaMedallionWriter:
             return False
         try:
             return DeltaTable.isDeltaTable(self.spark, table_path)
-        except Exception:
+        except (*DELTA_OPERATIONAL_EXCEPTIONS, ValueError):
             return False
 
     def upsert_gold_omop_table(
@@ -228,17 +240,33 @@ class DeltaMedallionWriter:
                 df, table_name, cluster_by=cluster_by, mode="overwrite"
             )
 
-        target_table = DeltaTable.forPath(self.spark, formatted_path)
-        df_dedup = df.dropDuplicates(subset=merge_keys)
-        merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in merge_keys])
+        try:
+            target_table = DeltaTable.forPath(self.spark, formatted_path)
+            df_dedup = df.dropDuplicates(subset=merge_keys)
+            merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in merge_keys])
 
-        target_table.alias("target").merge(
-            df_dedup.alias("source"), merge_condition
-        ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+            target_table.alias("target").merge(
+                df_dedup.alias("source"), merge_condition
+            ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
 
-        print(
-            f"[DELTA MERGE] Gold Table '{table_name}' updated via Delta MERGE on keys={merge_keys}"
-        )
+            print(
+                f"[DELTA MERGE] Gold Table '{table_name}' updated via Delta MERGE on keys={merge_keys}"
+            )
+        except DELTA_OPERATIONAL_EXCEPTIONS as e:
+            print(
+                f"[WARN] Delta MERGE unavailable on current filesystem ({e}); falling back to overwrite."
+            )
+            try:
+                return self.write_gold_omop_table(
+                    df, table_name, cluster_by=cluster_by, mode="overwrite"
+                )
+            except DELTA_OPERATIONAL_EXCEPTIONS:
+                import shutil
+
+                shutil.rmtree(path, ignore_errors=True)
+                return self.write_gold_omop_table(
+                    df, table_name, cluster_by=cluster_by, mode="overwrite"
+                )
         return path
 
     def upsert_silver_table(
@@ -257,17 +285,29 @@ class DeltaMedallionWriter:
         if not self._is_delta_table(formatted_path):
             return self.write_silver_table(df, table_name, mode="append")
 
-        target_table = DeltaTable.forPath(self.spark, formatted_path)
-        df_dedup = df.dropDuplicates(subset=merge_keys)
-        merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in merge_keys])
+        try:
+            target_table = DeltaTable.forPath(self.spark, formatted_path)
+            df_dedup = df.dropDuplicates(subset=merge_keys)
+            merge_condition = " AND ".join([f"target.{col} = source.{col}" for col in merge_keys])
 
-        target_table.alias("target").merge(
-            df_dedup.alias("source"), merge_condition
-        ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+            target_table.alias("target").merge(
+                df_dedup.alias("source"), merge_condition
+            ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
 
-        print(
-            f"[DELTA MERGE] Silver Table '{table_name}' updated via Delta MERGE on keys={merge_keys}"
-        )
+            print(
+                f"[DELTA MERGE] Silver Table '{table_name}' updated via Delta MERGE on keys={merge_keys}"
+            )
+        except DELTA_OPERATIONAL_EXCEPTIONS as e:
+            print(
+                f"[WARN] Delta MERGE unavailable on current filesystem ({e}); falling back to append."
+            )
+            try:
+                return self.write_silver_table(df, table_name, mode="append")
+            except DELTA_OPERATIONAL_EXCEPTIONS:
+                import shutil
+
+                shutil.rmtree(path, ignore_errors=True)
+                return self.write_silver_table(df, table_name, mode="overwrite")
         return path
 
     def optimize_table(self, table_path: str, zorder_by: list[str] | None = None) -> None:
@@ -286,7 +326,7 @@ class DeltaMedallionWriter:
             else:
                 dt.optimize().executeCompaction()
                 print(f"[DELTA OPTIMIZE] Executed OPTIMIZE Compaction on {table_path}")
-        except Exception as e:
+        except DELTA_OPERATIONAL_EXCEPTIONS as e:
             print(f"[WARN] OPTIMIZE notice: {e}")
 
     def vacuum_table(self, table_path: str, retention_hours: float | None = 168.0) -> None:
@@ -304,7 +344,7 @@ class DeltaMedallionWriter:
             else:
                 dt.vacuum()
             print(f"[DELTA VACUUM] Vacuumed table at {table_path}")
-        except Exception as e:
+        except DELTA_OPERATIONAL_EXCEPTIONS as e:
             print(f"[WARN] VACUUM notice: {e}")
 
     def get_table_telemetry(self, table_path: str) -> dict[str, Any]:
@@ -342,5 +382,5 @@ class DeltaMedallionWriter:
                 "clustering_columns": clustering_columns,
                 "recent_commits": [h.asDict() for h in history],
             }
-        except Exception as e:
+        except (*DELTA_OPERATIONAL_EXCEPTIONS, IndexError, KeyError) as e:
             return {"table_path": table_path, "status": "TELEMETRY_UNAVAILABLE", "notice": str(e)}

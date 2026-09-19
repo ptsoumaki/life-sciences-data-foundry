@@ -15,6 +15,7 @@ Public API:
     build_concept_lookup            -- Generates a native PySpark map lookup Column expression.
 """
 
+import functools
 import json
 import os
 from typing import Any
@@ -55,6 +56,7 @@ DEFAULT_GENDER_MAPPINGS: dict[str, int] = {
     "M": 8507,
     "FEMALE": 8532,
     "F": 8532,
+    "UNKNOWN": 0,
 }
 
 DEFAULT_RACE_MAPPINGS: dict[str, int] = {
@@ -123,16 +125,9 @@ def _resolve_mappings_file_path(custom_path: str | None = None) -> str | None:
     return None
 
 
-def load_concept_mappings(mapping_file: str | None = None) -> dict[str, dict[str, int]]:
-    """Loads concept mappings from the specified JSON file or defaults.
-
-    Args:
-        mapping_file: Optional path to concept_mappings.json.
-
-    Returns:
-        Dictionary containing mapping dictionaries by category.
-    """
-    resolved_path = _resolve_mappings_file_path(mapping_file)
+@functools.lru_cache(maxsize=4)
+def _load_concept_mappings_cached(resolved_path: str | None) -> dict[str, dict[str, int]]:
+    """Internal cached loader reading concept mappings from disk once per path."""
     if resolved_path and os.path.exists(resolved_path):
         try:
             with open(resolved_path, encoding="utf-8") as f:
@@ -162,6 +157,21 @@ def load_concept_mappings(mapping_file: str | None = None) -> dict[str, dict[str
         "ethnicity_to_concept": DEFAULT_ETHNICITY_MAPPINGS,
         "clinvar_to_concept": DEFAULT_CLINVAR_MAPPINGS,
     }
+
+
+def load_concept_mappings(mapping_file: str | None = None) -> dict[str, dict[str, int]]:
+    """Loads concept mappings from the specified JSON file or defaults.
+    Results are cached per path to avoid redundant file I/O across transformer calls.
+
+    Args:
+        mapping_file: Optional path to concept_mappings.json.
+
+    Returns:
+        Dictionary containing mapping dictionaries by category.
+    """
+    resolved_path = _resolve_mappings_file_path(mapping_file)
+    cached = _load_concept_mappings_cached(resolved_path)
+    return {k: dict(v) for k, v in cached.items()}
 
 
 def get_icd10_concept_mappings(mapping_file: str | None = None) -> dict[str, int]:

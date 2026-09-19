@@ -43,7 +43,9 @@
     "_comment_MALE": "Concept 8507 = Male",
     "FEMALE": 8532,
     "F": 8532,
-    "_comment_FEMALE": "Concept 8532 = Female"
+    "_comment_FEMALE": "Concept 8532 = Female",
+    "UNKNOWN": 0,
+    "_comment_UNKNOWN": "Concept 0 = Unknown/No matching concept"
   },
   "race_to_concept": {
     "_description": "Race source strings mapped to OMOP Race concepts (PERSON.race_concept_id)",

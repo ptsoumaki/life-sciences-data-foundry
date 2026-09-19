@@ -9,7 +9,6 @@ Public API:
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
-    abs,
     coalesce,
     col,
     concat_ws,
@@ -69,23 +68,21 @@ def transform_genomic_variants(
     value_concept_expr = build_concept_lookup(col("clinvar_sig"), clinvar_map, default_val=0)
 
     return df_annotated.select(
-        abs(
-            xxhash64(
-                concat_ws(
-                    ":",
-                    col("patient_id_ref"),
-                    col("sample_id_ref"),
-                    col("chrom"),
-                    col("pos"),
-                    col("ref"),
-                    col("alt"),
-                    col("id"),
-                )
+        xxhash64(
+            concat_ws(
+                ":",
+                col("patient_id_ref"),
+                col("sample_id_ref"),
+                col("chrom"),
+                col("pos"),
+                col("ref"),
+                col("alt"),
+                col("id"),
             )
         )
         .cast("long")
         .alias("measurement_id"),
-        abs(xxhash64(col("patient_id_ref"))).cast("long").alias("person_id"),
+        xxhash64(col("patient_id_ref")).cast("long").alias("person_id"),
         lit(35917873).cast("integer").alias("measurement_concept_id"),
         lit(None)
         .cast("date")

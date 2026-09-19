@@ -5,7 +5,6 @@ Description: PySpark domain transformer mapping clinical patient demographics in
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
-    abs,
     col,
     dayofmonth,
     month,
@@ -58,7 +57,7 @@ def transform_person(
     ethnicity_concept_expr = build_concept_lookup(normalized_ethnicity, e_map, default_val=0)
 
     return df_silver_clinical.select(
-        abs(xxhash64(col("raw_patient_id"))).cast("long").alias("person_id"),
+        xxhash64(col("raw_patient_id")).cast("long").alias("person_id"),
         gender_concept_expr.cast("integer").alias("gender_concept_id"),
         year(col("parsed_birth_dt")).cast("integer").alias("year_of_birth"),
         month(col("parsed_birth_dt")).cast("integer").alias("month_of_birth"),

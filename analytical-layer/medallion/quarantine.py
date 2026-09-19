@@ -113,11 +113,6 @@ def format_quarantine_dataframe(
     Returns:
         Standardized dead-letter quarantine DataFrame adhering to QUARANTINE_RECORD_SCHEMA.
     """
-    if df.rdd.isEmpty():
-        # Return an empty DataFrame matching the quarantine schema
-        spark = df.sparkSession
-        return spark.createDataFrame([], QUARANTINE_RECORD_SCHEMA)
-
     code_val = (
         failure_code.value if isinstance(failure_code, ClinicalFailureCode) else str(failure_code)
     )
@@ -269,7 +264,7 @@ class QuarantineDeltaWriter:
                 import pandas as pd
 
                 for ts_col in ["failure_timestamp", "remediation_timestamp"]:
-                    if ts_col in pdf.columns and pd.api.types.is_datetime64tz_dtype(pdf[ts_col]):
+                    if ts_col in pdf.columns and isinstance(pdf[ts_col].dtype, pd.DatetimeTZDtype):
                         pdf[ts_col] = pdf[ts_col].dt.tz_convert(None)
                 return self.spark.createDataFrame(pdf, QUARANTINE_RECORD_SCHEMA)
             except Exception:
@@ -524,7 +519,7 @@ class QuarantineRemediationEngine:
             "parsed_diag_dt", expr("try_cast(diagnosis_date as date)")
         )
 
-        valid_codes = [k.upper() for k, v in icd10_map.items() if v != 0]
+        valid_codes = [k.upper() for k, v in icd10_map.items() if not k.startswith("_") and v != 0]
         all_valid_codes = list(set(valid_codes) | {c.replace(".", "") for c in valid_codes})
 
         code_col_name = "icd10_code" if "icd10_code" in df_with_eval.columns else "code"
@@ -626,7 +621,7 @@ class QuarantineRemediationEngine:
             .withColumn("numeric_value", expr(f"try_cast({lab_val_col_name} as double)"))
         )
 
-        valid_codes = [k.upper() for k, v in loinc_map.items() if v != 0]
+        valid_codes = [k.upper() for k, v in loinc_map.items() if not k.startswith("_") and v != 0]
         # Include dash-stripped variants (e.g. '8480-6' and '84806') to handle format
         # inconsistencies between stored LOINC codes and vocabulary map keys.
         # Matches the dot-stripping expansion applied to ICD-10 codes in remediate_conditions.

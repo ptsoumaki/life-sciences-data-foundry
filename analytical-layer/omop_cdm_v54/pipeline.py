@@ -183,6 +183,7 @@ def run_omop_pipeline(
         rules_path: Path to the Great Expectations rules JSON specification.
         quarantine_threshold: Batch quarantine rejection ratio tolerance threshold (default: 0.02 = 2.0%).
         abort_on_breach: Abort downstream execution via GxPBreachError when rejection ratio exceeds threshold.
+        build_cohorts: Build derived clinical cohorts, survival datasets, and feature store when True.
 
     Returns:
         Dict with Gold-tier DataFrames keyed by "person", "condition_occurrence", and
@@ -257,7 +258,9 @@ def run_omop_pipeline(
     df_quarantine_labs = df_labs_parsed.filter(~valid_lab_condition)
 
     # Filter Genomics — include standard PASS and uncomputed '.' variant quality filters.
-    df_silver_genomics = df_raw_genomics.filter(col("filter").isin("PASS", "."))
+    valid_genomics_condition = col("filter").isin("PASS", ".")
+    df_silver_genomics = df_raw_genomics.filter(valid_genomics_condition)
+    df_quarantine_genomics = df_raw_genomics.filter(~valid_genomics_condition)
 
     # Materialize counts and calculate batch quality metrics
     _raw_patients_count = df_raw_patients.count()
@@ -270,7 +273,8 @@ def run_omop_pipeline(
     _qc_patients_count = df_quarantine_clinical.count()
     _qc_diag_count = df_quarantine_diagnoses.count()
     _qc_labs_count = df_quarantine_labs.count()
-    total_quarantined = _qc_patients_count + _qc_diag_count + _qc_labs_count
+    _qc_genomics_count = df_quarantine_genomics.count()
+    total_quarantined = _qc_patients_count + _qc_diag_count + _qc_labs_count + _qc_genomics_count
 
     # Release cached Bronze DataFrames — all downstream split counts are now materialised and
     # these caches are no longer needed. Freeing them before Gold transforms prevents
@@ -286,6 +290,7 @@ def run_omop_pipeline(
     print(f"[METRIC] Silver Lab Biomarkers Accepted:    {df_silver_labs.count()}")
     print(f"[METRIC] Lab Biomarkers Quarantined:       {_qc_labs_count}")
     print(f"[METRIC] Silver Genomic Variants Accepted:  {df_silver_genomics.count()}")
+    print(f"[METRIC] Genomic Variants Quarantined:      {_qc_genomics_count}")
     print(f"[METRIC] Total Ingested Records:           {total_ingested}")
     print(f"[METRIC] Total Quarantined Records:         {total_quarantined}")
 
@@ -329,6 +334,19 @@ def run_omop_pipeline(
         else None
     )
 
+    df_q_genomics_formatted = (
+        format_quarantine_dataframe(
+            df_quarantine_genomics,
+            QUARANTINE_TABLE_MEASUREMENTS,
+            ClinicalFailureCode.SCHEMA_VIOLATION
+            if ClinicalFailureCode is not None
+            else "SCHEMA_VIOLATION",
+            "Variant FILTER failed quality threshold (non-PASS / non-period filter)",
+        )
+        if format_quarantine_dataframe is not None and _qc_genomics_count > 0
+        else None
+    )
+
     # -------------------------------------------------------------------------
     # 2.5 BATCH QUALITY THRESHOLD & GXP BREACH ENFORCEMENT GATE
     # -------------------------------------------------------------------------
@@ -338,7 +356,7 @@ def run_omop_pipeline(
             total_quarantined=total_quarantined,
             threshold=quarantine_threshold,
             failure_counts_by_code={
-                "SCHEMA_VIOLATION": _qc_patients_count + _qc_diag_count,
+                "SCHEMA_VIOLATION": _qc_patients_count + _qc_diag_count + _qc_genomics_count,
                 "OUT_OF_BOUNDS_LAB": _qc_labs_count,
             },
             abort_on_breach=abort_on_breach,
@@ -417,6 +435,8 @@ def run_omop_pipeline(
                 q_writer.write_quarantine_conditions(df_q_conditions_formatted)
             if df_q_labs_formatted is not None:
                 q_writer.write_quarantine_measurements(df_q_labs_formatted)
+            if df_q_genomics_formatted is not None:
+                q_writer.write_quarantine_measurements(df_q_genomics_formatted)
 
         # Write Gold Sinks with Liquid Clustering (CLUSTER BY (person_id, concept_id))
         person_path = writer.write_gold_omop_table(

@@ -113,7 +113,7 @@ class HIPAADeIdentifier:
         Returns:
             De-identified DataFrame with shifted dates and pseudonymous subject_ids.
         """
-        if df_cohort.rdd.isEmpty():
+        if df_cohort.limit(1).count() == 0:
             return df_cohort
 
         shift_col = self._get_patient_shift_col("subject_id")
@@ -149,7 +149,7 @@ class HIPAADeIdentifier:
         Returns:
             De-identified PERSON DataFrame.
         """
-        if df_person.rdd.isEmpty():
+        if df_person.limit(1).count() == 0:
             return df_person
 
         pseudo_id_col = self._get_pseudonymized_id_col("person_id")
@@ -199,7 +199,7 @@ class HIPAADeIdentifier:
         Returns:
             De-identified DataFrame with shifted dates and pseudonymous person IDs.
         """
-        if df_table.rdd.isEmpty():
+        if df_table.limit(1).count() == 0:
             return df_table
 
         shift_col = self._get_patient_shift_col(person_id_col)

@@ -190,7 +190,8 @@ def load_diagnoses_data(
 
     Demo mode reads clinical_diagnoses.csv (columns: encounter_id, raw_patient_id,
     diagnosis_date, icd10_code, diagnosis_description). Remote mode streams the
-    Synthea ETL conditions.csv from GitHub and renames Synthea columns.
+    Synthea ETL conditions.csv from GitHub, which provides SNOMED codes in the CODE column,
+    and normalises it to 'code'.
 
     Args:
         spark: Active SparkSession.
@@ -200,7 +201,7 @@ def load_diagnoses_data(
 
     Returns:
         DataFrame with columns: encounter_id, raw_patient_id, diagnosis_date,
-        icd10_code, diagnosis_description, ingestion_timestamp.
+        code (or icd10_code in demo mode), diagnosis_description, ingestion_timestamp.
     """
     resolved_dir = resolve_data_dir(data_dir)
     file_path = os.path.join(resolved_dir, "clinical_diagnoses.csv")
@@ -211,7 +212,7 @@ def load_diagnoses_data(
             .withColumnRenamed("ENCOUNTER", "encounter_id")
             .withColumnRenamed("PATIENT", "raw_patient_id")
             .withColumnRenamed("START", "diagnosis_date")
-            .withColumnRenamed("CODE", "icd10_code")
+            .withColumnRenamed("CODE", "code")
             .withColumnRenamed("DESCRIPTION", "diagnosis_description")
             .withColumn("ingestion_timestamp", current_timestamp())
         )

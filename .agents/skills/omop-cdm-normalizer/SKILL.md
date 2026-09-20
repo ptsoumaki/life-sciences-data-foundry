@@ -50,8 +50,12 @@ All transformers reside in `analytical-layer/omop_cdm_v54/`:
      ```python
      writer = DeltaMedallionWriter(spark, base_output_dir=output_dir)
      writer.write_gold_omop_table(df_person, "person", cluster_by=["person_id"])
-     writer.write_gold_omop_table(df_conditions, "condition_occurrence", cluster_by=["person_id", "condition_concept_id"])
-     writer.write_gold_omop_table(df_measurements, "measurement", cluster_by=["person_id", "measurement_concept_id"])
+     writer.write_gold_omop_table(
+         df_conditions, "condition_occurrence", cluster_by=["person_id", "condition_concept_id"]
+     )
+     writer.write_gold_omop_table(
+         df_measurements, "measurement", cluster_by=["person_id", "measurement_concept_id"]
+     )
      ```
 
 ## 4. Verification

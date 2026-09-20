@@ -44,7 +44,7 @@ cohort_def = CohortDefinition(
     target_condition_concepts=[201826],  # Type 2 Diabetes
     min_age=18,
     max_age=85,
-    biomarker_concept_id=3004410,        # HbA1c
+    biomarker_concept_id=3004410,  # HbA1c
     biomarker_min_value=8.0,
 )
 builder = CohortBuilder(spark)

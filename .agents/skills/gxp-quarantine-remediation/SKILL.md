@@ -37,9 +37,12 @@ When unmapped codes are identified:
 1. **Inspect Unresolved Records**:
    ```python
    from medallion.quarantine import QuarantineRemediationEngine
+
    engine = QuarantineRemediationEngine(spark, base_output_dir="data/delta_warehouse")
    df_unresolved = engine.get_unresolved_records("quarantine_conditions")
-   df_unresolved.select("quarantine_id", "failure_code", "failure_reason", "raw_payload").show(truncate=False)
+   df_unresolved.select("quarantine_id", "failure_code", "failure_reason", "raw_payload").show(
+       truncate=False
+   )
    ```
 2. **Update Vocabulary Specifications**:
    - Add new code cross-references to `governance/concept_mappings.json`.

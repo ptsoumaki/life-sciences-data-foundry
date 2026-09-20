@@ -17,7 +17,7 @@ from pyspark.sql.utils import AnalysisException
 try:
     from py4j.protocol import Py4JJavaError
 except ImportError:
-    Py4JJavaError = None  # type: ignore[assignment, misc]
+    Py4JJavaError = None
 
 from omop_cdm_v54.compat import HAS_DELTA, DeltaTable
 
@@ -26,6 +26,16 @@ if Py4JJavaError is not None:
     DELTA_OPERATIONAL_EXCEPTIONS = (AnalysisException, Py4JJavaError, OSError)
 else:
     DELTA_OPERATIONAL_EXCEPTIONS = (AnalysisException, OSError)
+
+DELTA_CHECK_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *DELTA_OPERATIONAL_EXCEPTIONS,
+    ValueError,
+)
+DELTA_TELEMETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    *DELTA_OPERATIONAL_EXCEPTIONS,
+    IndexError,
+    KeyError,
+)
 
 
 class DeltaMedallionWriter:
@@ -224,7 +234,7 @@ class DeltaMedallionWriter:
             return False
         try:
             return DeltaTable.isDeltaTable(self.spark, table_path)
-        except (*DELTA_OPERATIONAL_EXCEPTIONS, ValueError):
+        except DELTA_CHECK_EXCEPTIONS:
             return False
 
     def upsert_gold_omop_table(
@@ -384,5 +394,5 @@ class DeltaMedallionWriter:
                 "clustering_columns": clustering_columns,
                 "recent_commits": [h.asDict() for h in history],
             }
-        except (*DELTA_OPERATIONAL_EXCEPTIONS, IndexError, KeyError) as e:
+        except DELTA_TELEMETRY_EXCEPTIONS as e:
             return {"table_path": table_path, "status": "TELEMETRY_UNAVAILABLE", "notice": str(e)}

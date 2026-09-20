@@ -459,9 +459,7 @@ class QuarantineRemediationEngine:
 
             # If _delta_log exists, commit the update action to preserve Delta transaction log integrity
             if os.path.isdir(delta_log_dir):
-                json_commits = sorted(
-                    [f for f in os.listdir(delta_log_dir) if f.endswith(".json")]
-                )
+                json_commits = sorted([f for f in os.listdir(delta_log_dir) if f.endswith(".json")])
                 if json_commits:
                     latest_idx = int(json_commits[-1].split(".")[0])
                     next_idx = latest_idx + 1

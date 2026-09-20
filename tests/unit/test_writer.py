@@ -27,6 +27,20 @@ def _make_sample_df(spark, rows=None):
     return spark.createDataFrame(rows, SAMPLE_SCHEMA)
 
 
+def _read_table_record_count(spark, path: str) -> int:
+    try:
+        if HAS_DELTA:
+            return spark.read.format("delta").load(path).count()
+        return spark.read.parquet(path).count()
+    except Exception:
+        # Fallback for local Windows environments lacking native hadoop.dll;
+        # read parquet data files directly via PyArrow, skipping deletion vectors and delta logs.
+        parquet_files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".parquet")]
+        if not parquet_files:
+            return 0
+        return sum(pq.read_table(pf).num_rows for pf in parquet_files)
+
+
 def test_writer_paths(spark, tmp_path):
     writer = DeltaMedallionWriter(spark, base_output_dir=str(tmp_path))
     silver_path = writer._get_table_path("silver", "test_table")
@@ -63,8 +77,7 @@ def test_write_silver_table(spark, tmp_path):
             log_content = f.read()
         assert "delta.enableChangeDataFeed" in log_content
 
-    table = pq.read_table(path)
-    assert table.num_rows == 3
+    assert _read_table_record_count(spark, path) == 3
 
 
 def test_write_quarantine_table(spark, tmp_path):
@@ -82,8 +95,7 @@ def test_write_quarantine_table(spark, tmp_path):
             log_content = f.read()
         assert "delta.enableChangeDataFeed" in log_content
 
-    table = pq.read_table(path)
-    assert table.num_rows == 3
+    assert _read_table_record_count(spark, path) == 3
 
 
 def test_write_gold_omop_table(spark, tmp_path):
@@ -95,8 +107,7 @@ def test_write_gold_omop_table(spark, tmp_path):
     if HAS_DELTA:
         assert os.path.exists(os.path.join(path, "_delta_log"))
 
-    table = pq.read_table(path)
-    assert table.num_rows == 3
+    assert _read_table_record_count(spark, path) == 3
 
 
 def test_get_table_telemetry(spark, tmp_path):
@@ -127,8 +138,7 @@ def test_upsert_gold_omop_table(spark, tmp_path):
     result_path = writer.upsert_gold_omop_table(df_update, "upsert_test", merge_keys=["id"])
     assert os.path.exists(result_path)
 
-    table = pq.read_table(result_path)
-    assert table.num_rows >= 2
+    assert _read_table_record_count(spark, result_path) >= 2
 
 
 def test_upsert_silver_table(spark, tmp_path):
@@ -142,8 +152,7 @@ def test_upsert_silver_table(spark, tmp_path):
     result_path = writer.upsert_silver_table(df_update, "upsert_silver_test", merge_keys=["id"])
     assert os.path.exists(result_path)
 
-    table = pq.read_table(result_path)
-    assert table.num_rows >= 2
+    assert _read_table_record_count(spark, result_path) >= 2
 
 
 def test_optimize_and_vacuum_table(spark, tmp_path):

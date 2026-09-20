@@ -270,6 +270,10 @@ def run_omop_pipeline(
     total_ingested = _raw_patients_count + _raw_diag_count + _raw_labs_count + _raw_genomics_count
 
     _silver_clinical_count = df_silver_clinical.count()
+    _silver_diag_count = df_silver_diagnoses.count()
+    _silver_labs_count = df_silver_labs.count()
+    _silver_genomics_count = df_silver_genomics.count()
+
     _qc_patients_count = df_quarantine_clinical.count()
     _qc_diag_count = df_quarantine_diagnoses.count()
     _qc_labs_count = df_quarantine_labs.count()
@@ -285,11 +289,11 @@ def run_omop_pipeline(
 
     print(f"[METRIC] Silver Clinical Records Accepted: {_silver_clinical_count}")
     print(f"[METRIC] Clinical Records Quarantined:     {_qc_patients_count}")
-    print(f"[METRIC] Silver Diagnoses Records Accepted: {df_silver_diagnoses.count()}")
+    print(f"[METRIC] Silver Diagnoses Records Accepted: {_silver_diag_count}")
     print(f"[METRIC] Diagnoses Records Quarantined:    {_qc_diag_count}")
-    print(f"[METRIC] Silver Lab Biomarkers Accepted:    {df_silver_labs.count()}")
+    print(f"[METRIC] Silver Lab Biomarkers Accepted:    {_silver_labs_count}")
     print(f"[METRIC] Lab Biomarkers Quarantined:       {_qc_labs_count}")
-    print(f"[METRIC] Silver Genomic Variants Accepted:  {df_silver_genomics.count()}")
+    print(f"[METRIC] Silver Genomic Variants Accepted:  {_silver_genomics_count}")
     print(f"[METRIC] Genomic Variants Quarantined:      {_qc_genomics_count}")
     print(f"[METRIC] Total Ingested Records:           {total_ingested}")
     print(f"[METRIC] Total Quarantined Records:         {total_quarantined}")

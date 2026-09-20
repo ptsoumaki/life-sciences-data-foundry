@@ -245,24 +245,47 @@ class OHDSICohortBuilder:
         # ---------------------------------------------------------------------
         if crit.prior_observation_days > 0:
             # Calculate patient-level earliest baseline observation date from conditions or measurements
-            cond_starts = (
-                df_cond.groupBy("person_id")
-                .agg(spark_min(to_date(col("condition_start_date"))).alias("earliest_cond"))
-                .withColumnRenamed("person_id", "obs_person_id")
-            )
-            df_cohort = df_cohort.join(
-                cond_starts,
-                df_cohort["subject_id"] == col("obs_person_id"),
-                how="left",
-            ).drop("obs_person_id")
-
-            df_cohort = df_cohort.filter(
-                (col("earliest_cond").isNotNull())
-                & (
-                    datediff(col("cohort_start_date"), col("earliest_cond"))
-                    >= crit.prior_observation_days
+            obs_dates: list[DataFrame] = []
+            if "condition_start_date" in df_cond.columns:
+                obs_dates.append(
+                    df_cond.select(
+                        col("person_id"),
+                        to_date(col("condition_start_date")).alias("obs_date"),
+                    ).filter(col("obs_date").isNotNull())
                 )
-            ).drop("earliest_cond")
+            if "measurement_date" in df_measurement.columns:
+                obs_dates.append(
+                    df_measurement.select(
+                        col("person_id"),
+                        to_date(col("measurement_date")).alias("obs_date"),
+                    ).filter(col("obs_date").isNotNull())
+                )
+
+            if obs_dates:
+                df_all_obs = obs_dates[0]
+                for o_df in obs_dates[1:]:
+                    df_all_obs = df_all_obs.unionByName(o_df)
+
+                earliest_obs = (
+                    df_all_obs.groupBy("person_id")
+                    .agg(spark_min(col("obs_date")).alias("earliest_obs"))
+                    .withColumnRenamed("person_id", "obs_person_id")
+                )
+                df_cohort = df_cohort.join(
+                    earliest_obs,
+                    df_cohort["subject_id"] == col("obs_person_id"),
+                    how="left",
+                ).drop("obs_person_id")
+
+                df_cohort = df_cohort.filter(
+                    (col("earliest_obs").isNotNull())
+                    & (
+                        datediff(col("cohort_start_date"), col("earliest_obs"))
+                        >= crit.prior_observation_days
+                    )
+                ).drop("earliest_obs")
+            else:
+                df_cohort = df_cohort.filter(lit(False))
 
         # ---------------------------------------------------------------------
         # 4. Clinical Exclusion Criteria (prior conditions before T0)

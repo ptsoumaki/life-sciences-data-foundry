@@ -3,7 +3,6 @@ Unit tests for the HIPAA Safe Harbor De-Identification Transformer (cohorts/deid
 """
 
 import pytest
-from cohorts.deid import HIPAADeIdentifier
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, datediff, to_date
 from pyspark.sql.types import (
@@ -13,6 +12,8 @@ from pyspark.sql.types import (
     StructField,
     StructType,
 )
+
+from cohorts.deid import HIPAADeIdentifier
 
 
 @pytest.fixture
@@ -43,6 +44,8 @@ def sample_person_df(spark: SparkSession):
             StructField("person_id", LongType(), False),
             StructField("gender_concept_id", IntegerType(), False),
             StructField("year_of_birth", IntegerType(), False),
+            StructField("month_of_birth", IntegerType(), True),
+            StructField("day_of_birth", IntegerType(), True),
             StructField("birth_datetime", StringType(), True),
             StructField("zip", StringType(), True),
         ]
@@ -51,9 +54,9 @@ def sample_person_df(spark: SparkSession):
     # Patient 102: Born 1930 (Age 96 in 2026) -> Over 89, must be capped!
     # Patient 103: Born 1937 (Age 89 in 2026) -> Exactly 89, not capped
     data = [
-        (101, 8507, 1980, "1980-05-12T08:30:00Z", "90210"),  # Regular ZIP
-        (102, 8532, 1930, "1930-01-15T00:00:00Z", "03612"),  # Restricted ZIP3 (036)
-        (103, 8507, 1937, "1937-11-20T12:00:00Z", "10001"),  # Regular ZIP
+        (101, 8507, 1980, 5, 12, "1980-05-12T08:30:00Z", "90210"),  # Regular ZIP
+        (102, 8532, 1930, 1, 15, "1930-01-15T00:00:00Z", "03612"),  # Restricted ZIP3 (036)
+        (103, 8507, 1937, 11, 20, "1937-11-20T12:00:00Z", "10001"),  # Regular ZIP
     ]
     return spark.createDataFrame(data, schema)
 
@@ -78,9 +81,10 @@ def test_pseudonymization_determinism_and_salt(spark: SparkSession, sample_cohor
     # Different salt produces different pseudonymized IDs
     assert ids_a != ids_b
 
-    # Pseudonymized IDs are distinct from original IDs (101, 102)
+    # Pseudonymized IDs are distinct from original IDs (101, 102) and are 64-bit integers
     assert 101 not in ids_a
     assert 102 not in ids_a
+    assert all(isinstance(pid, int) for pid in ids_a)
 
 
 def test_date_shifting_preserves_longitudinal_intervals(spark: SparkSession, sample_cohort_df):
@@ -131,15 +135,24 @@ def test_age_capping_and_birth_datetime_clearing(spark: SparkSession, sample_per
 
     rows = df_deid.collect()
 
-    # Patient 101 (Age 46) -> birth year 1980 preserved
+    # Patient 101 (Age 46) -> birth year 1980 preserved, month and day preserved
     p101 = next(r for r in rows if r["year_of_birth"] == 1980)
     assert p101["birth_datetime"] is None
+    assert p101["month_of_birth"] == 5
+    assert p101["day_of_birth"] == 12
 
-    # Patient 102 (Born 1930, Age 96 in 2026) -> Capped to age 89, so year_of_birth becomes 2026 - 89 = 1937
-    p102 = next(r for r in rows if r["year_of_birth"] == 1937)
+    # Patient 102 (Born 1930, Age 96 in 2026) -> Capped to age 89, year 1937, month and day nullified
+    p102 = next(r for r in rows if r["year_of_birth"] == 1937 and r["month_of_birth"] is None)
     assert p102["birth_datetime"] is None
+    assert p102["month_of_birth"] is None
+    assert p102["day_of_birth"] is None
 
-    # Patient 103 (Born 1937, Age 89 in 2026) -> Exactly 89, remains 1937
+    # Patient 103 (Born 1937, Age 89 in 2026) -> Exactly 89, remains 1937, month and day preserved
+    p103 = next(r for r in rows if r["year_of_birth"] == 1937 and r["month_of_birth"] == 11)
+    assert p103["birth_datetime"] is None
+    assert p103["month_of_birth"] == 11
+    assert p103["day_of_birth"] == 20
+
     matching_1937 = [r for r in rows if r["year_of_birth"] == 1937]
     assert len(matching_1937) == 2  # p102 (capped to 1937) and p103 (originally 1937)
 
@@ -158,6 +171,37 @@ def test_geographic_masking_zip3(spark: SparkSession, sample_person_df):
     # "03612" (036 is in RESTRICTED_ZIP3_PREFIXES) -> "000"
     assert "000" in zips
     assert "036" not in zips
+
+
+def test_geographic_masking_zip_code_column(spark: SparkSession):
+    """Verifies that zip_code and postal_code column variants are truncated to ZIP3 and masked."""
+    schema = StructType(
+        [
+            StructField("person_id", LongType(), False),
+            StructField("year_of_birth", IntegerType(), False),
+            StructField("gender_concept_id", IntegerType(), False),
+            StructField("zip_code", StringType(), True),
+            StructField("postal_code", StringType(), True),
+        ]
+    )
+    data = [
+        (201, 1985, 8507, "94107", "03699"),
+        (202, 1990, 8532, "05901", "10021"),
+    ]
+    df_raw = spark.createDataFrame(data, schema)
+    deid = HIPAADeIdentifier(salt="TEST_SALT_ZIP_VARIANTS")
+    df_deid = deid.deidentify_person(df_raw, reference_year=2026)
+
+    rows = df_deid.collect()
+    p201 = next(r for r in rows if r["year_of_birth"] == 1985)
+    # 94107 -> 941, 03699 -> 000 (restricted prefix)
+    assert p201["zip_code"] == "941"
+    assert p201["postal_code"] == "000"
+
+    p202 = next(r for r in rows if r["year_of_birth"] == 1990)
+    # 05901 -> 000 (restricted prefix 059), 10021 -> 100
+    assert p202["zip_code"] == "000"
+    assert p202["postal_code"] == "100"
 
 
 def test_deidentify_longitudinal_table(spark: SparkSession):

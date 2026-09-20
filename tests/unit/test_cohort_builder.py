@@ -7,16 +7,8 @@ import shutil
 import tempfile
 from datetime import date
 
+import pyarrow.parquet as pq
 import pytest
-from cohorts.builder import (
-    COHORT_SCHEMA,
-    CohortCriteria,
-    CohortDefinition,
-    OHDSICohortBuilder,
-    get_genomic_oncology_cohort_definition,
-    get_hypertension_cohort_definition,
-    get_type_2_diabetes_cohort_definition,
-)
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DoubleType,
@@ -25,6 +17,16 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+)
+
+from cohorts.builder import (
+    COHORT_SCHEMA,
+    CohortCriteria,
+    CohortDefinition,
+    OHDSICohortBuilder,
+    get_genomic_oncology_cohort_definition,
+    get_hypertension_cohort_definition,
+    get_type_2_diabetes_cohort_definition,
 )
 
 
@@ -208,8 +210,6 @@ def test_build_cohort_empty_input(spark: SparkSession):
 
 def test_save_cohort_persistence(spark: SparkSession, sample_omop_data):
     """Tests persisting the OHDSI COHORT table."""
-    import pyarrow.parquet as pq
-
     df_person, df_cond, df_meas = sample_omop_data
     builder = OHDSICohortBuilder(spark)
     t2d_def = get_type_2_diabetes_cohort_definition()
@@ -234,3 +234,23 @@ def test_save_cohort_persistence(spark: SparkSession, sample_omop_data):
         assert total_rows == 2
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_prior_observation_considers_measurements(spark: SparkSession, sample_omop_data):
+    """Verifies that prior observation lookback considers earlier measurements when conditions are later."""
+    df_person, df_cond, df_meas = sample_omop_data
+    builder = OHDSICohortBuilder(spark)
+
+    crit = CohortCriteria(
+        index_condition_concept_ids=[201826],
+        prior_observation_days=20,
+    )
+    defn = CohortDefinition(
+        cohort_definition_id=9999,
+        name="Prior Obs Test",
+        description="Testing prior observation considering measurements",
+        criteria=crit,
+    )
+    df_cohort = builder.build_cohort(defn, df_person, df_cond, df_meas)
+    subjects = [r["subject_id"] for r in df_cohort.collect()]
+    assert 1 in subjects

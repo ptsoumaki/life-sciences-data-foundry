@@ -264,7 +264,7 @@ def evaluate_data_contract(
                 with open(results_output_path, "w", encoding="utf-8") as f:
                     json.dump(res_dict, f, indent=2)
                 mlflow.log_artifact(results_output_path, artifact_path="audit_reports")
-        except Exception as art_err:
+        except (mlflow.exceptions.MlflowException, OSError, TypeError) as art_err:
             print(f"[MLFLOW WARNING] Could not log audit artifact: {art_err}")
 
         # For nested runs, re-query the active run to get the current run_id rather than

@@ -9,7 +9,6 @@ Public API:
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
-    abs,
     coalesce,
     col,
     concat_ws,
@@ -77,8 +76,8 @@ def transform_measurement(
         meas_date = lit(None).cast("date")
 
     return df_silver_labs.select(
-        abs(xxhash64(col("lab_event_id"))).cast("long").alias("measurement_id"),
-        abs(xxhash64(col("raw_patient_id"))).cast("long").alias("person_id"),
+        xxhash64(col("lab_event_id")).cast("long").alias("measurement_id"),
+        xxhash64(col("raw_patient_id")).cast("long").alias("person_id"),
         meas_concept_expr.cast("integer").alias("measurement_concept_id"),
         meas_date.alias("measurement_date"),
         meas_datetime.alias(

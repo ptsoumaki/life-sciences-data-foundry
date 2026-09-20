@@ -5,6 +5,8 @@ HIPAA de-identification, survival marts, and patient feature stores.
 
 import os
 
+from pyspark.sql.functions import col, datediff
+
 from cohorts import (
     HIPAADeIdentifier,
     OHDSICohortBuilder,
@@ -14,8 +16,6 @@ from cohorts import (
     SurvivalMartBuilder,
     get_type_2_diabetes_cohort_definition,
 )
-from pyspark.sql.functions import col, datediff
-
 from omop_cdm_v54.pipeline import run_omop_pipeline
 
 

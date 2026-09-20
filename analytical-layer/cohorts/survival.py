@@ -109,7 +109,7 @@ class SurvivalConfig:
     censor_at_death: bool = True
     study_end_date: str | None = None
     max_followup_days: int | None = None
-    genomic_concept_id: int = 2000000001
+    genomic_concept_id: int = 35917873  # Standard OMOP genomic variant concept ID
     default_censor_window_days: int = 730
 
 
@@ -152,7 +152,7 @@ class SurvivalMartBuilder:
         Returns:
             DataFrame conforming to SURVIVAL_FRAME_SCHEMA.
         """
-        if df_cohort.rdd.isEmpty():
+        if df_cohort.limit(1).count() == 0:
             return self.spark.createDataFrame([], SURVIVAL_FRAME_SCHEMA)
 
         # 1. Base Cohort with Demographics & Age at Index
@@ -179,7 +179,7 @@ class SurvivalMartBuilder:
         )
 
         # 2. Extract Valid Death Date (death_date >= cohort_start_date)
-        if df_death is not None and not df_death.rdd.isEmpty():
+        if df_death is not None and df_death.limit(1).count() > 0:
             df_death_clean = (
                 df_death.select(
                     col("person_id").cast(LongType()).alias("subject_id"),
@@ -197,7 +197,7 @@ class SurvivalMartBuilder:
             self.config.endpoint
             in (SurvivalEndpoint.TIME_TO_PROGRESSION, SurvivalEndpoint.EVENT_FREE_SURVIVAL)
             and df_condition_occurrence is not None
-            and not df_condition_occurrence.rdd.isEmpty()
+            and df_condition_occurrence.limit(1).count() > 0
             and self.config.target_event_concept_ids
         ):
             w_prog = Window.partitionBy("subject_id").orderBy("condition_start_date")
@@ -221,7 +221,7 @@ class SurvivalMartBuilder:
             df_base = df_base.withColumn("progression_date", lit(None).cast(DateType()))
 
         # 4. Extract Observation Period Right-Censoring Date
-        if df_observation_period is not None and not df_observation_period.rdd.isEmpty():
+        if df_observation_period is not None and df_observation_period.limit(1).count() > 0:
             obs_max = df_observation_period.groupBy(
                 col("person_id").cast(LongType()).alias("subject_id")
             ).agg(spark_max(to_date(col("observation_period_end_date"))).alias("obs_period_end"))
@@ -230,10 +230,10 @@ class SurvivalMartBuilder:
             df_base = df_base.withColumn("obs_period_end", lit(None).cast(DateType()))
 
         # 5. Multi-Omics Genomic Stratification (ClinVar Pathogenic Variants)
-        if df_measurement is not None and not df_measurement.rdd.isEmpty():
+        if df_measurement is not None and df_measurement.limit(1).count() > 0:
             pathogenic_expr = (col("measurement_concept_id") == self.config.genomic_concept_id) & (
                 upper(col("value_source_value")).contains("PATHOGENIC")
-                | (col("value_as_concept_id") == 35917873)
+                | col("value_as_concept_id").isin([4181412, 36768280])
             )
             genomic_carriers = (
                 df_measurement.filter(pathogenic_expr)
@@ -256,7 +256,11 @@ class SurvivalMartBuilder:
         )
         if self.config.study_end_date:
             admin_end = to_date(lit(self.config.study_end_date))
-            effective_censor_expr = least(fallback_censor, admin_end)
+            effective_censor_expr = coalesce(
+                least(fallback_censor, admin_end),
+                admin_end,
+                fallback_censor,
+            )
             # is_study_end_expr is a lazy Column expression; it references
             # "effective_censor_date" which is added to df_base one line below.
             # This is safe because PySpark Column expressions are not evaluated
@@ -426,7 +430,7 @@ class SurvivalMartBuilder:
         Returns:
             DataFrame conforming to KAPLAN_MEIER_SCHEMA.
         """
-        if df_survival.rdd.isEmpty():
+        if df_survival.limit(1).count() == 0:
             return self.spark.createDataFrame([], KAPLAN_MEIER_SCHEMA)
 
         strata_expr: Column = col(strata_col) if strata_col is not None else lit("ALL")

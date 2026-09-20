@@ -112,7 +112,7 @@ jobs:
         run: ruff format --check .
 
       - name: Execute Mypy Static Type Verification
-        run: mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion governance agentic-ai tests
+        run: mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion analytical-layer/cohorts governance agentic-ai tests
 
   pyspark-dataops-test-suite:
     name: "PySpark DataOps & Contract Quality Gate"

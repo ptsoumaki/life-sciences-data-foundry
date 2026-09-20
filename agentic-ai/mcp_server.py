@@ -16,8 +16,17 @@ import glob
 import importlib
 import json
 import os
+import re
 import sys
+from pathlib import Path
 from typing import Any
+
+try:
+    import mlflow
+    from mlflow.tracking import MlflowClient
+except ImportError:
+    mlflow = None  # type: ignore[assignment]
+    MlflowClient = None  # type: ignore[assignment, misc]
 
 # Ensure repository root and agentic-ai directory are in sys.path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,6 +36,11 @@ ANALYTICAL_DIR = os.path.join(BASE_DIR, "analytical-layer")
 for p in [BASE_DIR, AGENTIC_DIR, ANALYTICAL_DIR]:
     if p not in sys.path:
         sys.path.insert(0, p)
+
+try:
+    from graph_auditor import GxPGraphAuditor
+except ImportError:
+    GxPGraphAuditor = None  # type: ignore[assignment, misc]
 
 MCPServer: Any = None
 
@@ -384,6 +398,370 @@ OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    "quarantine_patients": {
+        "table_name": "QUARANTINE_PATIENTS",
+        "description": "Dead-letter quarantine repository for non-compliant, malformed, or unvalidated patient demographic records.",
+        "primary_key": "quarantine_id",
+        "clustering_keys": ["failure_code", "status"],
+        "columns": [
+            {
+                "name": "quarantine_id",
+                "type": "string",
+                "nullable": False,
+                "description": "Unique cryptographic UUID identifier for the quarantined patient record.",
+            },
+            {
+                "name": "table_name",
+                "type": "string",
+                "nullable": False,
+                "description": "Originating source table name ('patients' / 'clinical_demographics').",
+            },
+            {
+                "name": "raw_payload",
+                "type": "string",
+                "nullable": False,
+                "description": "Verbatim serialized JSON payload of the rejected record ensuring zero data loss.",
+            },
+            {
+                "name": "failure_code",
+                "type": "string",
+                "nullable": False,
+                "description": "Standardized clinical failure code taxonomy (e.g. SCHEMA_VIOLATION, TEMPORAL_ANOMALY).",
+            },
+            {
+                "name": "failure_reason",
+                "type": "string",
+                "nullable": False,
+                "description": "Deterministic human-readable explanation of rejection rationale.",
+            },
+            {
+                "name": "failure_timestamp",
+                "type": "timestamp",
+                "nullable": False,
+                "description": "ISO-8601 UTC timestamp when the record was quarantined.",
+            },
+            {
+                "name": "mlflow_run_id",
+                "type": "string",
+                "nullable": False,
+                "description": "MLflow run ID for FDA 21 CFR Part 11 cryptographic traceability.",
+            },
+            {
+                "name": "status",
+                "type": "string",
+                "nullable": False,
+                "description": "Remediation lifecycle state: 'QUARANTINED' or 'REMEDIATED'.",
+            },
+            {
+                "name": "remediation_timestamp",
+                "type": "timestamp",
+                "nullable": True,
+                "description": "ISO-8601 UTC timestamp when the record was remediated and promoted to Silver.",
+            },
+        ],
+    },
+    "quarantine_conditions": {
+        "table_name": "QUARANTINE_CONDITIONS",
+        "description": "Dead-letter quarantine repository for non-compliant, unmapped, or invalid clinical condition/diagnosis records.",
+        "primary_key": "quarantine_id",
+        "clustering_keys": ["failure_code", "status"],
+        "columns": [
+            {
+                "name": "quarantine_id",
+                "type": "string",
+                "nullable": False,
+                "description": "Unique cryptographic UUID identifier for the quarantined condition record.",
+            },
+            {
+                "name": "table_name",
+                "type": "string",
+                "nullable": False,
+                "description": "Originating source table name ('diagnoses' / 'clinical_diagnoses').",
+            },
+            {
+                "name": "raw_payload",
+                "type": "string",
+                "nullable": False,
+                "description": "Verbatim serialized JSON payload of the rejected condition record.",
+            },
+            {
+                "name": "failure_code",
+                "type": "string",
+                "nullable": False,
+                "description": "Standardized clinical failure code taxonomy (e.g. UNMAPPED_TERMINOLOGY, TEMPORAL_ANOMALY).",
+            },
+            {
+                "name": "failure_reason",
+                "type": "string",
+                "nullable": False,
+                "description": "Deterministic human-readable explanation of condition rejection rationale.",
+            },
+            {
+                "name": "failure_timestamp",
+                "type": "timestamp",
+                "nullable": False,
+                "description": "ISO-8601 UTC timestamp when the condition was quarantined.",
+            },
+            {
+                "name": "mlflow_run_id",
+                "type": "string",
+                "nullable": False,
+                "description": "MLflow run ID for FDA 21 CFR Part 11 cryptographic traceability.",
+            },
+            {
+                "name": "status",
+                "type": "string",
+                "nullable": False,
+                "description": "Remediation lifecycle state: 'QUARANTINED' or 'REMEDIATED'.",
+            },
+            {
+                "name": "remediation_timestamp",
+                "type": "timestamp",
+                "nullable": True,
+                "description": "ISO-8601 UTC timestamp when the condition was remediated and promoted to Silver.",
+            },
+        ],
+    },
+    "quarantine_measurements": {
+        "table_name": "QUARANTINE_MEASUREMENTS",
+        "description": "Dead-letter quarantine repository for unmapped, out-of-bounds, or non-compliant lab measurements.",
+        "primary_key": "quarantine_id",
+        "clustering_keys": ["failure_code", "status"],
+        "columns": [
+            {
+                "name": "quarantine_id",
+                "type": "string",
+                "nullable": False,
+                "description": "Unique cryptographic UUID identifier for the quarantined measurement record.",
+            },
+            {
+                "name": "table_name",
+                "type": "string",
+                "nullable": False,
+                "description": "Originating source table name ('labs' / 'lab_measurements').",
+            },
+            {
+                "name": "raw_payload",
+                "type": "string",
+                "nullable": False,
+                "description": "Verbatim serialized JSON payload of the rejected lab observation.",
+            },
+            {
+                "name": "failure_code",
+                "type": "string",
+                "nullable": False,
+                "description": "Standardized clinical failure code taxonomy (e.g. OUT_OF_BOUNDS_LAB, UNMAPPED_TERMINOLOGY).",
+            },
+            {
+                "name": "failure_reason",
+                "type": "string",
+                "nullable": False,
+                "description": "Deterministic human-readable explanation of measurement rejection rationale.",
+            },
+            {
+                "name": "failure_timestamp",
+                "type": "timestamp",
+                "nullable": False,
+                "description": "ISO-8601 UTC timestamp when the measurement was quarantined.",
+            },
+            {
+                "name": "mlflow_run_id",
+                "type": "string",
+                "nullable": False,
+                "description": "MLflow run ID for FDA 21 CFR Part 11 cryptographic traceability.",
+            },
+            {
+                "name": "status",
+                "type": "string",
+                "nullable": False,
+                "description": "Remediation lifecycle state: 'QUARANTINED' or 'REMEDIATED'.",
+            },
+            {
+                "name": "remediation_timestamp",
+                "type": "timestamp",
+                "nullable": True,
+                "description": "ISO-8601 UTC timestamp when the measurement was remediated and promoted to Silver.",
+            },
+        ],
+    },
+    "survival_mart": {
+        "table_name": "SURVIVAL_MART",
+        "description": "Longitudinal time-to-event and survival analysis analytical data mart conforming to SURVIVAL_FRAME_SCHEMA.",
+        "primary_key": "subject_id",
+        "clustering_keys": ["cohort_definition_id", "subject_id"],
+        "columns": [
+            {
+                "name": "cohort_definition_id",
+                "type": "long",
+                "nullable": False,
+                "description": "Unique identifier for the study cohort definition.",
+            },
+            {
+                "name": "subject_id",
+                "type": "long",
+                "nullable": False,
+                "description": "Unique cryptographic integer identifier for the patient.",
+            },
+            {
+                "name": "cohort_start_date",
+                "type": "date",
+                "nullable": False,
+                "description": "Index date (T0) anchoring the survival analysis follow-up window.",
+            },
+            {
+                "name": "time_to_event_days",
+                "type": "integer",
+                "nullable": False,
+                "description": "Duration in days from cohort_start_date to event or censoring cutoff.",
+            },
+            {
+                "name": "event",
+                "type": "integer",
+                "nullable": False,
+                "description": "Binary endpoint event indicator (1=Event observed, 0=Censored).",
+            },
+            {
+                "name": "censoring_reason",
+                "type": "string",
+                "nullable": False,
+                "description": "Reason for censoring (STUDY_END, OBSERVATION_END, MAX_FOLLOWUP, or DEATH_EVENT).",
+            },
+            {
+                "name": "age_at_index",
+                "type": "integer",
+                "nullable": True,
+                "description": "Patient age in years at cohort index date.",
+            },
+            {
+                "name": "gender_concept_id",
+                "type": "long",
+                "nullable": True,
+                "description": "Standard OMOP concept ID for gender.",
+            },
+            {
+                "name": "has_pathogenic_variant",
+                "type": "integer",
+                "nullable": False,
+                "description": "Flag indicating confirmed ClinVar pathogenic/likely pathogenic variant (1=Yes, 0=No).",
+            },
+            {
+                "name": "stratum",
+                "type": "string",
+                "nullable": False,
+                "description": "Stratum label ('Pathogenic Variant' or 'Wild-Type / VUS').",
+            },
+        ],
+    },
+    "patient_feature_store": {
+        "table_name": "PATIENT_FEATURE_STORE",
+        "description": "Machine-learning-ready patient feature store with Charlson Comorbidity Index, rolling condition counts, and biomarker aggregations.",
+        "primary_key": "subject_id",
+        "clustering_keys": ["cohort_definition_id", "subject_id"],
+        "columns": [
+            {
+                "name": "cohort_definition_id",
+                "type": "long",
+                "nullable": False,
+                "description": "Unique identifier for the study cohort definition.",
+            },
+            {
+                "name": "subject_id",
+                "type": "long",
+                "nullable": False,
+                "description": "Unique cryptographic integer identifier for the patient.",
+            },
+            {
+                "name": "cohort_start_date",
+                "type": "date",
+                "nullable": False,
+                "description": "Cohort index date (T0).",
+            },
+            {
+                "name": "cohort_end_date",
+                "type": "date",
+                "nullable": False,
+                "description": "Cohort exit date.",
+            },
+            {
+                "name": "gender_concept_id",
+                "type": "long",
+                "nullable": True,
+                "description": "Standard OMOP concept ID for gender.",
+            },
+            {
+                "name": "year_of_birth",
+                "type": "integer",
+                "nullable": True,
+                "description": "Year of birth.",
+            },
+            {
+                "name": "age_at_index",
+                "type": "integer",
+                "nullable": True,
+                "description": "Age at index date.",
+            },
+            {
+                "name": "is_female",
+                "type": "integer",
+                "nullable": False,
+                "description": "Binary indicator for female sex.",
+            },
+            {
+                "name": "is_male",
+                "type": "integer",
+                "nullable": False,
+                "description": "Binary indicator for male sex.",
+            },
+            {
+                "name": "condition_count_30d",
+                "type": "integer",
+                "nullable": False,
+                "description": "Count of conditions diagnosed within 30 days prior to index.",
+            },
+            {
+                "name": "condition_count_180d",
+                "type": "integer",
+                "nullable": False,
+                "description": "Count of conditions diagnosed within 180 days prior to index.",
+            },
+            {
+                "name": "condition_count_365d",
+                "type": "integer",
+                "nullable": False,
+                "description": "Count of conditions diagnosed within 365 days prior to index.",
+            },
+            {
+                "name": "distinct_condition_count_365d",
+                "type": "integer",
+                "nullable": False,
+                "description": "Count of distinct condition concepts diagnosed within 365 days prior to index.",
+            },
+            {
+                "name": "condition_count_lifetime",
+                "type": "integer",
+                "nullable": False,
+                "description": "Lifetime count of conditions diagnosed prior to index.",
+            },
+            {
+                "name": "charlson_comorbidity_index",
+                "type": "integer",
+                "nullable": False,
+                "description": "Total weighted Charlson Comorbidity Index score.",
+            },
+            {
+                "name": "has_pathogenic_variant",
+                "type": "integer",
+                "nullable": False,
+                "description": "Binary indicator for confirmed ClinVar pathogenic mutation.",
+            },
+            {
+                "name": "num_pathogenic_variants",
+                "type": "integer",
+                "nullable": False,
+                "description": "Count of distinct pathogenic ClinVar mutations observed.",
+            },
+        ],
+    },
 }
 
 
@@ -600,10 +978,10 @@ def tool_query_vocabulary_mappings(
 
 
 def tool_inspect_omop_table_schema(table_name: str) -> dict[str, Any]:
-    """Returns official OMOP CDM v5.4 schema definitions, column data types, and primary keys.
+    """Returns official OMOP CDM v5.4 and quarantine dead-letter schema definitions, column data types, and primary keys.
 
     Args:
-        table_name: Name of OMOP CDM table ('person', 'condition_occurrence', 'measurement', 'cohort').
+        table_name: Name of OMOP CDM or quarantine table ('person', 'condition_occurrence', 'measurement', 'cohort', 'quarantine_patients', 'quarantine_conditions', 'quarantine_measurements').
 
     Returns:
         Schema dictionary including columns, types, nullability, and primary/clustering keys.
@@ -634,14 +1012,17 @@ def tool_get_pipeline_execution_state(
         Dictionary containing run status, metrics, parameters, tags, and audit certificates.
     """
     try:
-        import mlflow
-        from mlflow.tracking import MlflowClient
+        if mlflow is None or MlflowClient is None:
+            return {
+                "status": "UNAVAILABLE",
+                "error": "MLflow is not installed or available in the environment.",
+            }
 
         effective_uri = tracking_uri or os.getenv("MLFLOW_TRACKING_URI")
         if not effective_uri:
             db_candidate = _resolve_repo_path("mlflow.db")
             if os.path.exists(db_candidate):
-                effective_uri = f"sqlite:///{db_candidate}"
+                effective_uri = f"sqlite:///{Path(db_candidate).as_posix()}"
             else:
                 effective_uri = "file:./mlruns"
 
@@ -808,7 +1189,11 @@ def tool_verify_gxp_audit_lineage(
         Comprehensive GxP audit report with compliance status, score, receipts, and findings.
     """
     try:
-        from graph_auditor import GxPGraphAuditor
+        if GxPGraphAuditor is None:
+            return {
+                "compliance_status": "ERROR",
+                "error": "GxPGraphAuditor module is not available",
+            }
 
         auditor = GxPGraphAuditor()
         resolved_rules = _resolve_repo_path(rules_path)
@@ -920,8 +1305,6 @@ def tool_validate_clinical_record(
                 )
 
         elif exp_type == "expect_column_values_to_match_regex":
-            import re
-
             pattern = kwargs.get("regex", "")
             val = str(record.get(col, ""))
             if val and not re.match(pattern, val):

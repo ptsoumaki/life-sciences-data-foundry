@@ -202,6 +202,14 @@ def collect_delta_log_evidence(state: AuditState) -> dict[str, Any]:
             "errors": errors,
         }
 
+    resolved_table_path = table_path
+    if not os.path.exists(resolved_table_path):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        candidate = os.path.join(base_dir, table_path)
+        if os.path.exists(candidate):
+            resolved_table_path = candidate
+    table_path = resolved_table_path
+
     delta_log_dir = os.path.join(table_path, "_delta_log")
     if not os.path.isdir(delta_log_dir):
         error_msg = f"Delta Lake transaction log not found at '{delta_log_dir}'."

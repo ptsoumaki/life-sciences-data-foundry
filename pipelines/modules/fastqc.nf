@@ -14,4 +14,10 @@ process FASTQC {
     """
     fastqc --quiet ${fastq}
     """
+
+    stub:
+    """
+    touch ${fastq.baseName}_fastqc.zip
+    touch ${fastq.baseName}_fastqc.html
+    """
 }

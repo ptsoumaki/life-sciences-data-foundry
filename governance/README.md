@@ -21,6 +21,14 @@ digest = compute_sha256("data/raw/person.csv")
 assert is_valid_sha256(digest) is True
 ```
 
+### `concept_mappings.json` — Standard OMOP CDM v5.4 Vocabulary Cross-References
+
+Single source of truth for standard vocabulary mappings across all platform domains. Governed by GxP change control and synchronized dynamically with PySpark transformers via `analytical-layer/omop_cdm_v54/vocabularies.py`:
+- **Conditions**: ICD-10-CM to SNOMED CT standard concept IDs (`201826`, `316866`, `195080`, `4329847`, `254637`).
+- **Measurements**: LOINC to OMOP standard concept IDs (`3004410`, `3000483`, `3004249`, `3016723`).
+- **Genomics**: ClinVar clinical significance terms (`Pathogenic`, `Likely pathogenic`, `Benign`, `VUS`) to standard concepts.
+- **Demographics**: Standard concepts for gender, race, and ethnicity.
+
 ### `rules.json` — Great Expectations GxP Validation Suite
 
 A decoupled JSON expectation suite defining data quality contracts for OMOP CDM v5.4 clinical record ingestion. Designed to run independently of Databricks, enabling validation across Nextflow, AWS Batch, and local environments.

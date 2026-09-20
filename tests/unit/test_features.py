@@ -7,9 +7,6 @@ import shutil
 import tempfile
 
 import pytest
-from cohorts.features import (
-    PatientFeatureStore,
-)
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DoubleType,
@@ -18,6 +15,11 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+)
+
+from cohorts.features import (
+    FeatureStoreConfig,
+    PatientFeatureStore,
 )
 
 
@@ -98,18 +100,18 @@ def feature_test_data(spark: SparkSession):
         ]
     )
     meas_rows = [
-        # Patient 1: HbA1c baseline measurements (concept 4184637)
-        (1, 4184637, "2022-01-15", 7.2, "HbA1c", 0),
-        (1, 4184637, "2022-05-10", 8.4, "HbA1c", 0),  # Latest
-        # Patient 1: Glucose (concept 3004501)
-        (1, 3004501, "2022-05-10", 145.0, "Glucose", 0),
+        # Patient 1: HbA1c baseline measurements (concept 3004410)
+        (1, 3004410, "2022-01-15", 7.2, "HbA1c", 0),
+        (1, 3004410, "2022-05-10", 8.4, "HbA1c", 0),  # Latest
+        # Patient 1: Glucose (concept 3000483)
+        (1, 3000483, "2022-05-10", 145.0, "Glucose", 0),
         # Patient 1: ClinVar pathogenic variant
-        (1, 2000000001, "2022-01-01", None, "Pathogenic", 35917873),
-        (1, 2000000001, "2022-03-01", None, "Pathogenic; Likely Pathogenic", 35917873),
+        (1, 35917873, "2022-01-01", None, "Pathogenic", 4181412),
+        (1, 35917873, "2022-03-01", None, "Pathogenic; Likely Pathogenic", 36768280),
         # Patient 2: Only Glucose
-        (2, 3004501, "2022-04-12", 110.0, "Glucose", 0),
+        (2, 3000483, "2022-04-12", 110.0, "Glucose", 0),
         # Patient 3: ClinVar Benign (not pathogenic)
-        (3, 2000000001, "2021-12-01", None, "Benign", 35917874),
+        (3, 35917873, "2021-12-01", None, "Benign", 4049393),
     ]
     df_meas = spark.createDataFrame(meas_rows, meas_schema)
 
@@ -286,3 +288,25 @@ def test_save_feature_matrix(spark: SparkSession, feature_test_data):
         assert os.path.exists(out_path)
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_empty_feature_matrix_custom_lookback_windows(spark: SparkSession):
+    """Verifies that empty feature matrix matches schema with custom lookback windows."""
+    config = FeatureStoreConfig(lookback_windows_days=[60, 90])
+    store = PatientFeatureStore(spark, config=config)
+
+    cohort_schema = StructType(
+        [
+            StructField("cohort_definition_id", LongType(), False),
+            StructField("subject_id", LongType(), False),
+            StructField("cohort_start_date", StringType(), False),
+            StructField("cohort_end_date", StringType(), False),
+        ]
+    )
+    df_empty_cohort = spark.createDataFrame([], cohort_schema)
+    df_person = spark.createDataFrame([], StructType([StructField("person_id", LongType())]))
+
+    df_empty = store.build_feature_matrix(df_empty_cohort, df_person)
+    assert "condition_count_60d" in df_empty.columns
+    assert "condition_count_90d" in df_empty.columns
+    assert "condition_count_30d" not in df_empty.columns

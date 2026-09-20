@@ -8,13 +8,6 @@ import tempfile
 from datetime import date
 
 import pytest
-from cohorts.survival import (
-    KAPLAN_MEIER_SCHEMA,
-    SURVIVAL_FRAME_SCHEMA,
-    SurvivalConfig,
-    SurvivalEndpoint,
-    SurvivalMartBuilder,
-)
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     IntegerType,
@@ -22,6 +15,14 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+)
+
+from cohorts.survival import (
+    KAPLAN_MEIER_SCHEMA,
+    SURVIVAL_FRAME_SCHEMA,
+    SurvivalConfig,
+    SurvivalEndpoint,
+    SurvivalMartBuilder,
 )
 
 
@@ -96,10 +97,10 @@ def survival_test_data(spark: SparkSession):
     )
     # Patient 1 and Patient 3 have pathogenic ClinVar variants
     meas_rows = [
-        (1, 2000000001, "Pathogenic; Likely Pathogenic", 35917873),
-        (2, 2000000001, "Benign", 35917874),
-        (3, 2000000001, "PATHOGENIC", 35917873),
-        (4, 2000000001, "Uncertain Significance", 0),
+        (1, 35917873, "Pathogenic; Likely Pathogenic", 36768280),
+        (2, 35917873, "Benign", 4049393),
+        (3, 35917873, "PATHOGENIC", 4181412),
+        (4, 35917873, "Uncertain Significance", 4078249),
     ]
     df_meas = spark.createDataFrame(meas_rows, meas_schema)
 
@@ -317,3 +318,47 @@ def test_survival_mart_persistence(spark: SparkSession):
         assert os.path.exists(out_path)
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_survival_censoring_null_obs_period_fallback(spark: SparkSession):
+    """Verifies that patients with NULL obs_period_end and NULL cohort_end_date
+
+    properly fall back to administrative study_end_date rather than evaluating to NULL.
+    """
+    config = SurvivalConfig(
+        endpoint=SurvivalEndpoint.OVERALL_SURVIVAL,
+        study_end_date="2023-12-31",
+    )
+    builder = SurvivalMartBuilder(spark, config=config)
+
+    cohort_schema = StructType(
+        [
+            StructField("cohort_definition_id", LongType(), False),
+            StructField("subject_id", LongType(), False),
+            StructField("cohort_start_date", StringType(), False),
+            StructField("cohort_end_date", StringType(), True),
+        ]
+    )
+    df_cohort = spark.createDataFrame([(1001, 1, "2020-01-01", None)], cohort_schema)
+
+    person_schema = StructType(
+        [
+            StructField("person_id", LongType(), False),
+            StructField("gender_concept_id", LongType(), False),
+            StructField("year_of_birth", IntegerType(), False),
+        ]
+    )
+    df_person = spark.createDataFrame([(1, 8507, 1980)], person_schema)
+
+    df_surv = builder.build_survival_frame(
+        df_cohort=df_cohort,
+        df_person=df_person,
+        df_death=None,
+        df_observation_period=None,
+    )
+
+    rows = df_surv.collect()
+    assert len(rows) == 1
+    assert rows[0]["censoring_reason"] == "STUDY_END"
+    assert rows[0]["event"] == 0
+    assert rows[0]["time_to_event_days"] == 1460

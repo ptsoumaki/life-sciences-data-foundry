@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "life-sciences-data-foundry"
-version = "0.2.10"
+version = "0.3.1"
 description = "Enterprise GxP-compliant multi-omics foundry & clinical normalization engine"
 authors = [{ name = "Vivi Tsoumaki", email = "ptsoumaki@gmail.com" }]
 readme = "README.md"
-requires-python = ">=3.10, <3.13"
+requires-python = ">=3.11, <3.13"
 
 dependencies = [
     "pyspark>=3.5.0",
@@ -58,7 +58,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["omop_cdm_v54", "governance", "medallion"]
+known-first-party = ["omop_cdm_v54", "governance", "medallion", "cohorts"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -84,10 +84,9 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["omop_cdm_v54", "governance", "medallion"]
+source = ["omop_cdm_v54", "governance", "medallion", "cohorts", "agentic-ai"]
 omit = ["tests/*"]
 
-# agentic-ai/ contains loose scripts (not an installable package); track by path.
 [tool.coverage.paths]
 agentic = ["agentic-ai/"]
 

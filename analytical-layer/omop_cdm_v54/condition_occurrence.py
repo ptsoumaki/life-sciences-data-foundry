@@ -9,7 +9,6 @@ Public API:
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
-    abs,
     col,
     concat_ws,
     lit,
@@ -49,8 +48,9 @@ def transform_condition_occurrence(
         concept_mappings if concept_mappings is not None else get_icd10_concept_mappings()
     )
 
-    # Normalize ICD-10 source codes
-    normalized_icd = upper(trim(col("icd10_code")))
+    # Normalize diagnosis source codes (handles both 'icd10_code' and normalised 'code' columns)
+    code_col_name = "icd10_code" if "icd10_code" in df_silver_diagnoses.columns else "code"
+    normalized_icd = upper(trim(col(code_col_name)))
     dotless_icd = regexp_replace(normalized_icd, "\\.", "")
 
     # Cover both dotted (E11.9) and dotless (E119) variants in one map to avoid
@@ -69,13 +69,13 @@ def transform_condition_occurrence(
     concept_id_expr = build_concept_lookup(dotless_icd, unified_mapping, default_val=0)
 
     # Composite PK: encounter + ICD-10 code + date ensures uniqueness across multi-diagnosis encounters.
-    pk_expr = abs(
-        xxhash64(concat_ws(":", col("encounter_id"), normalized_icd, col("parsed_diag_dt")))
+    pk_expr = xxhash64(
+        concat_ws(":", col("encounter_id"), normalized_icd, col("parsed_diag_dt"))
     ).cast("long")
 
     return df_silver_diagnoses.select(
         pk_expr.alias("condition_occurrence_id"),
-        abs(xxhash64(col("raw_patient_id"))).cast("long").alias("person_id"),
+        xxhash64(col("raw_patient_id")).cast("long").alias("person_id"),
         concept_id_expr.cast("integer").alias("condition_concept_id"),
         col("parsed_diag_dt").alias("condition_start_date"),
         lit(None)
@@ -105,7 +105,7 @@ def transform_condition_occurrence(
         lit(None)
         .cast("long")
         .alias("visit_occurrence_id"),  # OMOP CDM v5.4: NULL — no visit context in source.
-        concat_ws(":", col("icd10_code"), col("diagnosis_description"))
+        concat_ws(":", col(code_col_name), col("diagnosis_description"))
         .cast("string")
         .alias("condition_source_value"),
         lit(0)

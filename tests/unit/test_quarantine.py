@@ -368,3 +368,116 @@ def test_quarantine_remediation_engine_measurements(spark: SparkSession):
         assert res["total_evaluated"] == 2
         assert res["remediated_count"] == 1
         assert res["unresolved_count"] == 1
+
+
+def test_quarantine_remediation_with_pipeline_schema_columns(spark: SparkSession):
+    """Verifies that remediation engine correctly handles real pipeline schema columns (icd10_code, loinc_code, numeric_value)."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        writer = QuarantineDeltaWriter(spark, base_output_dir=tmp_dir)
+
+        # 1. Test conditions with 'icd10_code' and 'raw_patient_id'
+        cond_schema = StructType(
+            [
+                StructField("raw_patient_id", StringType(), True),
+                StructField("encounter_id", StringType(), True),
+                StructField("diagnosis_date", StringType(), True),
+                StructField("icd10_code", StringType(), True),
+            ]
+        )
+        cond_raw = spark.createDataFrame(
+            [
+                ("PAT_001", "ENC_001", "2023-05-20", "E11.9_NEW"),
+                ("PAT_002", "ENC_002", "CORRUPT", "E11.9_NEW"),
+            ],
+            cond_schema,
+        )
+        df_q_cond = format_quarantine_dataframe(
+            cond_raw,
+            table_name=QUARANTINE_TABLE_CONDITIONS,
+            failure_code=ClinicalFailureCode.UNMAPPED_TERMINOLOGY,
+            failure_reason="Pipeline unmapped ICD-10",
+        )
+        writer.write_quarantine_conditions(df_q_cond, mode="overwrite")
+
+        # 2. Test measurements with 'loinc_code', 'numeric_value', and 'raw_patient_id'
+        meas_schema = StructType(
+            [
+                StructField("raw_patient_id", StringType(), True),
+                StructField("lab_event_id", StringType(), True),
+                StructField("lab_datetime", StringType(), True),
+                StructField("loinc_code", StringType(), True),
+                StructField("numeric_value", StringType(), True),
+            ]
+        )
+        meas_raw = spark.createDataFrame(
+            [
+                ("PAT_001", "LAB_001", "2023-06-10T08:00:00Z", "88888-8", "12.5"),
+                ("PAT_002", "LAB_002", "2023-06-10T08:00:00Z", "88888-8", "-5.0"),
+            ],
+            meas_schema,
+        )
+        df_q_meas = format_quarantine_dataframe(
+            meas_raw,
+            table_name=QUARANTINE_TABLE_MEASUREMENTS,
+            failure_code=ClinicalFailureCode.UNMAPPED_TERMINOLOGY,
+            failure_reason="Pipeline unmapped LOINC",
+        )
+        writer.write_quarantine_measurements(df_q_meas, mode="overwrite")
+
+        engine = QuarantineRemediationEngine(spark, base_output_dir=tmp_dir)
+
+        res_cond = engine.remediate_conditions(updated_concept_mappings={"E11.9_NEW": 201826})
+        assert res_cond["status"] == "SUCCESS"
+        assert res_cond["total_evaluated"] == 2
+        assert res_cond["remediated_count"] == 1
+        assert res_cond["unresolved_count"] == 1
+
+        res_meas = engine.remediate_measurements(updated_loinc_mappings={"88888-8": 3004410})
+        assert res_meas["status"] == "SUCCESS"
+        assert res_meas["total_evaluated"] == 2
+        assert res_meas["remediated_count"] == 1
+        assert res_meas["unresolved_count"] == 1
+
+
+def test_quarantine_remediation_patients_with_raw_patient_id(spark: SparkSession):
+    """Verifies patient remediation and promotion to Silver when raw_patient_id is the identifier column."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        writer = QuarantineDeltaWriter(spark, base_output_dir=tmp_dir)
+
+        patient_schema = StructType(
+            [
+                StructField("raw_patient_id", StringType(), True),
+                StructField("birth_datetime", StringType(), True),
+                StructField("gender", StringType(), True),
+                StructField("race", StringType(), True),
+                StructField("ethnicity", StringType(), True),
+            ]
+        )
+        # Row 1: valid date and gender (remediable)
+        # Row 2: invalid gender 'INVALID_GENDER' (irremediable)
+        patient_raw = spark.createDataFrame(
+            [
+                ("PAT_RAW_001", "1980-05-12", "MALE", "White", "Not Hispanic"),
+                ("PAT_RAW_002", "1992-08-20", "INVALID_GENDER", "Asian", "Not Hispanic"),
+            ],
+            patient_schema,
+        )
+        df_q_pat = format_quarantine_dataframe(
+            patient_raw,
+            table_name=QUARANTINE_TABLE_PATIENTS,
+            failure_code=ClinicalFailureCode.SCHEMA_VIOLATION,
+            failure_reason="Raw demographics validation failure",
+        )
+        writer.write_quarantine_patients(df_q_pat, mode="overwrite")
+
+        engine = QuarantineRemediationEngine(spark, base_output_dir=tmp_dir)
+        res = engine.remediate_patients()
+
+        assert res["status"] == "SUCCESS"
+        assert res["total_evaluated"] == 2
+        assert res["remediated_count"] == 1
+        assert res["unresolved_count"] == 1
+        assert res["promoted_path"] is not None
+
+        assert "clinical_demographics" in res["promoted_path"]
+        assert os.path.exists(res["promoted_path"])

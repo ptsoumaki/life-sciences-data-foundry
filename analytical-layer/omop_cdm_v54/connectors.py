@@ -17,11 +17,13 @@ Public API:
     load_genomics_data             -- Genomic variant ingestion (VCF -> MEASUREMENT source).
 """
 
+import io
 import os
 import urllib.request
 
+import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, current_timestamp
+from pyspark.sql.functions import col, current_timestamp, split
 
 # Public Open Data Remote URLs
 SYNTHEA_REMOTE_PATIENTS_URL = (
@@ -108,10 +110,6 @@ def read_http_csv(spark: SparkSession, url: str, fallback_path: str | None = Non
         ValueError: Response body exceeds MAX_HTTP_RESPONSE_BYTES.
         FileNotFoundError: Remote fetch failed and no usable fallback path was given.
     """
-    import io
-
-    import pandas as pd
-
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=30) as response:
@@ -190,7 +188,8 @@ def load_diagnoses_data(
 
     Demo mode reads clinical_diagnoses.csv (columns: encounter_id, raw_patient_id,
     diagnosis_date, icd10_code, diagnosis_description). Remote mode streams the
-    Synthea ETL conditions.csv from GitHub and renames Synthea columns.
+    Synthea ETL conditions.csv from GitHub, which provides SNOMED codes in the CODE column,
+    and normalises it to 'code'.
 
     Args:
         spark: Active SparkSession.
@@ -200,7 +199,7 @@ def load_diagnoses_data(
 
     Returns:
         DataFrame with columns: encounter_id, raw_patient_id, diagnosis_date,
-        icd10_code, diagnosis_description, ingestion_timestamp.
+        code (or icd10_code in demo mode), diagnosis_description, ingestion_timestamp.
     """
     resolved_dir = resolve_data_dir(data_dir)
     file_path = os.path.join(resolved_dir, "clinical_diagnoses.csv")
@@ -211,7 +210,7 @@ def load_diagnoses_data(
             .withColumnRenamed("ENCOUNTER", "encounter_id")
             .withColumnRenamed("PATIENT", "raw_patient_id")
             .withColumnRenamed("START", "diagnosis_date")
-            .withColumnRenamed("CODE", "icd10_code")
+            .withColumnRenamed("CODE", "code")
             .withColumnRenamed("DESCRIPTION", "diagnosis_description")
             .withColumn("ingestion_timestamp", current_timestamp())
         )
@@ -287,8 +286,6 @@ def parse_vcf_to_dataframe(
     Raises:
         ValueError: No #CHROM header line found in the file.
     """
-    from pyspark.sql.functions import split
-
     df_raw = spark.read.text(vcf_path).filter(~col("value").startswith("##"))
 
     # The #CHROM header always appears within the first few lines after ##-meta

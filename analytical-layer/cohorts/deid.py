@@ -12,9 +12,6 @@ import warnings
 
 from pyspark.sql import Column, DataFrame
 from pyspark.sql.functions import (
-    abs as spark_abs,
-)
-from pyspark.sql.functions import (
     col,
     concat,
     date_add,
@@ -24,6 +21,7 @@ from pyspark.sql.functions import (
     when,
     xxhash64,
 )
+from pyspark.sql.types import IntegerType
 
 # Restricted ZIP3 prefixes with population < 20,000 per HHS Safe Harbor rules
 RESTRICTED_ZIP3_PREFIXES = frozenset(
@@ -88,17 +86,15 @@ class HIPAADeIdentifier:
 
     def _get_patient_shift_col(self, id_col: str) -> Column:
         """Derives a deterministic patient-specific date shift column in [-max_shift, +max_shift]."""
-        # abs(hash(id + salt)) % (2 * max_shift + 1) - max_shift
         range_span = 2 * self.max_shift_days + 1
-        return (
-            spark_abs(xxhash64(concat(col(id_col).cast("string"), lit(f"{self.salt}_SHIFT"))))
-            % range_span
-        ).cast("int") - self.max_shift_days
+        raw_hash = xxhash64(concat(col(id_col).cast("string"), lit(f"{self.salt}_SHIFT")))
+        pos_mod = ((raw_hash % lit(range_span)) + lit(range_span)) % lit(range_span)
+        return (pos_mod - lit(self.max_shift_days)).cast("int")
 
     def _get_pseudonymized_id_col(self, id_col: str) -> Column:
         """Derives a deterministic pseudonymous 64-bit integer identifier."""
-        return spark_abs(
-            xxhash64(concat(col(id_col).cast("string"), lit(f"{self.salt}_PSEUDO_ID")))
+        return xxhash64(concat(col(id_col).cast("string"), lit(f"{self.salt}_PSEUDO_ID"))).cast(
+            "long"
         )
 
     def deidentify_cohort(self, df_cohort: DataFrame) -> DataFrame:
@@ -113,7 +109,7 @@ class HIPAADeIdentifier:
         Returns:
             De-identified DataFrame with shifted dates and pseudonymous subject_ids.
         """
-        if df_cohort.rdd.isEmpty():
+        if df_cohort.limit(1).count() == 0:
             return df_cohort
 
         shift_col = self._get_patient_shift_col("subject_id")
@@ -149,7 +145,7 @@ class HIPAADeIdentifier:
         Returns:
             De-identified PERSON DataFrame.
         """
-        if df_person.rdd.isEmpty():
+        if df_person.limit(1).count() == 0:
             return df_person
 
         pseudo_id_col = self._get_pseudonymized_id_col("person_id")
@@ -162,6 +158,23 @@ class HIPAADeIdentifier:
             when(col("raw_age") >= 90, lit(reference_year - 89)).otherwise(col("year_of_birth")),
         )
 
+        # HIPAA Safe Harbor (45 CFR §164.514(b)(2)(i)(C)):
+        # For individuals aged >= 90, all elements of dates (except year) must be removed.
+        if "month_of_birth" in df_deid.columns:
+            df_deid = df_deid.withColumn(
+                "month_of_birth",
+                when(col("raw_age") >= 90, lit(None).cast(IntegerType())).otherwise(
+                    col("month_of_birth")
+                ),
+            )
+        if "day_of_birth" in df_deid.columns:
+            df_deid = df_deid.withColumn(
+                "day_of_birth",
+                when(col("raw_age") >= 90, lit(None).cast(IntegerType())).otherwise(
+                    col("day_of_birth")
+                ),
+            )
+
         # Truncate or remove birth_datetime for HIPAA compliance.
         # Cast the null to the column's original declared type to preserve the Delta Lake
         # schema contract (birth_datetime is commonly TimestampType, not StringType).
@@ -169,13 +182,16 @@ class HIPAADeIdentifier:
             original_dt_type = df_deid.schema["birth_datetime"].dataType
             df_deid = df_deid.withColumn("birth_datetime", lit(None).cast(original_dt_type))
 
-        # Mask postal/ZIP codes if present
-        if "zip" in df_deid.columns:
-            zip3_col = substring(col("zip").cast("string"), 1, 3)
-            df_deid = df_deid.withColumn(
-                "zip",
-                when(zip3_col.isin(list(RESTRICTED_ZIP3_PREFIXES)), lit("000")).otherwise(zip3_col),
-            )
+        # Mask postal/ZIP codes if present (HIPAA Safe Harbor: 3-digit ZIP truncation & restricted prefix suppression)
+        for zip_col_name in ("zip", "zip_code", "postal_code"):
+            if zip_col_name in df_deid.columns:
+                zip3_col = substring(col(zip_col_name).cast("string"), 1, 3)
+                df_deid = df_deid.withColumn(
+                    zip_col_name,
+                    when(zip3_col.isin(list(RESTRICTED_ZIP3_PREFIXES)), lit("000")).otherwise(
+                        zip3_col
+                    ),
+                )
 
         df_deid = df_deid.withColumn("person_id", pseudo_id_col).drop("raw_age")
         return df_deid
@@ -196,7 +212,7 @@ class HIPAADeIdentifier:
         Returns:
             De-identified DataFrame with shifted dates and pseudonymous person IDs.
         """
-        if df_table.rdd.isEmpty():
+        if df_table.limit(1).count() == 0:
             return df_table
 
         shift_col = self._get_patient_shift_col(person_id_col)

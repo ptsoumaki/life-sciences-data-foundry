@@ -17,19 +17,19 @@ targets:
     default: true
     workspace:
       host: ${var.databricks_host}
-      root_path: /Workspace/Projects/life-sciences-data-foundry
+      root_path: /Workspace/Projects/life-sciences-data-foundry/${bundle.target}
 
   staging:
     mode: production
     workspace:
       host: ${var.databricks_host}
-      root_path: /Workspace/Projects/life-sciences-data-foundry
+      root_path: /Workspace/Projects/life-sciences-data-foundry/${bundle.target}
 
   prod:
     mode: production
     workspace:
       host: ${var.databricks_host}
-      root_path: /Workspace/Projects/life-sciences-data-foundry
+      root_path: /Workspace/Projects/life-sciences-data-foundry/${bundle.target}
 
 variables:
   databricks_host:

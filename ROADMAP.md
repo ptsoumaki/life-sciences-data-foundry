@@ -1,10 +1,29 @@
-# 📋 Data Engineering & Clinical Analytics Backlog
+# 🗺️ Data Engineering & Clinical Analytics Roadmap
 
 This document tracks active development phases and engineering priorities for the **Enterprise Life Sciences Data Platform Blueprint**.
 
+## 📊 Platform Roadmap & Implementation Status
+
+| Phase | Subsystem / Focus Area | Primary Domain | Status |
+| :--- | :--- | :--- | :--- |
+| **Phase 1** | Medallion Storage & Infrastructure Core | `terraform/` · S3 WORM | `✅ COMPLETED` |
+| **Phase 2** | GxP Governance & Data Integrity Gates | `governance/` · Great Expectations · MLflow | `✅ COMPLETED` |
+| **Phase 3** | Base Clinical Normalization Ring (OMOP CDM) | `analytical-layer/omop_cdm_v54/` | `✅ COMPLETED` |
+| **Phase 4** | Data Lakehouse & Clinical Normalization Engine | `analytical-layer/omop_cdm_v54/` · `medallion/` | `✅ COMPLETED` |
+| **Phase 5** | Automated Testing & Quality Assurance Suite | `tests/unit/` · `tests/integration/` | `✅ COMPLETED` |
+| **Phase 6** | Production DataOps & CI/CD Pipeline Automation | `.github/workflows/` | `✅ COMPLETED` |
+| **Phase 7** | Agentic Lineage & MLOps Infrastructure | `agentic-ai/` · FastMCP · LangGraph | `✅ COMPLETED` |
+| **Phase 8** | Data Contract Failure & GxP Quarantine Routines | `analytical-layer/medallion/quarantine.py` | `✅ COMPLETED` |
+| **Phase 9** | Gold-Tier Analytical Cohorts & Translational Endpoints | `analytical-layer/cohorts/` · HIPAA De-ID | `✅ COMPLETED` |
+| **Phase 10** | Nextflow Multi-Omics to OMOP Workflow | `pipelines/multi_omics_omop.nf` | `📋 PLANNED` |
+| **Phase 11** | Target Discovery Data Products (Discovery Lakehouse) | `analytical-layer/discovery/` · DMTA Mart | `📋 PLANNED` |
+| **Phase 12** | Agentic DMTA Target Triage & AI Discovery | `agentic-ai/dmta_target_steward.py` | `📋 PLANNED` |
+| **Phase 13** | GxP-Validated Feature Store & Drift Monitoring Engine | `governance/drift_monitor.py` · `cohorts/` | `📋 PLANNED` |
+| **Phase 14** | End-to-End Analytical Showcase & Demonstration | Interactive Notebook & Databricks Demo | `📋 PLANNED` |
+
 ---
 
-## 🏗️ Phase 1: Medallion Storage & Infrastructure Core
+## 🏗️ Phase 1: Medallion Storage & Infrastructure Core `[✅ COMPLETED]`
 
 - [x] **Declarative Cloud Infrastructure & S3 WORM Storage (`terraform/`)**
   - Declarative Terraform IaC infrastructure with cryptographic S3 WORM Object Locking (`COMPLIANCE` retention mode in `prod`).
@@ -13,7 +32,7 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🛡️ Phase 2: GxP Governance & Data Integrity Gates
+## 🛡️ Phase 2: GxP Governance & Data Integrity Gates `[✅ COMPLETED]`
 
 - [x] **Data Quality Rules & Cryptographic Provenance Tracking (`governance/`)**
   - Programmatic data quality suite using Great Expectations (`governance/rules.json`) enforcing FDA 21 CFR Part 11 electronic records integrity.
@@ -21,14 +40,14 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🧬 Phase 3: Base Clinical Normalization Ring (OMOP CDM)
+## 🧬 Phase 3: Base Clinical Normalization Ring (OMOP CDM) `[✅ COMPLETED]`
 
 - [x] **Base PySpark Semantic Mapping (`analytical-layer/omop_cdm_v54/`)**
   - PySpark semantic mapping package translating unstructured genomic and clinical fields into standard OHDSI OMOP CDM v5.4 `PERSON`, `CONDITION_OCCURRENCE`, and `MEASUREMENT` structures.
 
 ---
 
-## 🧪 Phase 4: Data Lakehouse & Clinical Normalization Engine
+## 🧪 Phase 4: Data Lakehouse & Clinical Normalization Engine `[✅ COMPLETED]`
 
 - [x] **Modular PySpark OMOP CDM v5.4 Package Refactoring (`analytical-layer/omop_cdm_v54/`)**
   - Refactored monolithic mapping script into modular domain packages (`person.py`, `measurement.py`, `condition_occurrence.py`, `genomic_variants.py`, `connectors.py`).
@@ -47,7 +66,7 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🧪 Phase 5: Automated Testing & Quality Assurance Suite
+## 🧪 Phase 5: Automated Testing & Quality Assurance Suite `[✅ COMPLETED]`
 
 - [x] **PySpark Unit Testing Suite (`tests/unit/`)**
   - Construct isolated `pytest` unit tests for each domain transformer (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`, `vocabularies.py`, `test_data_contracts.py`).
@@ -58,7 +77,7 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## ⚡ Phase 6: Production DataOps & CI/CD Pipeline Automation
+## ⚡ Phase 6: Production DataOps & CI/CD Pipeline Automation `[✅ COMPLETED]`
 
 - [x] **DataOps CI/CD Gate Expansion (`.github/workflows/tf-lint.yml`)**
   - Configured multi-job GitHub Actions workflow to execute Terraform IaC syntax checks, Nextflow stub evaluation, `ruff` linter/formatter, `mypy` strict static type verification, and PySpark unit/integration test suites with `pytest-cov` reporting on all feature branch pull requests.
@@ -68,7 +87,7 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🤖 Phase 7: Agentic Lineage & MLOps Infrastructure
+## 🤖 Phase 7: Agentic Lineage & MLOps Infrastructure `[✅ COMPLETED]`
 
 - [x] **LangGraph Delta Lake Lineage Auditor (`agentic-ai/graph_auditor.py`)**
   - Built 6-node LangGraph state graph evaluating MLflow lineage trees (`governance/mlflow_tracker.py`), Delta Lake transaction commit logs (`_delta_log/`), and OMOP CDM schema integrity against FDA 21 CFR Part 11 parameters.
@@ -82,7 +101,7 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🛡️ Phase 8: Data Contract Failure & GxP Quarantine Routines
+## 🛡️ Phase 8: Data Contract Failure & GxP Quarantine Routines `[✅ COMPLETED]`
 
 - [x] **Dead-Letter Delta Lake Quarantine Sinks (`analytical-layer/medallion/quarantine.py`)**
   - Implement dedicated Delta Lake quarantine table sinks (`quarantine_conditions`, `quarantine_measurements`, `quarantine_patients`) to isolate non-compliant records with verbatim raw JSON payloads, failure timestamps, and MLflow run IDs.
@@ -95,7 +114,7 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 📊 Phase 9: Gold-Tier Analytical Cohorts & Translational Endpoints
+## 📊 Phase 9: Gold-Tier Analytical Cohorts & Translational Endpoints `[✅ COMPLETED]`
 
 - [x] **Configurable OHDSI Phenotyping Engine (`analytical-layer/cohorts/builder.py`)**
   - Implement temporal inclusion/exclusion rules (index date $T_0$, baseline lookback windows, biomarker cutoffs, multi-omics variant criteria) outputting standard OHDSI `COHORT` structures (`cohort_definition_id`, `subject_id`, `cohort_start_date`, `cohort_end_date`).
@@ -108,7 +127,7 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🧬 Phase 10: Nextflow Multi-Omics to OMOP Workflow
+## 🧬 Phase 10: Nextflow Multi-Omics to OMOP Workflow `[📋 PLANNED]`
 
 - [ ] **End-to-End DSL2 Multi-Omics Pipeline (`pipelines/multi_omics_omop.nf`)**
   - Construct modular Nextflow DSL2 workflow chaining raw sequencing QC (`FASTQC`), VCF variant annotation (`BCFTOOLS`), and PySpark Medallion OMOP CDM ingestion.
@@ -119,7 +138,55 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 📈 Phase 11: End-to-End Analytical Showcase & Demonstration
+## 🎯 Phase 11: Target Discovery Data Products (Discovery Lakehouse) `[📋 PLANNED]`
+
+- [ ] **Target-to-Phenotype Evidence Mart (`analytical-layer/discovery/target_mart.py`)**
+  - PySpark aggregation layer joining OMOP `MEASUREMENT` (ClinVar variant calls) and `CONDITION_OCCURRENCE` across longitudinal cohorts.
+  - Calculate target tractability metrics: target mutation burden, biomarker correlation matrices, and phenotypic odds ratios across disease hierarchies.
+  - Delta Lake Liquid Clustering persistence: `CLUSTER BY (target_gene_symbol, disease_concept_id)`.
+- [ ] **Declarative DMTA Data Product Contract (`governance/contracts/target_contract.json`)**
+  - Great Expectations GxP contract enforcing semantic invariants on target entities: HGNC canonical symbol validation, permissible odds-ratio bounds, and target tractability score completeness.
+  - Integration with `analytical-layer/medallion/quarantine.py` to route contract breaches to dead-letter sinks with failure code `TARGET_CONTRACT_VIOLATION`.
+- [ ] **Unit & Contract Verification Suites (`tests/unit/test_target_mart.py`)**
+  - Unit tests verifying tractability aggregations, Odds Ratio calculations, and contract rejection dead-letter routing.
+
+---
+
+## 🤖 Phase 12: Agentic DMTA Target Triage & AI Discovery `[📋 PLANNED]`
+
+- [ ] **Agentic DMTA Target Triage Graph (`agentic-ai/dmta_target_steward.py`)**
+  - 4-node LangGraph state machine (`ParseHypothesis` -> `QueryTargetMart` -> `ValidateLineageAndContract` -> `SynthesizeValidationDossier`) executing autonomous target feasibility checks.
+  - Integrate with `governance/crypto.py` to seal target dossier outputs with 21 CFR §11.50 cryptographic signatures and Delta commit SHAs.
+- [ ] **FastMCP Discovery Tool Extensions (`agentic-ai/mcp_server.py`)**
+  - Expose discovery-specific endpoints: `get_target_biomarker_profile(gene_symbol)` and `verify_target_lineage(dataset_version)` via FastMCP for programmatic agent tool use.
+- [ ] **Agentic DMTA Unit & Integration Tests (`tests/unit/test_dmta_steward.py`)**
+  - Unit tests verifying LangGraph multi-node execution, state transitions, and electronic signature generation.
+
+---
+
+## 🔍 Phase 13: GxP-Validated Feature Store & Drift Monitoring Engine `[📋 PLANNED]`
+
+- [ ] **Point-in-Time Correctness & Feature Store Immutability (`analytical-layer/cohorts/point_in_time.py`)**
+  - Implement distributed `as_of_join` engine enforcing zero future data leakage across longitudinal clinical events and multi-omics observations:
+    $$T_{\text{event}} \in [T_{0, i} - \Delta_{\text{lookback}}, \, T_{0, i}]$$
+  - Isolate and suppress post-index observation contamination from downstream ML feature matrices.
+  - Generate cryptographic feature set manifests capturing upstream Delta Lake commit versions (`table.history()`), parameter metadata, and SHA-256 dataset hashes via `governance/crypto.py`.
+- [ ] **Distributed Population & Covariate Drift Engine (`governance/drift_monitor.py`)**
+  - Scalable PySpark calculation of Population Stability Index (PSI) over quantized deciles for continuous biomarkers (HbA1c, LDL-C, eGFR):
+    $$\text{PSI} = \sum_{k=1}^{K} \left( P_k - Q_k \right) \ln\left(\frac{P_k}{Q_k}\right)$$
+  - Implement two-sample Kolmogorov-Smirnov (KS) tests and Wasserstein Distance for continuous lab distribution shifts.
+  - Compute Chi-Square goodness-of-fit and Total Variation Distance across high-cardinality categorical SNOMED condition codes and ClinVar variant indicator distributions.
+- [ ] **GxP Telemetry Gate & MLflow Automated Pipeline Halting (`governance/mlflow_tracker.py`)**
+  - Automatically stream drift metrics and statistical significance indicators to active MLflow experiment runs adhering to FDA Good Machine Learning Practice (GMLP).
+  - Implement automated execution barrier: emit GxP warning tag for moderate drift ($0.10 \le \text{PSI} \le 0.25$); throw `GxPDriftBreachError`, halt downstream execution, and route batch manifests to `analytical-layer/medallion/quarantine.py` with failure code `COVARIATE_DRIFT_BREACH` when severe drift occurs ($\text{PSI} > 0.25$).
+- [ ] **FastMCP MLOps Tool Extensions (`agentic-ai/mcp_server.py`)**
+  - Expose MLOps governance endpoints: `get_feature_drift_report(cohort_definition_id, target_metric)` and `verify_feature_matrix_lineage(matrix_delta_version)` via FastMCP for agentic quality inspection.
+- [ ] **Unit & Gating Verification Suites (`tests/unit/test_drift_monitor.py`, `tests/unit/test_point_in_time.py`)**
+  - Unit tests verifying temporal isolation (assert zero record contamination for $T_{\text{event}} > T_0$), analytical PSI calculation precision ($\pm 10^{-4}$), and automated pipeline abort triggers on simulated out-of-distribution batches.
+
+---
+
+## 📈 Phase 14: End-to-End Analytical Showcase & Demonstration `[📋 PLANNED]`
 
 - [ ] **Interactive Clinical & Multi-Omics Showcase Notebook**
   - Provide a standalone, documented Jupyter/Databricks showcase demonstrating Bronze ingestion $\to$ Silver GxP assertion $\to$ Gold cohort extraction $\to$ LangGraph agentic lineage audit with visual survival curve plots.
@@ -128,12 +195,7 @@ This document tracks active development phases and engineering priorities for th
 
 ## 🛠️ Background Utilities & Nice-to-Haves
 
-- [ ] **Automated Changelog & SemVer Release Gate (`.github/workflows/release-changelog.yml`)** *(Nice-to-Have)*
-  - Automate `CHANGELOG.md` updates based on git commit history upon pull request merge to production (`main`).
-  - Calculate incremental SemVer versioning (`patch`, `minor`, `major`) and publish tagged GitHub releases for auditable GxP provenance.
 - [ ] **HL7 FHIR R4 to OMOP Ingestion Connector (`analytical-layer/omop_cdm_v54/connectors.py`)** *(Nice-to-Have)*
   - Lightweight connector parsing synthetic FHIR JSON Bundles (`Patient`, `Condition`, `Observation`) into OMOP CDM Silver tables.
-- [ ] **PySpark & Delta Lake Performance Benchmark Suite (`tests/benchmarks/`)** *(Nice-to-Have)*
-  - Automated benchmarking harness comparing Delta Lake Liquid Clustering (`CLUSTER BY`) versus Z-Ordering and Parquet baseline on scaled synthetic cohorts (100k+ records).
 - [ ] **Automated PR Management & Human-in-the-Loop (HITL) Gate (`.github/dependabot.yml` & `.github/workflows/auto-merge.yml`)** *(Nice-to-Have)*
   - Dependabot vulnerability tracking and automated dependency update PRs with mandatory Human-in-the-Loop (HITL) review gates and electronic sign-offs before merge.

@@ -8,6 +8,7 @@ Author: Vivi Tsoumaki
 
 import argparse
 import os
+import subprocess
 import sys
 from typing import Any
 
@@ -66,6 +67,20 @@ try:
 except ImportError:
     evaluate_data_contract = None  # type: ignore[assignment]
 
+try:
+    from cohorts.builder import OHDSICohortBuilder, get_type_2_diabetes_cohort_definition
+    from cohorts.deid import HIPAADeIdentifier
+    from cohorts.features import PatientFeatureStore
+    from cohorts.survival import SurvivalConfig, SurvivalEndpoint, SurvivalMartBuilder
+except ImportError:
+    OHDSICohortBuilder = None  # type: ignore[assignment, misc]
+    get_type_2_diabetes_cohort_definition = None  # type: ignore[assignment]
+    HIPAADeIdentifier = None  # type: ignore[assignment, misc]
+    PatientFeatureStore = None  # type: ignore[assignment, misc]
+    SurvivalConfig = None  # type: ignore[assignment, misc]
+    SurvivalEndpoint = None  # type: ignore[assignment, misc]
+    SurvivalMartBuilder = None  # type: ignore[assignment, misc]
+
 
 def configure_windows_hadoop_environment():
     """Provisions a minimal winutils.exe stub required by PySpark on Windows.
@@ -90,8 +105,6 @@ def configure_windows_hadoop_environment():
             cs_path = os.path.join(bin_dir, "dummy.cs")
             if os.path.exists(csc):
                 try:
-                    import subprocess
-
                     with open(cs_path, "w") as f:
                         f.write("class Program { static int Main(string[] args) { return 0; } }\n")
                     subprocess.run(
@@ -183,6 +196,7 @@ def run_omop_pipeline(
         rules_path: Path to the Great Expectations rules JSON specification.
         quarantine_threshold: Batch quarantine rejection ratio tolerance threshold (default: 0.02 = 2.0%).
         abort_on_breach: Abort downstream execution via GxPBreachError when rejection ratio exceeds threshold.
+        build_cohorts: Build derived clinical cohorts, survival datasets, and feature store when True.
 
     Returns:
         Dict with Gold-tier DataFrames keyed by "person", "condition_occurrence", and
@@ -231,8 +245,6 @@ def run_omop_pipeline(
         "parsed_diag_dt", expr("try_cast(diagnosis_date as date)")
     ).cache()
     # Diagnoses use 'icd10_code' in the synthetic demo schema and 'code' in normalised remote schemas.
-    # Note: remediate_conditions() in quarantine.py always unpacks the 'code' column from raw_payload;
-    # if real data retains 'icd10_code', the vocabulary re-match step will not resolve those records.
     diag_code_col = col("icd10_code") if "icd10_code" in df_diag_parsed.columns else col("code")
     valid_diag_condition = col("parsed_diag_dt").isNotNull() & diag_code_col.isNotNull()
     df_silver_diagnoses = df_diag_parsed.filter(valid_diag_condition)
@@ -259,7 +271,9 @@ def run_omop_pipeline(
     df_quarantine_labs = df_labs_parsed.filter(~valid_lab_condition)
 
     # Filter Genomics — include standard PASS and uncomputed '.' variant quality filters.
-    df_silver_genomics = df_raw_genomics.filter(col("filter").isin("PASS", "."))
+    valid_genomics_condition = col("filter").isin("PASS", ".")
+    df_silver_genomics = df_raw_genomics.filter(valid_genomics_condition)
+    df_quarantine_genomics = df_raw_genomics.filter(~valid_genomics_condition)
 
     # Materialize counts and calculate batch quality metrics
     _raw_patients_count = df_raw_patients.count()
@@ -269,10 +283,15 @@ def run_omop_pipeline(
     total_ingested = _raw_patients_count + _raw_diag_count + _raw_labs_count + _raw_genomics_count
 
     _silver_clinical_count = df_silver_clinical.count()
+    _silver_diag_count = df_silver_diagnoses.count()
+    _silver_labs_count = df_silver_labs.count()
+    _silver_genomics_count = df_silver_genomics.count()
+
     _qc_patients_count = df_quarantine_clinical.count()
     _qc_diag_count = df_quarantine_diagnoses.count()
     _qc_labs_count = df_quarantine_labs.count()
-    total_quarantined = _qc_patients_count + _qc_diag_count + _qc_labs_count
+    _qc_genomics_count = df_quarantine_genomics.count()
+    total_quarantined = _qc_patients_count + _qc_diag_count + _qc_labs_count + _qc_genomics_count
 
     # Release cached Bronze DataFrames — all downstream split counts are now materialised and
     # these caches are no longer needed. Freeing them before Gold transforms prevents
@@ -283,11 +302,12 @@ def run_omop_pipeline(
 
     print(f"[METRIC] Silver Clinical Records Accepted: {_silver_clinical_count}")
     print(f"[METRIC] Clinical Records Quarantined:     {_qc_patients_count}")
-    print(f"[METRIC] Silver Diagnoses Records Accepted: {df_silver_diagnoses.count()}")
+    print(f"[METRIC] Silver Diagnoses Records Accepted: {_silver_diag_count}")
     print(f"[METRIC] Diagnoses Records Quarantined:    {_qc_diag_count}")
-    print(f"[METRIC] Silver Lab Biomarkers Accepted:    {df_silver_labs.count()}")
+    print(f"[METRIC] Silver Lab Biomarkers Accepted:    {_silver_labs_count}")
     print(f"[METRIC] Lab Biomarkers Quarantined:       {_qc_labs_count}")
-    print(f"[METRIC] Silver Genomic Variants Accepted:  {df_silver_genomics.count()}")
+    print(f"[METRIC] Silver Genomic Variants Accepted:  {_silver_genomics_count}")
+    print(f"[METRIC] Genomic Variants Quarantined:      {_qc_genomics_count}")
     print(f"[METRIC] Total Ingested Records:           {total_ingested}")
     print(f"[METRIC] Total Quarantined Records:         {total_quarantined}")
 
@@ -331,6 +351,19 @@ def run_omop_pipeline(
         else None
     )
 
+    df_q_genomics_formatted = (
+        format_quarantine_dataframe(
+            df_quarantine_genomics,
+            QUARANTINE_TABLE_MEASUREMENTS,
+            ClinicalFailureCode.SCHEMA_VIOLATION
+            if ClinicalFailureCode is not None
+            else "SCHEMA_VIOLATION",
+            "Variant FILTER failed quality threshold (non-PASS / non-period filter)",
+        )
+        if format_quarantine_dataframe is not None and _qc_genomics_count > 0
+        else None
+    )
+
     # -------------------------------------------------------------------------
     # 2.5 BATCH QUALITY THRESHOLD & GXP BREACH ENFORCEMENT GATE
     # -------------------------------------------------------------------------
@@ -340,7 +373,7 @@ def run_omop_pipeline(
             total_quarantined=total_quarantined,
             threshold=quarantine_threshold,
             failure_counts_by_code={
-                "SCHEMA_VIOLATION": _qc_patients_count + _qc_diag_count,
+                "SCHEMA_VIOLATION": _qc_patients_count + _qc_diag_count + _qc_genomics_count,
                 "OUT_OF_BOUNDS_LAB": _qc_labs_count,
             },
             abort_on_breach=abort_on_breach,
@@ -419,6 +452,8 @@ def run_omop_pipeline(
                 q_writer.write_quarantine_conditions(df_q_conditions_formatted)
             if df_q_labs_formatted is not None:
                 q_writer.write_quarantine_measurements(df_q_labs_formatted)
+            if df_q_genomics_formatted is not None:
+                q_writer.write_quarantine_measurements(df_q_genomics_formatted)
 
         # Write Gold Sinks with Liquid Clustering (CLUSTER BY (person_id, concept_id))
         person_path = writer.write_gold_omop_table(
@@ -461,57 +496,64 @@ def run_omop_pipeline(
         print(
             "\n[INFO] [COHORT ENGINE] Constructing Gold Analytical Cohorts & Translational Endpoints..."
         )
-        try:
-            from cohorts.builder import OHDSICohortBuilder, get_type_2_diabetes_cohort_definition
-            from cohorts.deid import HIPAADeIdentifier
-            from cohorts.features import PatientFeatureStore
-            from cohorts.survival import SurvivalConfig, SurvivalEndpoint, SurvivalMartBuilder
+        if (
+            OHDSICohortBuilder is None
+            or get_type_2_diabetes_cohort_definition is None
+            or HIPAADeIdentifier is None
+            or PatientFeatureStore is None
+            or SurvivalConfig is None
+            or SurvivalEndpoint is None
+            or SurvivalMartBuilder is None
+        ):
+            print("[WARN] Cohort analytical modules are unavailable; skipping cohort construction.")
+        else:
+            try:
+                builder = OHDSICohortBuilder(spark)
+                t2d_def = get_type_2_diabetes_cohort_definition()
+                df_cohort_t2d = builder.build_cohort(
+                    definition=t2d_def,
+                    df_condition_occurrence=df_omop_condition,
+                    df_person=df_omop_person,
+                    df_measurement=df_omop_measurement,
+                )
+                cohort_results["cohort_t2d"] = df_cohort_t2d
 
-            builder = OHDSICohortBuilder(spark)
-            t2d_def = get_type_2_diabetes_cohort_definition()
-            df_cohort_t2d = builder.build_cohort(
-                definition=t2d_def,
-                df_condition_occurrence=df_omop_condition,
-                df_person=df_omop_person,
-                df_measurement=df_omop_measurement,
-            )
-            cohort_results["cohort_t2d"] = df_cohort_t2d
+                deid = HIPAADeIdentifier()
+                df_cohort_deid = deid.deidentify_cohort(df_cohort_t2d)
+                cohort_results["cohort_deid"] = df_cohort_deid
 
-            deid = HIPAADeIdentifier()
-            df_cohort_deid = deid.deidentify_cohort(df_cohort_t2d)
-            cohort_results["cohort_deid"] = df_cohort_deid
+                surv_builder = SurvivalMartBuilder(
+                    spark, SurvivalConfig(endpoint=SurvivalEndpoint.OVERALL_SURVIVAL)
+                )
+                df_surv = surv_builder.build_survival_frame(
+                    df_cohort=df_cohort_t2d,
+                    df_person=df_omop_person,
+                    df_condition_occurrence=df_omop_condition,
+                    df_measurement=df_omop_measurement,
+                )
+                cohort_results["survival_mart"] = df_surv
 
-            surv_builder = SurvivalMartBuilder(
-                spark, SurvivalConfig(endpoint=SurvivalEndpoint.OVERALL_SURVIVAL)
-            )
-            df_surv = surv_builder.build_survival_frame(
-                df_cohort=df_cohort_t2d,
-                df_person=df_omop_person,
-                df_condition_occurrence=df_omop_condition,
-                df_measurement=df_omop_measurement,
-            )
-            cohort_results["survival_mart"] = df_surv
+                feat_store = PatientFeatureStore(spark)
+                df_features = feat_store.build_feature_matrix(
+                    df_cohort=df_cohort_t2d,
+                    df_person=df_omop_person,
+                    df_condition_occurrence=df_omop_condition,
+                    df_measurement=df_omop_measurement,
+                )
+                cohort_results["patient_features"] = df_features
 
-            feat_store = PatientFeatureStore(spark)
-            df_features = feat_store.build_feature_matrix(
-                df_cohort=df_cohort_t2d,
-                df_person=df_omop_person,
-                df_condition_occurrence=df_omop_condition,
-                df_measurement=df_omop_measurement,
-            )
-            cohort_results["patient_features"] = df_features
+                if save_delta:
+                    effective_output_dir = output_dir or "data/delta_warehouse"
+                    cohort_dir = os.path.join(effective_output_dir, "gold")
+                    builder.save_cohort(df_cohort_t2d, cohort_dir)
+                    surv_builder.save_survival_mart(df_surv, cohort_dir)
+                    feat_store.save_feature_matrix(df_features, cohort_dir)
 
-            if save_delta and output_dir:
-                cohort_dir = os.path.join(output_dir, "gold")
-                builder.save_cohort(df_cohort_t2d, cohort_dir)
-                surv_builder.save_survival_mart(df_surv, cohort_dir)
-                feat_store.save_feature_matrix(df_features, cohort_dir)
-
-            print(
-                "[COHORT ENGINE] Gold Cohort generation and analytical marts persisted successfully."
-            )
-        except Exception as e:
-            print(f"[COHORT ENGINE WARNING] Cohort build encountered error: {e}")
+                print(
+                    "[COHORT ENGINE] Gold Cohort generation and analytical marts persisted successfully."
+                )
+            except Exception as e:
+                print(f"[COHORT ENGINE WARNING] Cohort build encountered error: {e}")
 
     print(
         f"[SUCCESS] OHDSI OMOP CDM v5.4 Pipeline Execution Mode [{mode.upper()}] Completed Successfully."
@@ -543,9 +585,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--save_delta",
+        "--save-delta",
+        dest="save_delta",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Persist Medallion datasets into Delta Lake sinks (use --no-save_delta to skip)",
+        help="Persist Medallion datasets into Delta Lake sinks (use --no-save-delta to skip)",
     )
     parser.add_argument(
         "--output_dir", type=str, default=None, help="Custom path for Delta Lake warehouse storage"
@@ -558,6 +602,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--enable_contract_enforcement",
+        "--enable-contract-enforcement",
+        dest="enable_contract_enforcement",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Enforce Great Expectations data quality contracts before Gold persistence",
@@ -582,6 +628,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--build_cohorts",
+        "--build-cohorts",
+        dest="build_cohorts",
         action="store_true",
         default=False,
         help="Construct Gold-tier analytical cohorts, survival marts, and patient feature stores",

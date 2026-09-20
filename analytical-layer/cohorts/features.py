@@ -139,11 +139,11 @@ CHARLSON_CATEGORIES: dict[str, dict[str, Any]] = {
     },
 }
 
-# Standard Baseline Biomarker Concepts
+# Standard Baseline Biomarker Concepts aligned with governance/concept_mappings.json
 DEFAULT_BIOMARKER_MAP: dict[str, int] = {
-    "hba1c": 4184637,  # LOINC 4548-4 (Hemoglobin A1c)
-    "glucose": 3004501,  # LOINC 1558-6 (Fasting Glucose)
-    "cholesterol": 3027114,  # LOINC 2093-3 (Total Cholesterol)
+    "hba1c": 3004410,  # LOINC 4548-4 (Hemoglobin A1c)
+    "glucose": 3000483,  # LOINC 2345-7 (Serum Glucose)
+    "cholesterol": 3004249,  # LOINC 2093-3 (Total Cholesterol)
     "creatinine": 3016723,  # LOINC 2160-0 (Serum Creatinine)
 }
 
@@ -154,7 +154,7 @@ class FeatureStoreConfig:
 
     lookback_windows_days: list[int] = field(default_factory=lambda: [30, 180, 365])
     biomarkers: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_BIOMARKER_MAP))
-    genomic_concept_id: int = 2000000001
+    genomic_concept_id: int = 35917873  # Standard OMOP genomic variant concept ID
     impute_missing_biomarkers_with_zero: bool = True
 
 
@@ -191,7 +191,7 @@ class PatientFeatureStore:
         Returns:
             Dense, wide DataFrame indexed by (cohort_definition_id, subject_id, cohort_start_date).
         """
-        if df_cohort.rdd.isEmpty():
+        if df_cohort.limit(1).count() == 0:
             return self._build_empty_feature_matrix()
 
         # 1. Base Demographic Features
@@ -258,7 +258,7 @@ class PatientFeatureStore:
             ``df_features`` extended with CCI category flags, ``charlson_comorbidity_index``,
             and rolling condition count columns for each configured lookback window.
         """
-        if df_condition_occurrence is None or df_condition_occurrence.rdd.isEmpty():
+        if df_condition_occurrence is None or df_condition_occurrence.limit(1).count() == 0:
             # Attach zeros for all CCI categories, total CCI, and condition counts.
             df_res = df_features
             for cat in CHARLSON_CATEGORIES:
@@ -397,7 +397,7 @@ class PatientFeatureStore:
         """
         df_res = df_features
 
-        if df_measurement is None or df_measurement.rdd.isEmpty():
+        if df_measurement is None or df_measurement.limit(1).count() == 0:
             for bio_name in self.config.biomarkers:
                 df_res = (
                     df_res.withColumn(f"latest_{bio_name}", lit(0.0).cast(DoubleType()))
@@ -500,14 +500,14 @@ class PatientFeatureStore:
             ``df_features`` extended with ``has_pathogenic_variant`` (binary 0/1 indicator)
             and ``num_pathogenic_variants`` (integer count of qualifying records).
         """
-        if df_measurement is None or df_measurement.rdd.isEmpty():
+        if df_measurement is None or df_measurement.limit(1).count() == 0:
             return df_features.withColumn(
                 "has_pathogenic_variant", lit(0).cast(IntegerType())
             ).withColumn("num_pathogenic_variants", lit(0).cast(IntegerType()))
 
         pathogenic_expr = (col("measurement_concept_id") == self.config.genomic_concept_id) & (
             upper(col("value_source_value")).contains("PATHOGENIC")
-            | (col("value_as_concept_id") == 35917873)
+            | col("value_as_concept_id").isin([4181412, 36768280])
         )
 
         genomic_agg = (
@@ -545,12 +545,11 @@ class PatientFeatureStore:
             StructField("age_at_index", IntegerType(), True),
             StructField("is_female", IntegerType(), False),
             StructField("is_male", IntegerType(), False),
-            StructField("condition_count_30d", IntegerType(), False),
-            StructField("condition_count_180d", IntegerType(), False),
-            StructField("condition_count_365d", IntegerType(), False),
-            StructField("distinct_condition_count_365d", IntegerType(), False),
-            StructField("condition_count_lifetime", IntegerType(), False),
         ]
+        for w in self.config.lookback_windows_days:
+            fields.append(StructField(f"condition_count_{w}d", IntegerType(), False))
+        fields.append(StructField("distinct_condition_count_365d", IntegerType(), False))
+        fields.append(StructField("condition_count_lifetime", IntegerType(), False))
         for cat in CHARLSON_CATEGORIES:
             fields.append(StructField(f"cci_{cat}", IntegerType(), False))
         fields.append(StructField("charlson_comorbidity_index", IntegerType(), False))

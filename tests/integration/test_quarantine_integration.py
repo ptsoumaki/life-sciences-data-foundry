@@ -7,6 +7,7 @@ import os
 import tempfile
 from typing import Any
 
+import pytest
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, StructField, StructType
 
@@ -56,7 +57,7 @@ def test_pipeline_quarantine_breach_abort_on_strict_threshold(spark: SparkSessio
 
     # In demo mode, if there are corrupt records or when threshold is breached,
     # evaluate_batch_quarantine_threshold aborts execution.
-    try:
+    with pytest.raises(GxPBreachError, match="GxP Batch Quality Breach"):
         run_omop_pipeline(
             spark,
             mode="demo",
@@ -66,8 +67,6 @@ def test_pipeline_quarantine_breach_abort_on_strict_threshold(spark: SparkSessio
             quarantine_threshold=0.00000001,
             abort_on_breach=True,
         )
-    except GxPBreachError as err:
-        assert "GxP Batch Quality Breach" in str(err)
 
 
 def test_quarantine_remediation_replay_end_to_end(spark: SparkSession):

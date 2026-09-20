@@ -68,9 +68,9 @@ def test_transform_measurement_values_and_units(spark):
     assert row["unit_source_value"] == "%"
     assert row["measurement_source_value"] == "4548-4:HbA1c Panel"
     assert isinstance(row["measurement_id"], int)
-    assert row["measurement_id"] > 0
+    assert row["measurement_id"] != 0
     assert isinstance(row["person_id"], int)
-    assert row["person_id"] > 0
+    assert row["person_id"] != 0
 
 
 def test_transform_measurement_datetime_preservation(spark):

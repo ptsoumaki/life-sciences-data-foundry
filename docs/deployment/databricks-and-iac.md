@@ -51,7 +51,7 @@ The [`terraform/`](../../terraform/) module provisions immutable cloud storage, 
 * **AWS KMS:** Customer-Managed Keys (CMK) with automatic cryptographic key rotation.
 * **AWS Batch & ECS:** Episodic SPOT compute environment for containerized Nextflow processes.
 * **GitHub Repository Governance:** Automated branch protection rules, required CI status checks, and secret scanning push protection ([`github_governance.tf`](../../terraform/github_governance.tf)).
-* **Databricks Workspace Integration:** Workspace directories, secret scopes, and job definitions ([`databricks_medallion.tf`](../../terraform/databricks_medallion.tf)).
+* **Databricks Workspace Integration:** Workspace directories, secret scopes, and deployed pipeline script assets ([`databricks_medallion.tf`](../../terraform/databricks_medallion.tf)), with job definitions managed via DABs.
 
 ### Infrastructure Provisioning Steps
 

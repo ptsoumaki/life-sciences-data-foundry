@@ -44,6 +44,8 @@ def sample_person_df(spark: SparkSession):
             StructField("person_id", LongType(), False),
             StructField("gender_concept_id", IntegerType(), False),
             StructField("year_of_birth", IntegerType(), False),
+            StructField("month_of_birth", IntegerType(), True),
+            StructField("day_of_birth", IntegerType(), True),
             StructField("birth_datetime", StringType(), True),
             StructField("zip", StringType(), True),
         ]
@@ -52,9 +54,9 @@ def sample_person_df(spark: SparkSession):
     # Patient 102: Born 1930 (Age 96 in 2026) -> Over 89, must be capped!
     # Patient 103: Born 1937 (Age 89 in 2026) -> Exactly 89, not capped
     data = [
-        (101, 8507, 1980, "1980-05-12T08:30:00Z", "90210"),  # Regular ZIP
-        (102, 8532, 1930, "1930-01-15T00:00:00Z", "03612"),  # Restricted ZIP3 (036)
-        (103, 8507, 1937, "1937-11-20T12:00:00Z", "10001"),  # Regular ZIP
+        (101, 8507, 1980, 5, 12, "1980-05-12T08:30:00Z", "90210"),  # Regular ZIP
+        (102, 8532, 1930, 1, 15, "1930-01-15T00:00:00Z", "03612"),  # Restricted ZIP3 (036)
+        (103, 8507, 1937, 11, 20, "1937-11-20T12:00:00Z", "10001"),  # Regular ZIP
     ]
     return spark.createDataFrame(data, schema)
 
@@ -79,9 +81,10 @@ def test_pseudonymization_determinism_and_salt(spark: SparkSession, sample_cohor
     # Different salt produces different pseudonymized IDs
     assert ids_a != ids_b
 
-    # Pseudonymized IDs are distinct from original IDs (101, 102)
+    # Pseudonymized IDs are distinct from original IDs (101, 102) and are 64-bit integers
     assert 101 not in ids_a
     assert 102 not in ids_a
+    assert all(isinstance(pid, int) for pid in ids_a)
 
 
 def test_date_shifting_preserves_longitudinal_intervals(spark: SparkSession, sample_cohort_df):
@@ -132,15 +135,24 @@ def test_age_capping_and_birth_datetime_clearing(spark: SparkSession, sample_per
 
     rows = df_deid.collect()
 
-    # Patient 101 (Age 46) -> birth year 1980 preserved
+    # Patient 101 (Age 46) -> birth year 1980 preserved, month and day preserved
     p101 = next(r for r in rows if r["year_of_birth"] == 1980)
     assert p101["birth_datetime"] is None
+    assert p101["month_of_birth"] == 5
+    assert p101["day_of_birth"] == 12
 
-    # Patient 102 (Born 1930, Age 96 in 2026) -> Capped to age 89, so year_of_birth becomes 2026 - 89 = 1937
-    p102 = next(r for r in rows if r["year_of_birth"] == 1937)
+    # Patient 102 (Born 1930, Age 96 in 2026) -> Capped to age 89, year 1937, month and day nullified
+    p102 = next(r for r in rows if r["year_of_birth"] == 1937 and r["month_of_birth"] is None)
     assert p102["birth_datetime"] is None
+    assert p102["month_of_birth"] is None
+    assert p102["day_of_birth"] is None
 
-    # Patient 103 (Born 1937, Age 89 in 2026) -> Exactly 89, remains 1937
+    # Patient 103 (Born 1937, Age 89 in 2026) -> Exactly 89, remains 1937, month and day preserved
+    p103 = next(r for r in rows if r["year_of_birth"] == 1937 and r["month_of_birth"] == 11)
+    assert p103["birth_datetime"] is None
+    assert p103["month_of_birth"] == 11
+    assert p103["day_of_birth"] == 20
+
     matching_1937 = [r for r in rows if r["year_of_birth"] == 1937]
     assert len(matching_1937) == 2  # p102 (capped to 1937) and p103 (originally 1937)
 

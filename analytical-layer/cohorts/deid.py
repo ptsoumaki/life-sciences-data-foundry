@@ -12,9 +12,6 @@ import warnings
 
 from pyspark.sql import Column, DataFrame
 from pyspark.sql.functions import (
-    abs as spark_abs,
-)
-from pyspark.sql.functions import (
     col,
     concat,
     date_add,
@@ -24,6 +21,7 @@ from pyspark.sql.functions import (
     when,
     xxhash64,
 )
+from pyspark.sql.types import IntegerType
 
 # Restricted ZIP3 prefixes with population < 20,000 per HHS Safe Harbor rules
 RESTRICTED_ZIP3_PREFIXES = frozenset(
@@ -88,17 +86,15 @@ class HIPAADeIdentifier:
 
     def _get_patient_shift_col(self, id_col: str) -> Column:
         """Derives a deterministic patient-specific date shift column in [-max_shift, +max_shift]."""
-        # abs(hash(id + salt)) % (2 * max_shift + 1) - max_shift
         range_span = 2 * self.max_shift_days + 1
-        return (
-            spark_abs(xxhash64(concat(col(id_col).cast("string"), lit(f"{self.salt}_SHIFT"))))
-            % range_span
-        ).cast("int") - self.max_shift_days
+        raw_hash = xxhash64(concat(col(id_col).cast("string"), lit(f"{self.salt}_SHIFT")))
+        pos_mod = ((raw_hash % lit(range_span)) + lit(range_span)) % lit(range_span)
+        return (pos_mod - lit(self.max_shift_days)).cast("int")
 
     def _get_pseudonymized_id_col(self, id_col: str) -> Column:
         """Derives a deterministic pseudonymous 64-bit integer identifier."""
-        return spark_abs(
-            xxhash64(concat(col(id_col).cast("string"), lit(f"{self.salt}_PSEUDO_ID")))
+        return xxhash64(concat(col(id_col).cast("string"), lit(f"{self.salt}_PSEUDO_ID"))).cast(
+            "long"
         )
 
     def deidentify_cohort(self, df_cohort: DataFrame) -> DataFrame:
@@ -161,6 +157,23 @@ class HIPAADeIdentifier:
             "year_of_birth",
             when(col("raw_age") >= 90, lit(reference_year - 89)).otherwise(col("year_of_birth")),
         )
+
+        # HIPAA Safe Harbor (45 CFR §164.514(b)(2)(i)(C)):
+        # For individuals aged >= 90, all elements of dates (except year) must be removed.
+        if "month_of_birth" in df_deid.columns:
+            df_deid = df_deid.withColumn(
+                "month_of_birth",
+                when(col("raw_age") >= 90, lit(None).cast(IntegerType())).otherwise(
+                    col("month_of_birth")
+                ),
+            )
+        if "day_of_birth" in df_deid.columns:
+            df_deid = df_deid.withColumn(
+                "day_of_birth",
+                when(col("raw_age") >= 90, lit(None).cast(IntegerType())).otherwise(
+                    col("day_of_birth")
+                ),
+            )
 
         # Truncate or remove birth_datetime for HIPAA compliance.
         # Cast the null to the column's original declared type to preserve the Delta Lake

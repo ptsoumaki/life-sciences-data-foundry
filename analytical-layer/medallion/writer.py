@@ -77,7 +77,7 @@ class DeltaMedallionWriter:
         Writes a Silver tier DataFrame to Delta format with schema evolution enabled.
         """
         path = self._get_table_path("silver", table_name)
-        writer = df.write.format("delta").mode(mode)
+        writer = df.write.format("delta").mode(mode).option("delta.enableChangeDataFeed", "true")
         if merge_schema:
             writer = writer.option("mergeSchema", "true")
 
@@ -102,7 +102,12 @@ class DeltaMedallionWriter:
         Writes quarantined records to a Silver-tier Delta table with schema evolution.
         """
         path = self._get_table_path("silver", table_name)
-        writer = df.write.format("delta").mode(mode).option("mergeSchema", "true")
+        writer = (
+            df.write.format("delta")
+            .mode(mode)
+            .option("mergeSchema", "true")
+            .option("delta.enableChangeDataFeed", "true")
+        )
 
         uc_table = self._get_uc_table_name(table_name)
         if uc_table:

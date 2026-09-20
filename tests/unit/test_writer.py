@@ -6,6 +6,7 @@ table maintenance (OPTIMIZE, VACUUM), and GxP storage telemetry.
 
 import os
 
+import pyarrow.parquet as pq
 from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 from medallion.writer import DeltaMedallionWriter
@@ -54,8 +55,13 @@ def test_write_silver_table(spark, tmp_path):
     path = writer.write_silver_table(df, "test_silver", mode="overwrite")
     assert os.path.exists(path)
     if HAS_DELTA:
-        assert os.path.exists(os.path.join(path, "_delta_log"))
-    import pyarrow.parquet as pq
+        delta_log_dir = os.path.join(path, "_delta_log")
+        assert os.path.exists(delta_log_dir)
+        commit_files = [f for f in os.listdir(delta_log_dir) if f.endswith(".json")]
+        assert len(commit_files) > 0
+        with open(os.path.join(delta_log_dir, commit_files[0]), encoding="utf-8") as f:
+            log_content = f.read()
+        assert "delta.enableChangeDataFeed" in log_content
 
     table = pq.read_table(path)
     assert table.num_rows == 3
@@ -68,8 +74,13 @@ def test_write_quarantine_table(spark, tmp_path):
     path = writer.write_quarantine_table(df, "test_quarantine", mode="overwrite")
     assert os.path.exists(path)
     if HAS_DELTA:
-        assert os.path.exists(os.path.join(path, "_delta_log"))
-    import pyarrow.parquet as pq
+        delta_log_dir = os.path.join(path, "_delta_log")
+        assert os.path.exists(delta_log_dir)
+        commit_files = [f for f in os.listdir(delta_log_dir) if f.endswith(".json")]
+        assert len(commit_files) > 0
+        with open(os.path.join(delta_log_dir, commit_files[0]), encoding="utf-8") as f:
+            log_content = f.read()
+        assert "delta.enableChangeDataFeed" in log_content
 
     table = pq.read_table(path)
     assert table.num_rows == 3
@@ -83,7 +94,6 @@ def test_write_gold_omop_table(spark, tmp_path):
     assert os.path.exists(path)
     if HAS_DELTA:
         assert os.path.exists(os.path.join(path, "_delta_log"))
-    import pyarrow.parquet as pq
 
     table = pq.read_table(path)
     assert table.num_rows == 3
@@ -117,8 +127,6 @@ def test_upsert_gold_omop_table(spark, tmp_path):
     result_path = writer.upsert_gold_omop_table(df_update, "upsert_test", merge_keys=["id"])
     assert os.path.exists(result_path)
 
-    import pyarrow.parquet as pq
-
     table = pq.read_table(result_path)
     assert table.num_rows >= 2
 
@@ -133,8 +141,6 @@ def test_upsert_silver_table(spark, tmp_path):
     df_update = _make_sample_df(spark, [(2, "Robert", "B"), (3, "Charlie", "C")])
     result_path = writer.upsert_silver_table(df_update, "upsert_silver_test", merge_keys=["id"])
     assert os.path.exists(result_path)
-
-    import pyarrow.parquet as pq
 
     table = pq.read_table(result_path)
     assert table.num_rows >= 2

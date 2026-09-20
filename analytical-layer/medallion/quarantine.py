@@ -7,10 +7,14 @@ Description: Enterprise GxP Dead-Letter Quarantine Sinks and Standardized Clinic
 Author: Vivi Tsoumaki
 """
 
+import datetime
 import os
 from enum import StrEnum
 from typing import Any, cast
 
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql.functions import (
     coalesce,
@@ -427,12 +431,6 @@ class QuarantineRemediationEngine:
         # Reads via the quarantine table reader (which has its own fallback chain) to ensure only
         # committed data is processed, not stale Parquet files left behind before VACUUM runs.
         try:
-            import datetime
-
-            import pandas as pd
-            import pyarrow as pa
-            import pyarrow.parquet as pq
-
             df_current = self.q_writer.read_quarantine_table(table_name)
             pdf = cast(pd.DataFrame, df_current.toPandas())
             # Use a timezone-naive UTC datetime to match the datetime64[ns] dtype that
@@ -442,6 +440,12 @@ class QuarantineRemediationEngine:
             mask = pdf["quarantine_id"].isin(rem_set)
             pdf.loc[mask, "status"] = "REMEDIATED"
             pdf.loc[mask, "remediation_timestamp"] = now_dt
+            # If target_path is a Delta table, do NOT delete parquet files directly as that corrupts _delta_log.
+            # Fall through to Spark DataFrame overwrite fallback to commit cleanly to the transaction log.
+            if self.medallion_writer._is_delta_table(target_path):
+                raise RuntimeError(
+                    "Target is a Delta table; direct Parquet file deletion would corrupt the transaction log"
+                )
 
             for fname in os.listdir(target_path):
                 if fname.endswith(".parquet"):

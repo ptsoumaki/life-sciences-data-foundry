@@ -17,6 +17,7 @@ To maintain strict regulatory integrity (FDA 21 CFR Part 11), zero-trust securit
 7. [Local Validation & Testing Gate](#-local-validation--testing-gate)
 8. [Pull Request (PR) & Code Review Process](#-pull-request-pr--code-review-process)
 9. [Security & Secret Protection](#-security--secret-protection)
+10. [Changelog & Release Management Standards](#-changelog--release-management-standards)
 
 ---
 
@@ -176,6 +177,9 @@ To satisfy GxP / FDA 21 CFR Part 11 auditability standards, explicit merge commi
 ### 2. Python (`governance/`, `analytical-layer/`, `agentic-ai/`)
 - Follow PEP 8 style conventions.
 - Include explicit type annotations for function signatures.
+- **Import Placement & Grouping**:
+  - Default to module-level imports at the top of the file following PEP 8 order (standard library, third-party packages, local application modules) to ensure fail-fast dependency validation and GxP audit transparency.
+  - Avoid in-function imports for routine code organization. Restricted exceptions include resolving circular dependencies, `if TYPE_CHECKING:` typing guards (PEP 484), or isolating heavy optional dependencies with explicit rationale.
 - Avoid hardcoded file paths or inline magic strings; use `.env` parameters or CLI arguments.
 - Do not use print statements for production logging; use standard `logging` or MLflow metric logging.
 
@@ -246,3 +250,11 @@ Before opening a Pull Request, run the platform validation suite locally:
 - **Git Exclusions:** Ensure `.env`, `*.tfstate`, `.nextflow/`, `mlruns/`, and temporary output directories are listed in `.gitignore`.
 - **Secret Scanning:** Repository push protection is active via Terraform GitHub Governance (`github_governance.tf`). Commits containing detected secrets will be automatically blocked.
 - **Reporting Vulnerabilities:** For sensitive security disclosures, refer to [SECURITY.md](SECURITY.md).
+
+---
+
+## 📦 Changelog & Release Management Standards
+
+- **Version-to-Version Tracking**: The `CHANGELOG.md` document tracks externally visible feature, fix, and breaking changes from one release version to the next following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+- **No Intra-Version Fixes**: Never include intra-version fixes (problems or bugs that emerged and were resolved during the development of a feature for that specific version). The changelog is a consumer- and auditor-facing release document, not a verbatim commit history replay.
+- **Commit Log Separation**: Commit descriptions follow Conventional Commits and document atomic technical steps, while the changelog synthesizes release-level capabilities, breaking changes, and external bug fixes.

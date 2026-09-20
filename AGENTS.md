@@ -58,6 +58,10 @@ The repository is structured into modular layers:
 - **Exception Handling**:
   - Do not use bare `except Exception: pass`. Catch specific exceptions (`AnalysisException`, `Py4JJavaError`, `OSError`, `MlflowException`, etc.) and log warnings or re-raise.
   - For Delta storage operations on Windows local environments, account for native `hadoop.dll` limitations with clean fallbacks.
+- **Library Import Best Practices**:
+  - **Default to module-level imports**: Always place imports at the top of the module file (module header) following PEP 8 grouping (standard library, third-party packages, local application modules). This ensures fail-fast dependency validation and dependency transparency for GxP auditability.
+  - **Avoid in-function imports**: In-function or inner-scope imports must not be used for routine code organization.
+  - **Permitted exceptions**: In-function or deferred imports are strictly restricted to breaking unavoidable circular dependencies, `if TYPE_CHECKING:` typing guards (PEP 484), or isolating heavy optional CLI dependencies with explicit rationale.
 - **Production-Ready Documentation**:
   - Never check in comments referencing bugs, review items, hacks, or temporary workarounds. All comments must be professional, accurate documentation of production behavior.
 
@@ -73,3 +77,12 @@ The repository is structured into modular layers:
   ```
 - Any new features, transformers, or connectors must be accompanied by comprehensive unit tests under `tests/unit/`.
 - When creating commits, adhere to Conventional Commits and always use bullet points (`- `) in the commit description (body) whenever more than one concept or change is presented.
+
+---
+
+## 5. Changelog & Release Management
+
+- **Version-to-Version Delta Tracking**:
+  - The `CHANGELOG.md` tracks externally visible deltas from one release version to the next, adhering to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+  - Never include intra-version fixes (problems or bugs that emerged and were resolved during the development of a feature for that specific version). The changelog is a consumer- and auditor-facing release document, not a verbatim replay of git commit history.
+  - Git commit messages document atomic technical steps via Conventional Commits, while the changelog synthesizes release-level capabilities, breaking changes, and external bug fixes.

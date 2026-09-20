@@ -96,3 +96,9 @@ Before running `git commit`, inspect staged changes (`git diff --staged`) to con
    ```powershell
    git commit -m "feat(omop): support dotted and dotless ICD-10-CM codes in condition transformer" -m "Normalize condition source values by stripping decimal points before vocabulary lookup. Ensures complete alignment with SNOMED concept cross-references."
    ```
+
+## 5. Changelog & Release Documentation Rules
+
+1. **Version-to-Version Tracking**: The `CHANGELOG.md` records user- and auditor-facing changes between releases adhering to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+2. **No Intra-Version Fixes**: Never document intra-version fixes (bugs or intermediate problems that emerged and were resolved during the implementation of a feature within that specific version release).
+3. **Commit History vs. Changelog**: Conventional Commit messages record individual atomic commits; the changelog summarizes release-level features, external fixes, and breaking changes.

@@ -7,27 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-20
+
 ### Added
 - **Repository Agent Architecture & Guidelines (`AGENTS.md`)**:
   - Established centralized agent guidelines covering system architecture, OHDSI OMOP CDM v5.4 standards, FDA 21 CFR Part 11 / GxP constraints, zero data loss provability, and PySpark conventions.
 - **GxP Workspace Skills (`.agents/skills/`)**:
   - Implemented 7 modular workspace agent skills: `omop-cdm-normalizer`, `gxp-quarantine-remediation`, `cohort-phenotyping-survival`, `gxp-compliance-auditor`, `databricks-bundle-ops`, `gxp-git-commit`, and `pr-creator`.
-- **Connector Unit Test Suite (`tests/unit/test_connectors.py`)**:
-  - Added unit test suite covering Synthea clinical diagnoses, demographics, lab measurements, and VCF parsing with schema column normalization.
-- **Delta Writer Unit Test Suite (`tests/unit/test_writer.py`)**:
-  - Added unit test suite covering `DeltaMedallionWriter` write operations, schema evolution options, and exception handling.
+- **Connector & Delta Writer Unit Test Suites (`tests/unit/`)**:
+  - Added comprehensive unit test suites covering Synthea clinical data connectors (`test_connectors.py`) and Delta Lake medallion writer operations (`test_writer.py`).
+- **Analytical Mart Schema Inspection (`agentic-ai/mcp_server.py`)**:
+  - Added schema inspection definitions for Gold analytical marts (`cohort_t2d`, `cohort_deid`, `survival_mart`, `patient_features`) to `tool_inspect_omop_table_schema`.
 - **Engineering Roadmap (`ROADMAP.md`)**:
-  - Renamed `TODO.md` to `ROADMAP.md` and added Phase 11 for GxP-Validated Feature Store & Drift Monitoring Engine.
+  - Structured 14-phase development lifecycle including Target Discovery Lakehouse, Agentic DMTA Triage, and Drift Monitoring.
 
 ### Fixed
-- **Surrogate Key Derivation**: Expanded `xxhash64` collision space to signed 64-bit (`xxhash64(...).cast("long")`) across all OMOP domain transformers (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`) and analytical cohort builders without `abs()`.
-- **Concept Lookup Performance**: Added module-level in-memory caching and synchronization verification to `build_concept_lookup()` in `vocabularies.py`.
-- **Genomic Quarantine Tracking**: Integrated genomic variant quarantine tracking and metrics logging in `pipeline.py`.
-- **PySpark Eager Action Elimination**: Replaced eager `df.rdd.isEmpty()` checks with non-eager single-partition checks (`df.limit(1).count() == 0`) across `deid.py` and `features.py`.
-- **Synthea Code Resolution**: Added graceful column resolution supporting both `code` and `icd10_code` in `connectors.py`.
-- **Exception Narrowing**: Replaced bare exceptions with specific `AnalysisException`, `Py4JJavaError`, and `OSError` in `writer.py`, and `MlflowException` in `mlflow_tracker.py`.
-- **DABs Environment Isolation**: Updated `databricks.yml` target root paths to include target environment subdirectories (`/Workspace/Projects/life-sciences-data-foundry/${bundle.target}`).
-- **Configuration Hardening**: Added `agentic-ai` to `packages` discovery in `pyproject.toml` and documented `LSDF_DEID_SALT` in `.env.example`.
+- **HIPAA Safe Harbor Compliance Hardening (`analytical-layer/cohorts/deid.py`)**:
+  - Enforced 45 CFR §164.514(b)(2)(i)(C) requirement removing all day and month elements (`month_of_birth = NULL`, `day_of_birth = NULL`) for individuals aged ≥ 90 alongside `year_of_birth` capping and `birth_datetime` nulling.
+- **Surrogate Key Derivation & Modulo Arithmetic (`analytical-layer/cohorts/deid.py`)**:
+  - Expanded `xxhash64` collision space to signed 64-bit (`xxhash64(...).cast("long")`) across all OMOP domain transformers (`person.py`, `condition_occurrence.py`, `measurement.py`, `genomic_variants.py`) and analytical cohort builders without `abs()`; implemented non-negative modulo arithmetic (`((hash % span) + span) % span`) preventing `Long.MIN_VALUE` integer overflow on date-shifting.
+- **Cohorts Censor Date Null Propagation (`analytical-layer/cohorts/survival.py`)**:
+  - Corrected `least()` null propagation in `fallback_censor_expr` via `coalesce(least(fallback_censor, admin_end), admin_end, fallback_censor)`, ensuring patients with null observation end dates are not prematurely censored at index date.
+- **Change Data Feed Enforcement (`analytical-layer/medallion/writer.py`, `quarantine.py`)**:
+  - Explicitly enabled Delta Change Data Feed (`delta.enableChangeDataFeed = true`) on Silver and Quarantine Delta Lake tables for FDA 21 CFR Part 11 audit traceability.
+- **Pipeline Cache Lifecycle & Baseline Biomarker Integration (`analytical-layer/omop_cdm_v54/pipeline.py`, `cohorts/builder.py`)**:
+  - Explicitly unpersisted intermediate Gold DataFrames (`df_omop_person`, `df_omop_condition`, `df_omop_measurement`) at pipeline completion; integrated `measurement_date` into cohort builder baseline biomarker lookups.
+- **Concept Lookup Performance & Synchronization (`analytical-layer/omop_cdm_v54/vocabularies.py`)**:
+  - Added module-level in-memory caching and synchronization verification to `build_concept_lookup()`.
+- **Genomic Quarantine Tracking (`analytical-layer/omop_cdm_v54/pipeline.py`)**:
+  - Integrated genomic variant quarantine tracking and metrics logging into the Medallion pipeline.
+- **Synthea Code Resolution (`analytical-layer/omop_cdm_v54/connectors.py`)**:
+  - Added graceful column resolution supporting both `code` and `icd10_code`.
+- **Exception Narrowing**:
+  - Replaced bare exceptions with specific `AnalysisException`, `Py4JJavaError`, and `OSError` in `writer.py`, and `MlflowException` in `mlflow_tracker.py`.
+- **DABs Environment Isolation (`databricks.yml`)**:
+  - Updated target root paths to include target environment subdirectories (`/Workspace/Projects/life-sciences-data-foundry/${bundle.target}`).
+- **Cross-Platform Path Normalization (`agentic-ai/graph_auditor.py`, `mcp_server.py`)**:
+  - Normalized relative file paths with forward slashes for cross-platform compatibility across Windows and Linux environments.
+- **Documentation & IaC Alignment (`README.md`, `terraform/databricks_medallion.tf`)**:
+  - Updated Python version badge to reflect supported versions (Python 3.11–3.12); harmonized Terraform Databricks job path to target `analytical-layer/omop_cdm_v54/pipeline.py`.
+
+### Changed
+- **PySpark Eager Action Elimination (`analytical-layer/cohorts/`)**:
+  - Replaced eager `df.rdd.isEmpty()` and `df.count()` checks with non-eager single-partition checks (`df.limit(1).count() == 0`) across survival, de-identification, and feature store transformers.
+- **Codebase Import Standardization**:
+  - Relocated all in-function imports to module-level headers across analytical, medallion, and agentic modules in accordance with enterprise code quality guidelines.
+
+---
 
 ## [0.3.0] - 2026-09-15
 

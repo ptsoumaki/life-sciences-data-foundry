@@ -28,7 +28,7 @@ resource "databricks_directory" "project_dir" {
 #    via ${workspace.root_path}/files/analytical-layer/omop_cdm_v54/pipeline.py.
 resource "databricks_workspace_file" "pipeline_script" {
   content_base64 = filebase64("${path.module}/../analytical-layer/omop_cdm_v54/pipeline.py")
-  path           = "${databricks_directory.project_dir.path}/omop_cdm_pipeline.py"
+  path           = "${databricks_directory.project_dir.path}/files/analytical-layer/omop_cdm_v54/pipeline.py"
 }
 
 # NOTE: databricks_job resource removed.

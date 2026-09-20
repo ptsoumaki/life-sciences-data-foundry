@@ -5,7 +5,7 @@
 ![Compliance](https://img.shields.io/badge/Compliance-FDA%2021%20CFR%20Part%2011-blue)
 ![Architecture](https://img.shields.io/badge/Architecture-OMOP%20CDM%20v5.4%20%7C%20Medallion-orange)
 ![Storage](https://img.shields.io/badge/Storage-Delta%20Lake%203.1-green)
-![Python](https://img.shields.io/badge/Python-3.10%20–%203.12-blue)
+![Python](https://img.shields.io/badge/Python-3.11%20–%203.12-blue)
 ![License](https://img.shields.io/badge/License-Apache%202.0-lightgrey)
 
 ---

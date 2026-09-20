@@ -8,6 +8,7 @@ Author: Vivi Tsoumaki
 
 import argparse
 import os
+import subprocess
 import sys
 from typing import Any
 
@@ -66,6 +67,20 @@ try:
 except ImportError:
     evaluate_data_contract = None  # type: ignore[assignment]
 
+try:
+    from cohorts.builder import OHDSICohortBuilder, get_type_2_diabetes_cohort_definition
+    from cohorts.deid import HIPAADeIdentifier
+    from cohorts.features import PatientFeatureStore
+    from cohorts.survival import SurvivalConfig, SurvivalEndpoint, SurvivalMartBuilder
+except ImportError:
+    OHDSICohortBuilder = None  # type: ignore[assignment, misc]
+    get_type_2_diabetes_cohort_definition = None  # type: ignore[assignment]
+    HIPAADeIdentifier = None  # type: ignore[assignment, misc]
+    PatientFeatureStore = None  # type: ignore[assignment, misc]
+    SurvivalConfig = None  # type: ignore[assignment, misc]
+    SurvivalEndpoint = None  # type: ignore[assignment, misc]
+    SurvivalMartBuilder = None  # type: ignore[assignment, misc]
+
 
 def configure_windows_hadoop_environment():
     """Provisions a minimal winutils.exe stub required by PySpark on Windows.
@@ -90,8 +105,6 @@ def configure_windows_hadoop_environment():
             cs_path = os.path.join(bin_dir, "dummy.cs")
             if os.path.exists(csc):
                 try:
-                    import subprocess
-
                     with open(cs_path, "w") as f:
                         f.write("class Program { static int Main(string[] args) { return 0; } }\n")
                     subprocess.run(
@@ -483,58 +496,64 @@ def run_omop_pipeline(
         print(
             "\n[INFO] [COHORT ENGINE] Constructing Gold Analytical Cohorts & Translational Endpoints..."
         )
-        try:
-            from cohorts.builder import OHDSICohortBuilder, get_type_2_diabetes_cohort_definition
-            from cohorts.deid import HIPAADeIdentifier
-            from cohorts.features import PatientFeatureStore
-            from cohorts.survival import SurvivalConfig, SurvivalEndpoint, SurvivalMartBuilder
+        if (
+            OHDSICohortBuilder is None
+            or get_type_2_diabetes_cohort_definition is None
+            or HIPAADeIdentifier is None
+            or PatientFeatureStore is None
+            or SurvivalConfig is None
+            or SurvivalEndpoint is None
+            or SurvivalMartBuilder is None
+        ):
+            print("[WARN] Cohort analytical modules are unavailable; skipping cohort construction.")
+        else:
+            try:
+                builder = OHDSICohortBuilder(spark)
+                t2d_def = get_type_2_diabetes_cohort_definition()
+                df_cohort_t2d = builder.build_cohort(
+                    definition=t2d_def,
+                    df_condition_occurrence=df_omop_condition,
+                    df_person=df_omop_person,
+                    df_measurement=df_omop_measurement,
+                )
+                cohort_results["cohort_t2d"] = df_cohort_t2d
 
-            builder = OHDSICohortBuilder(spark)
-            t2d_def = get_type_2_diabetes_cohort_definition()
-            df_cohort_t2d = builder.build_cohort(
-                definition=t2d_def,
-                df_condition_occurrence=df_omop_condition,
-                df_person=df_omop_person,
-                df_measurement=df_omop_measurement,
-            )
-            cohort_results["cohort_t2d"] = df_cohort_t2d
+                deid = HIPAADeIdentifier()
+                df_cohort_deid = deid.deidentify_cohort(df_cohort_t2d)
+                cohort_results["cohort_deid"] = df_cohort_deid
 
-            deid = HIPAADeIdentifier()
-            df_cohort_deid = deid.deidentify_cohort(df_cohort_t2d)
-            cohort_results["cohort_deid"] = df_cohort_deid
+                surv_builder = SurvivalMartBuilder(
+                    spark, SurvivalConfig(endpoint=SurvivalEndpoint.OVERALL_SURVIVAL)
+                )
+                df_surv = surv_builder.build_survival_frame(
+                    df_cohort=df_cohort_t2d,
+                    df_person=df_omop_person,
+                    df_condition_occurrence=df_omop_condition,
+                    df_measurement=df_omop_measurement,
+                )
+                cohort_results["survival_mart"] = df_surv
 
-            surv_builder = SurvivalMartBuilder(
-                spark, SurvivalConfig(endpoint=SurvivalEndpoint.OVERALL_SURVIVAL)
-            )
-            df_surv = surv_builder.build_survival_frame(
-                df_cohort=df_cohort_t2d,
-                df_person=df_omop_person,
-                df_condition_occurrence=df_omop_condition,
-                df_measurement=df_omop_measurement,
-            )
-            cohort_results["survival_mart"] = df_surv
+                feat_store = PatientFeatureStore(spark)
+                df_features = feat_store.build_feature_matrix(
+                    df_cohort=df_cohort_t2d,
+                    df_person=df_omop_person,
+                    df_condition_occurrence=df_omop_condition,
+                    df_measurement=df_omop_measurement,
+                )
+                cohort_results["patient_features"] = df_features
 
-            feat_store = PatientFeatureStore(spark)
-            df_features = feat_store.build_feature_matrix(
-                df_cohort=df_cohort_t2d,
-                df_person=df_omop_person,
-                df_condition_occurrence=df_omop_condition,
-                df_measurement=df_omop_measurement,
-            )
-            cohort_results["patient_features"] = df_features
+                if save_delta:
+                    effective_output_dir = output_dir or "data/delta_warehouse"
+                    cohort_dir = os.path.join(effective_output_dir, "gold")
+                    builder.save_cohort(df_cohort_t2d, cohort_dir)
+                    surv_builder.save_survival_mart(df_surv, cohort_dir)
+                    feat_store.save_feature_matrix(df_features, cohort_dir)
 
-            if save_delta:
-                effective_output_dir = output_dir or "data/delta_warehouse"
-                cohort_dir = os.path.join(effective_output_dir, "gold")
-                builder.save_cohort(df_cohort_t2d, cohort_dir)
-                surv_builder.save_survival_mart(df_surv, cohort_dir)
-                feat_store.save_feature_matrix(df_features, cohort_dir)
-
-            print(
-                "[COHORT ENGINE] Gold Cohort generation and analytical marts persisted successfully."
-            )
-        except Exception as e:
-            print(f"[COHORT ENGINE WARNING] Cohort build encountered error: {e}")
+                print(
+                    "[COHORT ENGINE] Gold Cohort generation and analytical marts persisted successfully."
+                )
+            except Exception as e:
+                print(f"[COHORT ENGINE WARNING] Cohort build encountered error: {e}")
 
     print(
         f"[SUCCESS] OHDSI OMOP CDM v5.4 Pipeline Execution Mode [{mode.upper()}] Completed Successfully."

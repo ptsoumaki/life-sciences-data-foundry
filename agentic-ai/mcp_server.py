@@ -16,6 +16,7 @@ import glob
 import importlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,11 @@ ANALYTICAL_DIR = os.path.join(BASE_DIR, "analytical-layer")
 for p in [BASE_DIR, AGENTIC_DIR, ANALYTICAL_DIR]:
     if p not in sys.path:
         sys.path.insert(0, p)
+
+try:
+    from graph_auditor import GxPGraphAuditor
+except ImportError:
+    GxPGraphAuditor = None  # type: ignore[assignment, misc]
 
 MCPServer: Any = None
 
@@ -1183,7 +1189,11 @@ def tool_verify_gxp_audit_lineage(
         Comprehensive GxP audit report with compliance status, score, receipts, and findings.
     """
     try:
-        from graph_auditor import GxPGraphAuditor
+        if GxPGraphAuditor is None:
+            return {
+                "compliance_status": "ERROR",
+                "error": "GxPGraphAuditor module is not available",
+            }
 
         auditor = GxPGraphAuditor()
         resolved_rules = _resolve_repo_path(rules_path)
@@ -1295,8 +1305,6 @@ def tool_validate_clinical_record(
                 )
 
         elif exp_type == "expect_column_values_to_match_regex":
-            import re
-
             pattern = kwargs.get("regex", "")
             val = str(record.get(col, ""))
             if val and not re.match(pattern, val):

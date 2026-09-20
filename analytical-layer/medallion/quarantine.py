@@ -8,6 +8,7 @@ Author: Vivi Tsoumaki
 """
 
 import datetime
+import json
 import os
 from enum import StrEnum
 from typing import Any, cast
@@ -43,6 +44,11 @@ from omop_cdm_v54.vocabularies import (
     DEFAULT_LOINC_MAPPINGS,
     load_concept_mappings,
 )
+
+try:
+    import mlflow
+except ImportError:
+    mlflow = None  # type: ignore[assignment]
 
 
 class ClinicalFailureCode(StrEnum):
@@ -85,14 +91,13 @@ QUARANTINE_TABLE_MEASUREMENTS = "quarantine_measurements"
 
 def get_active_mlflow_run_id() -> str:
     """Safely retrieves the active MLflow run ID or returns 'untracked_run'."""
-    try:
-        import mlflow
-
-        active_run = mlflow.active_run()
-        if active_run and active_run.info and active_run.info.run_id:
-            return str(active_run.info.run_id)
-    except Exception:
-        pass
+    if mlflow is not None:
+        try:
+            active_run = mlflow.active_run()
+            if active_run and active_run.info and active_run.info.run_id:
+                return str(active_run.info.run_id)
+        except Exception:
+            pass
     return "untracked_run"
 
 
@@ -258,15 +263,11 @@ class QuarantineDeltaWriter:
             # Fallback for local Windows environments lacking native hadoop.dll;
             # Loads underlying Parquet records directly via PyArrow without JVM filesystem link errors.
             try:
-                import pyarrow.parquet as pq
-
                 table = pq.read_table(path)
                 pdf = table.to_pandas()
                 # Convert timezone-aware timestamp columns to timezone-naive UTC so they
                 # are compatible with PySpark's timezone-naive TimestampType.
                 # tz_convert(None) is a no-op on columns that are already tz-naive.
-                import pandas as pd
-
                 for ts_col in ["failure_timestamp", "remediation_timestamp"]:
                     if ts_col in pdf.columns and isinstance(pdf[ts_col].dtype, pd.DatetimeTZDtype):
                         pdf[ts_col] = pdf[ts_col].dt.tz_convert(None)
@@ -330,20 +331,19 @@ def evaluate_batch_quarantine_threshold(
                 f"Quarantine ratio {rejection_ratio:.4f} exceeded threshold {threshold:.4f}",
             )
 
-    try:
-        import mlflow
-
-        active = mlflow.active_run()
-        if active:
-            # Log directly into the caller-managed active run.
-            _emit_mlflow_metrics()
-        elif mlflow_run_id:
-            # Re-attach to the specified run; avoids auto-creating an orphan run under
-            # the default experiment when no active context exists.
-            with mlflow.start_run(run_id=mlflow_run_id):
+    if mlflow is not None:
+        try:
+            active = mlflow.active_run()
+            if active:
+                # Log directly into the caller-managed active run.
                 _emit_mlflow_metrics()
-    except Exception as e:
-        print(f"[MLFLOW NOTICE] Quarantine threshold logging notice: {e}")
+            elif mlflow_run_id:
+                # Re-attach to the specified run; avoids auto-creating an orphan run under
+                # the default experiment when no active context exists.
+                with mlflow.start_run(run_id=mlflow_run_id):
+                    _emit_mlflow_metrics()
+        except Exception as e:
+            print(f"[MLFLOW NOTICE] Quarantine threshold logging notice: {e}")
 
     result = {
         "status": status,
@@ -440,23 +440,69 @@ class QuarantineRemediationEngine:
             mask = pdf["quarantine_id"].isin(rem_set)
             pdf.loc[mask, "status"] = "REMEDIATED"
             pdf.loc[mask, "remediation_timestamp"] = now_dt
-            # If target_path is a Delta table, do NOT delete parquet files directly as that corrupts _delta_log.
-            # Fall through to Spark DataFrame overwrite fallback to commit cleanly to the transaction log.
-            if self.medallion_writer._is_delta_table(target_path):
-                raise RuntimeError(
-                    "Target is a Delta table; direct Parquet file deletion would corrupt the transaction log"
-                )
+            # Track old parquet files to record in Delta transaction log if present
+            delta_log_dir = os.path.join(target_path, "_delta_log")
+            old_parquet_files = [
+                fname for fname in os.listdir(target_path) if fname.endswith(".parquet")
+            ]
 
-            for fname in os.listdir(target_path):
-                if fname.endswith(".parquet"):
-                    try:
-                        os.remove(os.path.join(target_path, fname))
-                    except OSError:
-                        pass
+            for fname in old_parquet_files:
+                try:
+                    os.remove(os.path.join(target_path, fname))
+                except OSError:
+                    pass
 
             updated_table = pa.Table.from_pandas(pdf)
-            out_file = os.path.join(target_path, "part-00000-remediated.parquet")
+            out_filename = "part-00000-remediated.parquet"
+            out_file = os.path.join(target_path, out_filename)
             pq.write_table(updated_table, out_file)
+
+            # If _delta_log exists, commit the update action to preserve Delta transaction log integrity
+            if os.path.isdir(delta_log_dir):
+                json_commits = sorted(
+                    [f for f in os.listdir(delta_log_dir) if f.endswith(".json")]
+                )
+                if json_commits:
+                    latest_idx = int(json_commits[-1].split(".")[0])
+                    next_idx = latest_idx + 1
+                    next_commit_file = os.path.join(delta_log_dir, f"{next_idx:020d}.json")
+                    now_ms = int(datetime.datetime.now(datetime.UTC).timestamp() * 1000)
+                    commit_entries: list[dict[str, Any]] = [
+                        {
+                            "commitInfo": {
+                                "timestamp": now_ms,
+                                "operation": "UPDATE",
+                                "operationParameters": {},
+                                "engineInfo": "LifeSciencesDataFoundry",
+                            }
+                        }
+                    ]
+                    for old_f in old_parquet_files:
+                        commit_entries.append(
+                            {
+                                "remove": {
+                                    "path": old_f,
+                                    "deletionTimestamp": now_ms,
+                                    "dataChange": True,
+                                }
+                            }
+                        )
+                    commit_entries.append(
+                        {
+                            "add": {
+                                "path": out_filename,
+                                "partitionValues": {},
+                                "size": os.path.getsize(out_file),
+                                "modificationTime": now_ms,
+                                "dataChange": True,
+                                "stats": json.dumps({"numRecords": len(pdf)}),
+                            }
+                        }
+                    )
+                    with open(next_commit_file, "w", encoding="utf-8") as f:
+                        for entry in commit_entries:
+                            f.write(json.dumps(entry) + "\n")
+
             print(
                 f"[REMEDIATION] Overwritten {len(remediated_ids)} records as REMEDIATED in {target_path} (pyarrow fallback)"
             )

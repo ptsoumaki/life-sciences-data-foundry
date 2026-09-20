@@ -17,11 +17,13 @@ Public API:
     load_genomics_data             -- Genomic variant ingestion (VCF -> MEASUREMENT source).
 """
 
+import io
 import os
 import urllib.request
 
+import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, current_timestamp
+from pyspark.sql.functions import col, current_timestamp, split
 
 # Public Open Data Remote URLs
 SYNTHEA_REMOTE_PATIENTS_URL = (
@@ -108,10 +110,6 @@ def read_http_csv(spark: SparkSession, url: str, fallback_path: str | None = Non
         ValueError: Response body exceeds MAX_HTTP_RESPONSE_BYTES.
         FileNotFoundError: Remote fetch failed and no usable fallback path was given.
     """
-    import io
-
-    import pandas as pd
-
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=30) as response:
@@ -288,8 +286,6 @@ def parse_vcf_to_dataframe(
     Raises:
         ValueError: No #CHROM header line found in the file.
     """
-    from pyspark.sql.functions import split
-
     df_raw = spark.read.text(vcf_path).filter(~col("value").startswith("##"))
 
     # The #CHROM header always appears within the first few lines after ##-meta

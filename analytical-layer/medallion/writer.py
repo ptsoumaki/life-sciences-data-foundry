@@ -8,6 +8,7 @@ Author: Vivi Tsoumaki
 """
 
 import os
+import shutil
 from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
@@ -266,8 +267,6 @@ class DeltaMedallionWriter:
                     df, table_name, cluster_by=cluster_by, mode="overwrite"
                 )
             except DELTA_OPERATIONAL_EXCEPTIONS:
-                import shutil
-
                 shutil.rmtree(path, ignore_errors=True)
                 return self.write_gold_omop_table(
                     df, table_name, cluster_by=cluster_by, mode="overwrite"
@@ -309,8 +308,6 @@ class DeltaMedallionWriter:
             try:
                 return self.write_silver_table(df, table_name, mode="append")
             except DELTA_OPERATIONAL_EXCEPTIONS:
-                import shutil
-
                 shutil.rmtree(path, ignore_errors=True)
                 return self.write_silver_table(df, table_name, mode="overwrite")
         return path

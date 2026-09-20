@@ -191,7 +191,7 @@ class PatientFeatureStore:
         Returns:
             Dense, wide DataFrame indexed by (cohort_definition_id, subject_id, cohort_start_date).
         """
-        if df_cohort.rdd.isEmpty():
+        if df_cohort.limit(1).count() == 0:
             return self._build_empty_feature_matrix()
 
         # 1. Base Demographic Features
@@ -258,7 +258,7 @@ class PatientFeatureStore:
             ``df_features`` extended with CCI category flags, ``charlson_comorbidity_index``,
             and rolling condition count columns for each configured lookback window.
         """
-        if df_condition_occurrence is None or df_condition_occurrence.rdd.isEmpty():
+        if df_condition_occurrence is None or df_condition_occurrence.limit(1).count() == 0:
             # Attach zeros for all CCI categories, total CCI, and condition counts.
             df_res = df_features
             for cat in CHARLSON_CATEGORIES:
@@ -397,7 +397,7 @@ class PatientFeatureStore:
         """
         df_res = df_features
 
-        if df_measurement is None or df_measurement.rdd.isEmpty():
+        if df_measurement is None or df_measurement.limit(1).count() == 0:
             for bio_name in self.config.biomarkers:
                 df_res = (
                     df_res.withColumn(f"latest_{bio_name}", lit(0.0).cast(DoubleType()))
@@ -500,7 +500,7 @@ class PatientFeatureStore:
             ``df_features`` extended with ``has_pathogenic_variant`` (binary 0/1 indicator)
             and ``num_pathogenic_variants`` (integer count of qualifying records).
         """
-        if df_measurement is None or df_measurement.rdd.isEmpty():
+        if df_measurement is None or df_measurement.limit(1).count() == 0:
             return df_features.withColumn(
                 "has_pathogenic_variant", lit(0).cast(IntegerType())
             ).withColumn("num_pathogenic_variants", lit(0).cast(IntegerType()))

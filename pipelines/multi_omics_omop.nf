@@ -16,6 +16,7 @@ include { FASTQC }                   from './modules/fastqc.nf'
 include { BCFTOOLS_ANNOTATE_FILTER } from './modules/bcftools.nf'
 include { MULTIQC }                  from './modules/multiqc.nf'
 include { OMOP_INGEST }              from './modules/omop_ingest.nf'
+include { PROVENANCE_MANIFEST }      from './modules/provenance.nf'
 
 workflow {
     // Validate target environment parameter
@@ -59,4 +60,10 @@ workflow {
 
     // 4. PySpark Medallion Delta Lake ingestion into OMOP CDM v5.4
     OMOP_INGEST(BCFTOOLS_ANNOTATE_FILTER.out.vcf)
+
+    // 5. Generate FDA 21 CFR Part 11 cryptographic provenance manifest
+    PROVENANCE_MANIFEST(
+        fastq_ch.mix(vcf_ch).collect(),
+        OMOP_INGEST.out.summary
+    )
 }

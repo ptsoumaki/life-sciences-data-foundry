@@ -183,6 +183,8 @@ def test_tool_inspect_omop_table_schema():
         "quarantine_patients",
         "quarantine_conditions",
         "quarantine_measurements",
+        "survival_mart",
+        "patient_feature_store",
     ]:
         schema = tool_inspect_omop_table_schema(tbl)
         assert schema["table_name"] == tbl.upper()

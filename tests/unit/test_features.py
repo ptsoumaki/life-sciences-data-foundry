@@ -18,6 +18,7 @@ from pyspark.sql.types import (
 )
 
 from cohorts.features import (
+    FeatureStoreConfig,
     PatientFeatureStore,
 )
 
@@ -287,3 +288,25 @@ def test_save_feature_matrix(spark: SparkSession, feature_test_data):
         assert os.path.exists(out_path)
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_empty_feature_matrix_custom_lookback_windows(spark: SparkSession):
+    """Verifies that empty feature matrix matches schema with custom lookback windows."""
+    config = FeatureStoreConfig(lookback_windows_days=[60, 90])
+    store = PatientFeatureStore(spark, config=config)
+
+    cohort_schema = StructType(
+        [
+            StructField("cohort_definition_id", LongType(), False),
+            StructField("subject_id", LongType(), False),
+            StructField("cohort_start_date", StringType(), False),
+            StructField("cohort_end_date", StringType(), False),
+        ]
+    )
+    df_empty_cohort = spark.createDataFrame([], cohort_schema)
+    df_person = spark.createDataFrame([], StructType([StructField("person_id", LongType())]))
+
+    df_empty = store.build_feature_matrix(df_empty_cohort, df_person)
+    assert "condition_count_60d" in df_empty.columns
+    assert "condition_count_90d" in df_empty.columns
+    assert "condition_count_30d" not in df_empty.columns

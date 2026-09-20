@@ -256,7 +256,11 @@ class SurvivalMartBuilder:
         )
         if self.config.study_end_date:
             admin_end = to_date(lit(self.config.study_end_date))
-            effective_censor_expr = least(fallback_censor, admin_end)
+            effective_censor_expr = coalesce(
+                least(fallback_censor, admin_end),
+                admin_end,
+                fallback_censor,
+            )
             # is_study_end_expr is a lazy Column expression; it references
             # "effective_censor_date" which is added to df_base one line below.
             # This is safe because PySpark Column expressions are not evaluated

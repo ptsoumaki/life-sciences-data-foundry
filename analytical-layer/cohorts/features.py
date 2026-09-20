@@ -545,12 +545,11 @@ class PatientFeatureStore:
             StructField("age_at_index", IntegerType(), True),
             StructField("is_female", IntegerType(), False),
             StructField("is_male", IntegerType(), False),
-            StructField("condition_count_30d", IntegerType(), False),
-            StructField("condition_count_180d", IntegerType(), False),
-            StructField("condition_count_365d", IntegerType(), False),
-            StructField("distinct_condition_count_365d", IntegerType(), False),
-            StructField("condition_count_lifetime", IntegerType(), False),
         ]
+        for w in self.config.lookback_windows_days:
+            fields.append(StructField(f"condition_count_{w}d", IntegerType(), False))
+        fields.append(StructField("distinct_condition_count_365d", IntegerType(), False))
+        fields.append(StructField("condition_count_lifetime", IntegerType(), False))
         for cat in CHARLSON_CATEGORIES:
             fields.append(StructField(f"cci_{cat}", IntegerType(), False))
         fields.append(StructField("charlson_comorbidity_index", IntegerType(), False))

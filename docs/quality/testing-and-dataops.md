@@ -94,14 +94,34 @@ python agentic-ai/graph_auditor.py --run-id <RUN_ID> --tracking-uri sqlite:///ml
 ```
 
 ### 6. Nextflow Pipeline Stub Verification
-Validates Nextflow workflow orchestration using container stub mode:
+Validates Nextflow multi-omics workflow orchestration and biocontainer process DAGs using container stub mode:
 
 ```bash
-mkdir -p mock_data && touch mock_data/sample_1.fastq
-nextflow run pipelines/main.nf -profile local_dev -stub --raw_input "mock_data/*.fastq" --outdir "mock_data/out"
+nextflow run pipelines/multi_omics_omop.nf -profile test -stub
 ```
 
-### 7. Static Code Quality & Type Checking
+### 7. Standalone Pipeline CLI Utilities (OMOP Ingest & Provenance)
+Executes standalone CLI bridges for VCF variant ingestion and FDA 21 CFR Part 11 cryptographic manifest generation:
+
+```bash
+# Ingest VCF variants into OMOP CDM MEASUREMENT Delta tables
+python pipelines/ingest_omop.py \
+    --vcf "analytical-layer/data/genomic_variants.vcf" \
+    --output-dir "mock_data/out/omop" \
+    --mode "demo" \
+    --write-mode "append" \
+    --summary-out "ingestion_summary.json"
+
+# Generate GxP cryptographic execution manifest
+python pipelines/provenance.py \
+    --input-files "analytical-layer/data/sample.fastq" "analytical-layer/data/genomic_variants.vcf" \
+    --summary-file "ingestion_summary.json" \
+    --output-manifest "mock_data/out/provenance_manifest.json" \
+    --pipeline-version "0.4.0" \
+    --delta-log-dir "mock_data/out/omop/gold/measurement"
+```
+
+### 8. Static Code Quality & Type Checking
 Runs `ruff` and `mypy` static type checking configured in [`pyproject.toml`](../../pyproject.toml):
 
 ```bash
@@ -110,10 +130,10 @@ ruff check .
 ruff format --check .
 
 # Strict static type checking across all packages
-mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion analytical-layer/cohorts governance agentic-ai tests
+mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion analytical-layer/cohorts governance agentic-ai pipelines tests
 ```
 
-### 8. Terraform IaC Validation
+### 9. Terraform IaC Validation
 ```bash
 terraform -chdir=terraform init -backend=false
 terraform -chdir=terraform fmt -check

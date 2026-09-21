@@ -8,6 +8,7 @@ This component provides containerized Nextflow DSL2 workflows designed for scala
 
 ```text
 pipelines/
+├── __init__.py                 # Package initializer & public API exports
 ├── modules/
 │   ├── fastqc.nf               # Modular DSL2 FastQC sequencing quality control
 │   ├── bcftools.nf             # Modular DSL2 BCFtools variant filtering & stats
@@ -82,6 +83,7 @@ nextflow run pipelines/multi_omics_omop.nf -profile test -stub
 | `params.manifest_path` | `string` | `${params.outdir}/provenance_manifest.json` | Path to FDA 21 CFR Part 11 execution manifest. |
 | `params.data_mode` | `string` | `demo` | Ingestion mode for PySpark OMOP transformer (`demo` or `remote`). |
 | `params.save_delta` | `boolean` | `true` | Whether to persist outputs into Delta Lake tables. |
+| `params.foundry_container` | `string` | `$FOUNDRY_CONTAINER` / `null` | Container image for Python processes in AWS Batch execution. |
 
 ---
 

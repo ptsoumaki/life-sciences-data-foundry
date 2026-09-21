@@ -19,6 +19,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from governance.crypto import compute_sha256, is_valid_sha256  # noqa: E402
 
+DEFAULT_PIPELINE_VERSION = "0.4.0"
+
 DEFAULT_CONTAINERS = {
     "fastqc": "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0",
     "bcftools": "quay.io/biocontainers/bcftools:1.19--h8b25389_1",
@@ -29,7 +31,7 @@ DEFAULT_CONTAINERS = {
 def generate_provenance_manifest(
     input_files: list[str],
     output_manifest_path: str = "provenance_manifest.json",
-    pipeline_version: str = "0.4.0",
+    pipeline_version: str = DEFAULT_PIPELINE_VERSION,
     workflow_session_id: str | None = None,
     summary_file: str | list[str] | None = None,
     containers: dict[str, str] | None = None,

@@ -1,4 +1,10 @@
-"""Compatibility and shared constants module."""
+"""
+Module: compat.py
+Description: Compatibility shim providing conditional Delta Lake imports and the HAS_DELTA
+             capability flag. All modules that require optional Delta Lake functionality import
+             from this module to ensure graceful degradation to Parquet on environments where
+             delta-spark is not installed (e.g., local development without Hadoop native libraries).
+"""
 
 from typing import Any
 

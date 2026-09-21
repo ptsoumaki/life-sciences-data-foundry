@@ -8,6 +8,7 @@ Description: Time-to-Event (TTE) & Biostatistical Survival Analysis Marts.
 Author: Vivi Tsoumaki
 """
 
+import logging
 import os
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -53,6 +54,7 @@ from pyspark.sql.types import (
     StructField,
     StructType,
 )
+from pyspark.sql.utils import AnalysisException
 
 from omop_cdm_v54.compat import HAS_DELTA
 
@@ -60,6 +62,9 @@ try:
     from medallion.writer import DeltaMedallionWriter
 except ImportError:
     DeltaMedallionWriter = None  # type: ignore[assignment, misc]
+
+
+logger = logging.getLogger(__name__)
 
 
 class SurvivalEndpoint(StrEnum):
@@ -308,21 +313,35 @@ class SurvivalMartBuilder:
                 & (col("death_date") <= col("effective_censor_date"))
                 & (col("progression_date").isNull() | (col("death_date") < col("progression_date")))
             )
+            if self.config.censor_at_death:
+                # When censor_at_death is enabled, deaths that occur before progression
+                # are treated as competing risk censoring events for TTP analysis.
+                event_or_censor_expr = (
+                    when(has_prog_event, col("progression_date"))
+                    .when(died_before_prog, col("death_date"))
+                    .otherwise(col("effective_censor_date"))
+                )
+                censoring_reason_expr = (
+                    when(has_prog_event, lit("PROGRESSION_EVENT"))
+                    .when(died_before_prog, lit("DEATH_CENSORED"))
+                    .when(is_study_end_expr, lit("STUDY_END"))
+                    .otherwise(lit("OBSERVATION_END"))
+                )
+            else:
+                # When censor_at_death is disabled, deaths before progression are
+                # treated as administrative censoring at the effective censor date.
+                event_or_censor_expr = when(has_prog_event, col("progression_date")).otherwise(
+                    col("effective_censor_date")
+                )
+                censoring_reason_expr = (
+                    when(has_prog_event, lit("PROGRESSION_EVENT"))
+                    .when(is_study_end_expr, lit("STUDY_END"))
+                    .otherwise(lit("OBSERVATION_END"))
+                )
             df_eval = (
                 df_base.withColumn("event", when(has_prog_event, lit(1)).otherwise(lit(0)))
-                .withColumn(
-                    "event_or_censor_date",
-                    when(has_prog_event, col("progression_date"))
-                    .when(self.config.censor_at_death & died_before_prog, col("death_date"))
-                    .otherwise(col("effective_censor_date")),
-                )
-                .withColumn(
-                    "censoring_reason",
-                    when(has_prog_event, lit("PROGRESSION_EVENT"))
-                    .when(self.config.censor_at_death & died_before_prog, lit("DEATH_CENSORED"))
-                    .when(is_study_end_expr, lit("STUDY_END"))
-                    .otherwise(lit("OBSERVATION_END")),
-                )
+                .withColumn("event_or_censor_date", event_or_censor_expr)
+                .withColumn("censoring_reason", censoring_reason_expr)
             )
 
         else:  # EVENT_FREE_SURVIVAL (EFS: first of progression or death constitutes an event)
@@ -559,14 +578,19 @@ class SurvivalMartBuilder:
                     .clusterBy("cohort_definition_id", "subject_id")
                     .save(target_path)
                 )
-                print(
-                    f"[SURVIVAL MART] Persisted to Delta Lake with Liquid Clustering: {target_path}"
+                logger.info(
+                    "[SURVIVAL MART] Persisted to Delta Lake with Liquid Clustering: %s",
+                    target_path,
                 )
                 return target_path
-            except Exception as e:
-                print(f"[SURVIVAL MART] Liquid clustering fallback to standard Delta: {e}")
+            except (AnalysisException, OSError) as lc_err:
+                logger.warning(
+                    "[SURVIVAL MART] Liquid Clustering write failed; falling back to standard Delta: %s",
+                    lc_err,
+                )
                 df_survival.write.format("delta").mode(mode).save(target_path)
                 return target_path
         else:
             df_survival.write.mode(mode).parquet(target_path)
+            logger.info("[SURVIVAL MART] Persisted to Parquet: %s", target_path)
             return target_path

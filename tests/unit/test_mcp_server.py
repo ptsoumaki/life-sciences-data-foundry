@@ -185,6 +185,8 @@ def test_tool_inspect_omop_table_schema():
         "quarantine_measurements",
         "survival_mart",
         "patient_feature_store",
+        "target_disease_evidence",
+        "quarantine_target_evidence",
     ]:
         schema = tool_inspect_omop_table_schema(tbl)
         assert schema["table_name"] == tbl.upper()
@@ -326,6 +328,65 @@ def test_tool_validate_clinical_record():
     invalid_res = tool_validate_clinical_record(invalid_record, "governance/rules.json")
     assert invalid_res["success"] is False
     assert invalid_res["violations_count"] >= 2
+
+    # Target evidence contract validation (bounds, regex, column set)
+    target_record_valid = {
+        "target_gene_symbol": "EGFR",
+        "disease_concept_id": 254637,
+        "carrier_cases": 10,
+        "carrier_controls": 20,
+        "non_carrier_cases": 30,
+        "non_carrier_controls": 40,
+        "total_cohort_size": 100,
+        "target_mutation_burden": 1.5,
+        "carrier_frequency": 0.3,
+        "phenotype_prevalence": 0.4,
+        "odds_ratio": 2.5,
+        "log_odds_ratio": 0.9163,
+        "se_log_odds_ratio": 0.35,
+        "odds_ratio_ci_lower": 1.25,
+        "odds_ratio_ci_upper": 5.0,
+        "p_value": 0.001,
+        "biomarker_correlation": 0.35,
+        "target_tractability_score": 0.65,
+        "evidence_tier": "TIER_1_VALIDATED",
+        "created_at": "2026-09-21T00:00:00Z",
+        "mlflow_run_id": "test_run_123",
+    }
+    target_res = tool_validate_clinical_record(
+        target_record_valid, "governance/contracts/target_contract.json"
+    )
+    assert target_res["success"] is True
+
+    # Target record with out-of-bounds odds ratio, invalid gene symbol, and invalid tractability
+    target_record_invalid = {
+        "target_gene_symbol": "a",  # too short / lowercase
+        "disease_concept_id": 254637,
+        "carrier_cases": 10,
+        "carrier_controls": 20,
+        "non_carrier_cases": 30,
+        "non_carrier_controls": 40,
+        "total_cohort_size": 100,
+        "target_mutation_burden": 1.5,
+        "carrier_frequency": 0.3,
+        "phenotype_prevalence": 0.4,
+        "odds_ratio": -1.0,  # below minimum 0.0001
+        "log_odds_ratio": 0.0,
+        "se_log_odds_ratio": 0.35,
+        "odds_ratio_ci_lower": 0.1,
+        "odds_ratio_ci_upper": 1.0,
+        "p_value": 0.001,
+        "biomarker_correlation": 0.35,
+        "target_tractability_score": 1.5,  # above maximum 1.0
+        "evidence_tier": "TIER_3_EXPLORATORY",
+        "created_at": "2026-09-21T00:00:00Z",
+        "mlflow_run_id": "test_run_123",
+    }
+    target_inv_res = tool_validate_clinical_record(
+        target_record_invalid, "governance/contracts/target_contract.json"
+    )
+    assert target_inv_res["success"] is False
+    assert target_inv_res["violations_count"] >= 3
 
 
 def test_call_tool_via_mcp_server():

@@ -16,6 +16,7 @@ from medallion.quarantine import (
     QUARANTINE_TABLE_CONDITIONS,
     QUARANTINE_TABLE_MEASUREMENTS,
     QUARANTINE_TABLE_PATIENTS,
+    QUARANTINE_TABLE_TARGETS,
     ClinicalFailureCode,
     GxPBreachError,
     QuarantineDeltaWriter,
@@ -482,3 +483,31 @@ def test_quarantine_remediation_patients_with_raw_patient_id(spark: SparkSession
 
         assert "clinical_demographics" in res["promoted_path"]
         assert os.path.exists(res["promoted_path"])
+
+
+def test_write_quarantine_targets(spark: SparkSession):
+    """Verifies that QuarantineDeltaWriter persists target evidence dead-letter sinks."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        writer = QuarantineDeltaWriter(spark, base_output_dir=tmp_dir)
+
+        target_schema = StructType(
+            [
+                StructField("target_gene_symbol", StringType(), False),
+                StructField("disease_concept_id", IntegerType(), False),
+                StructField("odds_ratio", StringType(), False),
+            ]
+        )
+        target_raw = spark.createDataFrame([("INVALID_GENE", 254637, "-1.5")], target_schema)
+        df_q_target = format_quarantine_dataframe(
+            target_raw,
+            table_name=QUARANTINE_TABLE_TARGETS,
+            failure_code=ClinicalFailureCode.TARGET_CONTRACT_VIOLATION,
+            failure_reason="Malformed gene symbol and negative odds ratio",
+        )
+        target_sink_path = writer.write_quarantine_targets(df_q_target, mode="overwrite")
+        assert QUARANTINE_TABLE_TARGETS in target_sink_path
+        assert os.path.exists(target_sink_path)
+
+        df_readback = writer.read_quarantine_table(QUARANTINE_TABLE_TARGETS)
+        assert df_readback.count() == 1
+        assert df_readback.collect()[0]["failure_code"] == "TARGET_CONTRACT_VIOLATION"

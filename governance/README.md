@@ -42,6 +42,23 @@ A decoupled JSON expectation suite defining data quality contracts for OMOP CDM 
 | `expect_column_values_to_be_in_set` | `gender_concept_id` | WARNING | Checks alignment with OMOP vocabulary concepts |
 | `expect_table_columns_to_match_set` | *(all)* | CRITICAL_FATAL | Guarantees presence of required clinical columns before Gold Delta persistence |
 
+### `contracts/target_contract.json` — Target Discovery DMTA Data Product Contract
+
+Declarative Great Expectations contract suite (`gxp_target_evidence_contract`) enforcing semantic invariants on Target-to-Phenotype Evidence Mart entities before Gold persistence:
+
+| Expectation | Column | Severity | Purpose |
+| --- | --- | --- | --- |
+| `expect_column_values_to_not_be_null` | `target_gene_symbol` | CRITICAL_FATAL | Required target identifier for cross-omics linking |
+| `expect_column_values_to_match_regex` | `target_gene_symbol` | ERROR | Enforces canonical uppercase HGNC symbol nomenclature (`^[A-Z0-9_-]{2,15}$`) |
+| `expect_column_values_to_not_be_null` | `disease_concept_id` | CRITICAL_FATAL | Required condition concept identifier for OMOP linking |
+| `expect_column_values_to_be_between` | `odds_ratio` | ERROR | Enforces biologically plausible positive bounds (`[0.0001, 10000.0]`) |
+| `expect_column_values_to_be_between` | `target_tractability_score` | ERROR | Constrains composite tractability score to unit interval (`[0.0, 1.0]`) |
+| `expect_column_values_to_be_between` | `p_value` | ERROR | Validates probability bounds (`[0.0, 1.0]`) |
+| `expect_column_values_to_be_between` | `total_cohort_size` | CRITICAL_FATAL | Denominator must contain at least 1 subject |
+| `expect_table_columns_to_match_set` | *(all 21)* | CRITICAL_FATAL | Enforces complete discovery schema presence |
+
+Non-compliant rows violating these invariants are intercepted and routed to `quarantine_target_evidence` via `medallion.quarantine` with failure code `TARGET_CONTRACT_VIOLATION`.
+
 ### `mlflow_tracker.py` — MLflow Lineage & Audit Tracker
 
 Orchestrates Great Expectations suite execution, computes SHA-256 cryptographic file hashes for provenance tracking via `governance.crypto`, and logs all metrology to MLflow.

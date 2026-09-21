@@ -8,7 +8,7 @@ process OMOP_INGEST {
     path vcf
 
     output:
-    path "ingestion_summary.json", emit: summary
+    path "${vcf.baseName}_ingestion_summary.json", emit: summary
 
     script:
     """
@@ -16,17 +16,21 @@ process OMOP_INGEST {
         --vcf "${vcf}" \\
         --output-dir "${params.outdir}/omop" \\
         --mode "${params.data_mode}" \\
-        --summary-out "ingestion_summary.json"
+        --summary-out "${vcf.baseName}_ingestion_summary.json"
     """
 
     stub:
     """
-    cat << 'EOF' > ingestion_summary.json
+    cat << EOF > ${vcf.baseName}_ingestion_summary.json
     {
       "status": "SUCCESS",
       "vcf_file": "${vcf.name}",
       "variant_count": 42,
       "omop_measurement_count": 42,
+      "output_dir": "${params.outdir}/omop",
+      "silver_table_path": "${params.outdir}/omop/silver/genomic_variants",
+      "gold_table_path": "${params.outdir}/omop/gold/measurement",
+      "target_delta_version": 0,
       "execution_mode": "stub",
       "timestamp": "2026-09-20T00:00:00Z"
     }

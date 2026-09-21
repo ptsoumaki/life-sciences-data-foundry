@@ -9,6 +9,7 @@ nextflow.enable.dsl=2
       2. VCF variant filtering, statistics, and annotation extraction (BCFTOOLS)
       3. Aggregated multi-tool quality report generation (MULTIQC)
       4. PySpark Medallion ingestion into OMOP CDM v5.4 MEASUREMENT Delta Lake (OMOP_INGEST)
+      5. FDA 21 CFR Part 11 cryptographic provenance manifest generation (PROVENANCE_MANIFEST)
 ========================================================================================
 */
 
@@ -64,6 +65,6 @@ workflow {
     // 5. Generate FDA 21 CFR Part 11 cryptographic provenance manifest
     PROVENANCE_MANIFEST(
         fastq_ch.mix(vcf_ch).collect(),
-        OMOP_INGEST.out.summary
+        OMOP_INGEST.out.summary.collect()
     )
 }

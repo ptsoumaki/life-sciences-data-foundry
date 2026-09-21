@@ -2,7 +2,7 @@ nextflow.enable.dsl=2
 
 process MULTIQC {
     tag "Aggregating multi-omics QC reports"
-    publishDir "${params.multiqc_dir}", mode: 'copy'
+    publishDir "${params.multiqc_dir ?: "${params.outdir}/multiqc"}", mode: 'copy'
 
     input:
     path fastqc_files

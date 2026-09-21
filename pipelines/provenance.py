@@ -10,6 +10,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 # Ensure repository root is on PYTHONPATH
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -36,21 +37,42 @@ def generate_provenance_manifest(
 ) -> dict:
     """Generates an FDA 21 CFR Part 11 compliant cryptographic execution manifest.
 
+    Computes SHA-256 digests for all local and remote input files, records pinned container
+    specifications, and captures Delta Lake transaction commit versions across single or
+    multi-summary ingestion runs for complete GxP audit traceability.
+
     Args:
-        input_files: List of file paths to hash (FASTQ, VCF, config).
+        input_files: List of file paths or remote URIs (s3, gs, hdfs) to hash (FASTQ, VCF, config).
         output_manifest_path: Target path to write the JSON manifest.
         pipeline_version: Semantic version of the running pipeline.
         workflow_session_id: Nextflow session ID or unique execution identifier.
-        summary_file: Path or list of paths to ingestion summary JSON from OMOP_INGEST.
+        summary_file: Path or list of paths to ingestion summary JSON files from OMOP_INGEST.
         containers: Dictionary of tool names to pinned container URIs.
         delta_log_dir: Optional path to Delta Lake _delta_log directory to extract version.
 
     Returns:
         The generated manifest dictionary.
+
+    Raises:
+        FileNotFoundError: If a specified local input file cannot be found.
     """
-    file_manifests = []
+    file_manifests: list[dict[str, Any]] = []
     for file_path in input_files:
-        if os.path.exists(file_path) and os.path.isfile(file_path):
+        path_str = str(file_path).strip()
+        if not path_str:
+            continue
+        if path_str.startswith(("s3://", "s3a://", "gs://", "hdfs://")):
+            digest = compute_sha256(path_str)
+            file_manifests.append(
+                {
+                    "path": path_str,
+                    "filename": os.path.basename(path_str),
+                    "size_bytes": None,
+                    "sha256": digest,
+                    "storage": "remote_uri",
+                }
+            )
+        elif os.path.exists(file_path) and os.path.isfile(file_path):
             digest = compute_sha256(file_path)
             file_manifests.append(
                 {
@@ -59,6 +81,10 @@ def generate_provenance_manifest(
                     "size_bytes": os.path.getsize(file_path),
                     "sha256": digest,
                 }
+            )
+        else:
+            raise FileNotFoundError(
+                f"Input file specified for provenance hashing does not exist: {file_path}"
             )
 
     ingestion_metrics = {}
@@ -86,11 +112,19 @@ def generate_provenance_manifest(
         elif os.path.isdir(delta_log_dir):
             log_dir_to_check = delta_log_dir
     elif isinstance(ingestion_metrics, dict):
-        gold_path = ingestion_metrics.get("gold_table_path")
-        if gold_path and os.path.exists(gold_path):
-            candidate_inner = os.path.join(gold_path, "_delta_log")
-            if os.path.isdir(candidate_inner):
-                log_dir_to_check = candidate_inner
+        gold_candidates = []
+        if ingestion_metrics.get("gold_table_path"):
+            gold_candidates.append(ingestion_metrics["gold_table_path"])
+        elif isinstance(ingestion_metrics.get("summaries"), list):
+            for s in ingestion_metrics["summaries"]:
+                if isinstance(s, dict) and s.get("gold_table_path"):
+                    gold_candidates.append(s["gold_table_path"])
+        for gold_path in gold_candidates:
+            if gold_path and os.path.exists(gold_path):
+                candidate_inner = os.path.join(gold_path, "_delta_log")
+                if os.path.isdir(candidate_inner):
+                    log_dir_to_check = candidate_inner
+                    break
 
     if log_dir_to_check and os.path.exists(log_dir_to_check):
         try:
@@ -110,6 +144,16 @@ def generate_provenance_manifest(
                 delta_version = int(raw_version)
             except (ValueError, TypeError):
                 delta_version = None
+        elif isinstance(ingestion_metrics.get("summaries"), list):
+            extracted_versions = []
+            for s in ingestion_metrics["summaries"]:
+                if isinstance(s, dict) and s.get("target_delta_version") is not None:
+                    try:
+                        extracted_versions.append(int(s["target_delta_version"]))
+                    except (ValueError, TypeError):
+                        pass
+            if extracted_versions:
+                delta_version = max(extracted_versions)
 
     manifest = {
         "manifest_version": "1.0.0",

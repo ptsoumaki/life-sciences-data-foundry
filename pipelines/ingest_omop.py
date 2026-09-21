@@ -15,6 +15,8 @@ if str(REPO_ROOT) not in sys.path:
 if str(ANALYTICAL_LAYER) not in sys.path:
     sys.path.insert(0, str(ANALYTICAL_LAYER))
 
+from pyspark.sql import SparkSession  # noqa: E402
+
 from governance.crypto import compute_sha256  # noqa: E402
 from medallion.writer import DELTA_TELEMETRY_EXCEPTIONS, DeltaMedallionWriter  # noqa: E402
 from omop_cdm_v54.connectors import parse_vcf_to_dataframe  # noqa: E402
@@ -27,6 +29,8 @@ def ingest_vcf_to_omop(
     output_dir: str = "output/delta",
     mode: str = "demo",
     summary_out: str = "ingestion_summary.json",
+    spark: SparkSession | None = None,
+    write_mode: str = "append",
 ) -> dict:
     """Parses a VCF file, transforms variants into OMOP CDM v5.4 MEASUREMENT records, and writes to Delta.
 
@@ -35,6 +39,8 @@ def ingest_vcf_to_omop(
         output_dir: Target base directory for Delta Lake tables.
         mode: Execution mode ('demo' or 'remote').
         summary_out: Destination path for the JSON ingestion summary.
+        spark: Optional active SparkSession instance to reuse.
+        write_mode: Delta Lake write mode ('append' or 'overwrite', default: 'append').
 
     Returns:
         Dictionary containing ingestion metrics and SHA-256 provenance.
@@ -45,17 +51,27 @@ def ingest_vcf_to_omop(
 
     vcf_sha256 = compute_sha256(vcf_path)
 
-    spark = create_spark_session(mode=mode)
+    owns_spark = False
+    if spark is not None:
+        spark_to_use = spark
+    else:
+        active = SparkSession.getActiveSession()
+        if active is not None:
+            spark_to_use = active
+        else:
+            spark_to_use = create_spark_session(mode=mode)
+            owns_spark = True
+
     try:
-        df_silver = parse_vcf_to_dataframe(spark, vcf_path)
+        df_silver = parse_vcf_to_dataframe(spark_to_use, vcf_path)
         variant_count = df_silver.count()
 
         df_measurement = transform_genomic_variants(df_silver)
         measurement_count = df_measurement.count()
 
-        writer = DeltaMedallionWriter(spark, base_output_dir=output_dir)
-        silver_path = writer.write_silver_table(df_silver, "genomic_variants")
-        gold_path = writer.write_gold_omop_table(df_measurement, "measurement")
+        writer = DeltaMedallionWriter(spark_to_use, base_output_dir=output_dir)
+        silver_path = writer.write_silver_table(df_silver, "genomic_variants", mode=write_mode)
+        gold_path = writer.write_gold_omop_table(df_measurement, "measurement", mode=write_mode)
 
         target_delta_version = None
         try:
@@ -72,6 +88,7 @@ def ingest_vcf_to_omop(
             "vcf_sha256": vcf_sha256,
             "variant_count": variant_count,
             "omop_measurement_count": measurement_count,
+            "write_mode": write_mode,
             "output_dir": str(output_dir),
             "silver_table_path": silver_path,
             "gold_table_path": gold_path,
@@ -85,7 +102,8 @@ def ingest_vcf_to_omop(
 
         return summary
     finally:
-        spark.stop()
+        if owns_spark:
+            spark_to_use.stop()
 
 
 def main() -> None:
@@ -108,6 +126,13 @@ def main() -> None:
         help="Ingestion mode ('demo' or 'remote')",
     )
     parser.add_argument(
+        "--write-mode",
+        default="append",
+        type=str,
+        choices=["append", "overwrite"],
+        help="Delta Lake write mode ('append' or 'overwrite', default: 'append')",
+    )
+    parser.add_argument(
         "--summary-out",
         default="ingestion_summary.json",
         type=str,
@@ -120,10 +145,11 @@ def main() -> None:
         output_dir=args.output_dir,
         mode=args.mode,
         summary_out=args.summary_out,
+        write_mode=args.write_mode,
     )
     print(
         f"[OMOP INGEST] Successfully transformed {summary['variant_count']} variants "
-        f"into {summary['omop_measurement_count']} OMOP MEASUREMENT records."
+        f"into {summary['omop_measurement_count']} OMOP MEASUREMENT records (mode={args.write_mode})."
     )
 
 

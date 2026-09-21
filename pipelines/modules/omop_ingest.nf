@@ -27,6 +27,7 @@ process OMOP_INGEST {
       "vcf_file": "${vcf.name}",
       "variant_count": 42,
       "omop_measurement_count": 42,
+      "write_mode": "append",
       "output_dir": "${params.outdir}/omop",
       "silver_table_path": "${params.outdir}/omop/silver/genomic_variants",
       "gold_table_path": "${params.outdir}/omop/gold/measurement",

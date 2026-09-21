@@ -1,7 +1,7 @@
 # Enterprise Life Sciences Data Engineering Foundry 🧬
 
 [![DataOps CI/CD Gate](https://github.com/ptsoumaki/life-sciences-data-foundry/actions/workflows/tf-lint.yml/badge.svg)](https://github.com/ptsoumaki/life-sciences-data-foundry/actions/workflows/tf-lint.yml)
-![Version](https://img.shields.io/badge/version-0.3.1-informational)
+![Version](https://img.shields.io/badge/version-0.4.0-informational)
 ![Compliance](https://img.shields.io/badge/Compliance-FDA%2021%20CFR%20Part%2011-blue)
 ![Architecture](https://img.shields.io/badge/Architecture-OMOP%20CDM%20v5.4%20%7C%20Medallion-orange)
 ![Storage](https://img.shields.io/badge/Storage-Delta%20Lake%203.1-green)
@@ -21,6 +21,8 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
 | **GxP Data Contracts** | Decoupled Great Expectations rules + MLflow SHA-256 provenance (FDA 21 CFR Part 11) |
 | **GxP Quarantine & Remediation** | Dedicated Delta Lake dead-letter sinks, clinical failure taxonomy, batch breach gates, and idempotent replay |
 | **Analytical Cohorts & Survival** | OHDSI phenotyping, HIPAA Safe Harbor de-identification, Kaplan-Meier TTE modeling, and ML-ready feature store with Charlson Comorbidity Index |
+| **Multi-Omics Pipeline** | Nextflow DSL2 workflow chaining FastQC, bcftools, MultiQC, and OMOP CDM ingestion |
+| **Target Discovery Lakehouse** | Target-to-phenotype evidence mart, tractability scoring, and Haldane-Anscombe phenotypic odds ratios |
 | **Agentic Compliance Audit** | LangGraph state-graph auditor + FastMCP server with HITL 21 CFR §11.50 sign-off |
 | **Agent Guidelines & Skills** | Repository architecture instructions (`AGENTS.md`) and 7 GxP workspace skills (`.agents/skills/`) |
 | **Cloud-Native IaC** | Databricks Asset Bundles + Terraform provisioning AWS S3 WORM (`COMPLIANCE` mode) |
@@ -37,6 +39,7 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
 | **FDA 21 CFR Part 11** | [`governance/rules.json`](governance/rules.json) · [`mlflow_tracker.py`](governance/mlflow_tracker.py) · [`crypto.py`](governance/crypto.py) | Electronic records integrity, SHA-256 cryptographic lineage, data contracts |
 | **HIPAA Safe Harbor** | [`analytical-layer/cohorts/deid.py`](analytical-layer/cohorts/deid.py) | 45 CFR §164.514(b)(2) patient pseudonymization, date shifting, age 89+ capping, ZIP3 masking |
 | **OHDSI Phenotyping & Survival** | [`analytical-layer/cohorts/builder.py`](analytical-layer/cohorts/builder.py) · [`survival.py`](analytical-layer/cohorts/survival.py) | Standard `COHORT` generation, Kaplan-Meier TTE survival curves with Greenwood SE |
+| **Target Discovery & DMTA** | [`analytical-layer/discovery/`](analytical-layer/discovery/) | Target tractability, phenotypic odds ratios, ClinVar biomarker evidence mart |
 | **Delta Lake ACID** | [`analytical-layer/medallion/`](analytical-layer/medallion/) | Transactional reliability, schema evolution, time-travel, Liquid Clustering |
 | **GxP Quarantine & Remediation** | [`analytical-layer/medallion/quarantine.py`](analytical-layer/medallion/quarantine.py) | Dead-letter Delta sinks, ALCOA+ raw JSON preservation, batch quality gates, vocabulary replay |
 | **Agentic GxP Audit / MCP** | [`agentic-ai/graph_auditor.py`](agentic-ai/graph_auditor.py) · [`agentic-ai/mcp_server.py`](agentic-ai/mcp_server.py) | Autonomous lineage audit with HITL electronic sign-offs & AI discovery interface |
@@ -105,6 +108,7 @@ life-sciences-data-foundry/
 ├── agentic-ai/           # FastMCP server & LangGraph GxP compliance auditor
 ├── analytical-layer/     # PySpark OMOP CDM v5.4 normalization & Medallion engine
 │   ├── cohorts/          # OHDSI phenotyping, HIPAA de-id, survival analysis & feature store
+│   ├── discovery/        # Target discovery evidence mart & phenotypic odds ratio engine
 │   ├── medallion/        # Delta Lake persistence, Liquid Clustering & quarantine engine
 │   └── omop_cdm_v54/     # Domain transformers & open data connectors
 ├── docs/                 # Platform documentation hub

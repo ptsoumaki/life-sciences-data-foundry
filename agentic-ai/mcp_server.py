@@ -762,6 +762,202 @@ OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    "target_disease_evidence": {
+        "table_name": "TARGET_DISEASE_EVIDENCE",
+        "description": "Target-to-Phenotype Evidence Mart associating ClinVar genomic variants with OMOP CDM condition diagnoses across cohorts.",
+        "primary_key": "target_gene_symbol",
+        "clustering_keys": ["target_gene_symbol", "disease_concept_id"],
+        "columns": [
+            {
+                "name": "target_gene_symbol",
+                "type": "string",
+                "nullable": False,
+                "description": "Canonical uppercase HGNC gene symbol.",
+            },
+            {
+                "name": "disease_concept_id",
+                "type": "long",
+                "nullable": False,
+                "description": "Standard OMOP condition concept identifier.",
+            },
+            {
+                "name": "carrier_cases",
+                "type": "integer",
+                "nullable": False,
+                "description": "Subjects carrying variant with disease diagnosis (cell a).",
+            },
+            {
+                "name": "carrier_controls",
+                "type": "integer",
+                "nullable": False,
+                "description": "Subjects carrying variant without disease diagnosis (cell b).",
+            },
+            {
+                "name": "non_carrier_cases",
+                "type": "integer",
+                "nullable": False,
+                "description": "Wild-type subjects with disease diagnosis (cell c).",
+            },
+            {
+                "name": "non_carrier_controls",
+                "type": "integer",
+                "nullable": False,
+                "description": "Wild-type subjects without disease diagnosis (cell d).",
+            },
+            {
+                "name": "total_cohort_size",
+                "type": "integer",
+                "nullable": False,
+                "description": "Total evaluated cohort denominator.",
+            },
+            {
+                "name": "target_mutation_burden",
+                "type": "double",
+                "nullable": False,
+                "description": "Mean variant count per carrier.",
+            },
+            {
+                "name": "carrier_frequency",
+                "type": "double",
+                "nullable": False,
+                "description": "Proportion of cohort carrying target variants.",
+            },
+            {
+                "name": "phenotype_prevalence",
+                "type": "double",
+                "nullable": False,
+                "description": "Proportion of cohort diagnosed with disease.",
+            },
+            {
+                "name": "odds_ratio",
+                "type": "double",
+                "nullable": False,
+                "description": "Haldane-Anscombe continuity-corrected phenotypic Odds Ratio.",
+            },
+            {
+                "name": "log_odds_ratio",
+                "type": "double",
+                "nullable": False,
+                "description": "Natural logarithm of Haldane-Anscombe corrected Odds Ratio.",
+            },
+            {
+                "name": "se_log_odds_ratio",
+                "type": "double",
+                "nullable": False,
+                "description": "Asymptotic standard error of log Odds Ratio.",
+            },
+            {
+                "name": "odds_ratio_ci_lower",
+                "type": "double",
+                "nullable": False,
+                "description": "95% confidence interval lower bound for Odds Ratio.",
+            },
+            {
+                "name": "odds_ratio_ci_upper",
+                "type": "double",
+                "nullable": False,
+                "description": "95% confidence interval upper bound for Odds Ratio.",
+            },
+            {
+                "name": "p_value",
+                "type": "double",
+                "nullable": False,
+                "description": "Two-tailed asymptotic association p-value via polynomial standard normal CDF approximation.",
+            },
+            {
+                "name": "biomarker_correlation",
+                "type": "double",
+                "nullable": False,
+                "description": "Standardized biomarker mean shift between carriers and controls [-1.0, 1.0].",
+            },
+            {
+                "name": "target_tractability_score",
+                "type": "double",
+                "nullable": False,
+                "description": "Composite target tractability score bounded in [0.0, 1.0].",
+            },
+            {
+                "name": "evidence_tier",
+                "type": "string",
+                "nullable": False,
+                "description": "Clinical evidence tier (TIER_1_VALIDATED, TIER_2_CANDIDATE, TIER_3_EXPLORATORY).",
+            },
+            {
+                "name": "created_at",
+                "type": "timestamp",
+                "nullable": False,
+                "description": "UTC timestamp of mart generation.",
+            },
+            {
+                "name": "mlflow_run_id",
+                "type": "string",
+                "nullable": False,
+                "description": "MLflow run ID for FDA 21 CFR Part 11 audit lineage.",
+            },
+        ],
+    },
+    "quarantine_target_evidence": {
+        "table_name": "QUARANTINE_TARGET_EVIDENCE",
+        "description": "Dead-letter quarantine repository for non-compliant target discovery evidence records breaching GxP data contracts.",
+        "primary_key": "quarantine_id",
+        "clustering_keys": ["failure_code", "status"],
+        "columns": [
+            {
+                "name": "quarantine_id",
+                "type": "string",
+                "nullable": False,
+                "description": "Unique cryptographic UUID identifier for the quarantined record.",
+            },
+            {
+                "name": "table_name",
+                "type": "string",
+                "nullable": False,
+                "description": "Originating target table name ('quarantine_target_evidence').",
+            },
+            {
+                "name": "raw_payload",
+                "type": "string",
+                "nullable": False,
+                "description": "Verbatim serialized JSON payload of the rejected target evidence row.",
+            },
+            {
+                "name": "failure_code",
+                "type": "string",
+                "nullable": False,
+                "description": "Standardized clinical failure code (TARGET_CONTRACT_VIOLATION).",
+            },
+            {
+                "name": "failure_reason",
+                "type": "string",
+                "nullable": False,
+                "description": "Deterministic explanation of contract invariant breach.",
+            },
+            {
+                "name": "failure_timestamp",
+                "type": "timestamp",
+                "nullable": False,
+                "description": "ISO-8601 UTC timestamp when record was quarantined.",
+            },
+            {
+                "name": "mlflow_run_id",
+                "type": "string",
+                "nullable": False,
+                "description": "MLflow run ID for FDA 21 CFR Part 11 audit traceability.",
+            },
+            {
+                "name": "status",
+                "type": "string",
+                "nullable": False,
+                "description": "Remediation lifecycle state ('QUARANTINED' or 'REMEDIATED').",
+            },
+            {
+                "name": "remediation_timestamp",
+                "type": "timestamp",
+                "nullable": True,
+                "description": "ISO-8601 UTC timestamp when the record was remediated.",
+            },
+        ],
+    },
 }
 
 
@@ -1316,6 +1512,67 @@ def tool_validate_clinical_record(
                         "message": f"Value '{val}' in column '{col}' does not match regex '{pattern}'.",
                     }
                 )
+
+        elif exp_type == "expect_column_values_to_be_between":
+            min_val = kwargs.get("min_value")
+            max_val = kwargs.get("max_value")
+            val = record.get(col)
+            if val is not None:
+                try:
+                    num_val = float(val)
+                    if min_val is not None and num_val < float(min_val):
+                        violations.append(
+                            {
+                                "column": col,
+                                "expectation": exp_type,
+                                "severity": severity,
+                                "message": f"Value {val} in column '{col}' is below allowed minimum {min_val}.",
+                            }
+                        )
+                    elif max_val is not None and num_val > float(max_val):
+                        violations.append(
+                            {
+                                "column": col,
+                                "expectation": exp_type,
+                                "severity": severity,
+                                "message": f"Value {val} in column '{col}' is above allowed maximum {max_val}.",
+                            }
+                        )
+                except (ValueError, TypeError):
+                    violations.append(
+                        {
+                            "column": col,
+                            "expectation": exp_type,
+                            "severity": severity,
+                            "message": f"Value '{val}' in column '{col}' cannot be cast to numeric for bounds comparison.",
+                        }
+                    )
+
+        elif exp_type == "expect_table_columns_to_match_set":
+            col_set = kwargs.get("column_set", [])
+            exact_match = kwargs.get("exact_match", False)
+            record_cols = set(record.keys())
+            missing_cols = set(col_set) - record_cols
+            if missing_cols:
+                violations.append(
+                    {
+                        "column": ", ".join(sorted(missing_cols)),
+                        "expectation": exp_type,
+                        "severity": severity,
+                        "message": f"Required columns missing from record: {sorted(missing_cols)}.",
+                    }
+                )
+            if exact_match:
+                extra_cols = record_cols - set(col_set)
+                if extra_cols:
+                    violations.append(
+                        {
+                            "column": ", ".join(sorted(extra_cols)),
+                            "expectation": exp_type,
+                            "severity": severity,
+                            "message": f"Unexpected extra columns found in record: {sorted(extra_cols)}.",
+                        }
+                    )
 
     passed = len(violations) == 0
     return {

@@ -130,7 +130,7 @@ def evaluate_data_contract(
     clean_experiment_name = experiment_name.lstrip("/")
     try:
         mlflow.set_experiment(clean_experiment_name)
-    except Exception as exp_err:
+    except (mlflow.exceptions.MlflowException, OSError) as exp_err:
         print(f"[MLFLOW WARNING] Could not set experiment '{clean_experiment_name}': {exp_err}")
 
     rules_checksum = (

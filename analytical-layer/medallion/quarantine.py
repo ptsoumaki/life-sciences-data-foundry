@@ -66,6 +66,7 @@ class ClinicalFailureCode(StrEnum):
     OUT_OF_BOUNDS_LAB = "OUT_OF_BOUNDS_LAB"
     TEMPORAL_ANOMALY = "TEMPORAL_ANOMALY"
     ORPHAN_FOREIGN_KEY = "ORPHAN_FOREIGN_KEY"
+    TARGET_CONTRACT_VIOLATION = "TARGET_CONTRACT_VIOLATION"
 
 
 # Standard GxP Dead-Letter Quarantine Schema
@@ -87,6 +88,7 @@ QUARANTINE_RECORD_SCHEMA = StructType(
 QUARANTINE_TABLE_PATIENTS = "quarantine_patients"
 QUARANTINE_TABLE_CONDITIONS = "quarantine_conditions"
 QUARANTINE_TABLE_MEASUREMENTS = "quarantine_measurements"
+QUARANTINE_TABLE_TARGETS = "quarantine_target_evidence"
 
 
 def get_active_mlflow_run_id() -> str:
@@ -96,7 +98,7 @@ def get_active_mlflow_run_id() -> str:
             active_run = mlflow.active_run()
             if active_run and active_run.info and active_run.info.run_id:
                 return str(active_run.info.run_id)
-        except Exception:
+        except (mlflow.exceptions.MlflowException, AttributeError, OSError):
             pass
     return "untracked_run"
 
@@ -250,6 +252,10 @@ class QuarantineDeltaWriter:
     def write_quarantine_measurements(self, df: DataFrame, mode: str = "append") -> str:
         """Dedicated sink for non-compliant laboratory and genomic measurements."""
         return self.write_quarantine_sink(df, QUARANTINE_TABLE_MEASUREMENTS, mode=mode)
+
+    def write_quarantine_targets(self, df: DataFrame, mode: str = "append") -> str:
+        """Dedicated sink for non-compliant target discovery evidence records."""
+        return self.write_quarantine_sink(df, QUARANTINE_TABLE_TARGETS, mode=mode)
 
     def read_quarantine_table(self, table_name: str) -> DataFrame:
         """Reads a quarantine Delta Lake table by name."""

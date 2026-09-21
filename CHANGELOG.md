@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-21
+
+### Added
+- **Target-to-Phenotype Evidence Mart (`analytical-layer/discovery/target_mart.py`, `analytical-layer/discovery/__init__.py`)**:
+  - Implemented PySpark aggregation engine joining OMOP CDM v5.4 clinical condition occurrences (`CONDITION_OCCURRENCE`) and ClinVar genomic variant observations (`MEASUREMENT`) across longitudinal cohorts.
+  - Calculated target tractability metrics: target mutation burden, biomarker correlation matrices, and phenotypic Odds Ratios with Haldane-Anscombe continuity corrections (+0.5 to contingency cells), standard errors, 95% confidence intervals, and asymptotic two-tailed p-values via polynomial standard normal CDF approximation.
+  - Formulated composite target tractability scoring and clinical evidence tiering (`TIER_1_VALIDATED`, `TIER_2_CANDIDATE`, `TIER_3_EXPLORATORY`).
+  - Added Delta Lake Liquid Clustering persistence (`CLUSTER BY (target_gene_symbol, disease_concept_id)`) with Change Data Feed enabled.
+- **Declarative DMTA Data Product Contract (`governance/contracts/target_contract.json`)**:
+  - Formulated Great Expectations GxP contract enforcing semantic invariants on target entities: canonical HGNC uppercase gene symbol validation, positive permissible odds ratio bounds, target tractability score completeness, and complete schema attribute presence for FDA 21 CFR Part 11 audit compliance.
+- **GxP Dead-Letter Quarantine Routing (`analytical-layer/medallion/quarantine.py`)**:
+  - Extended `ClinicalFailureCode` with `TARGET_CONTRACT_VIOLATION` and defined canonical table `QUARANTINE_TABLE_TARGETS = "quarantine_target_evidence"`.
+  - Implemented `validate_and_quarantine_target_records` routing non-compliant target evidence records breaching data contract invariants to dedicated dead-letter Delta Lake sinks, preserving verbatim raw row payloads as JSON, failure timestamp, and MLflow run ID for zero data loss provability.
+  - Added `write_quarantine_targets()` to `QuarantineDeltaWriter` enabling transactional Delta Lake persistence for target contract quarantine dead-letter sinks.
+- **FastMCP Target Discovery Schemas & Validation Gates (`agentic-ai/mcp_server.py`)**:
+  - Registered `target_disease_evidence` and `quarantine_target_evidence` schema definitions within `OMOP_CDM_V54_SCHEMAS`.
+  - Extended `tool_validate_clinical_record` with Great Expectations rule validators `expect_column_values_to_be_between` and `expect_table_columns_to_match_set` for interactive agentic validation.
+- **Discovery Package Packaging & Roadmap (`pyproject.toml`, `ROADMAP.md`)**:
+  - Added `discovery*` package to setuptools build discovery in `pyproject.toml`.
+  - Updated `ROADMAP.md` marking Phase 10 and Phase 11 deliverables completed.
+- **Target Discovery Unit & Quarantine Test Suite (`tests/unit/test_target_mart.py`, `tests/unit/test_quarantine.py`)**:
+  - Added comprehensive PySpark unit test suite covering variant carrier extraction, 2x2 contingency matrix calculation, Haldane-Anscombe statistical precision, tractability scoring, contract validation, quarantine dead-letter routing, and Delta Lake persistence with Liquid Clustering.
+- **Nextflow Multi-Omics to OMOP Workflow (`pipelines/multi_omics_omop.nf`, `pipelines/ingest_omop.py`)**:
+  - Implemented end-to-end Nextflow DSL2 workflow orchestrating raw FASTQ quality control (`FASTQC`), VCF variant filtering, statistics, and annotation (`BCFTOOLS`), cross-tool QC metric aggregation (`MULTIQC`), and PySpark Medallion ingestion into OMOP CDM v5.4 (`MEASUREMENT` table) via standalone CLI bridge.
+- **Pinned Biocontainers & Multi-Target Execution Profiles (`pipelines/nextflow.config`)**:
+  - Pinned immutable Quay.io Biocontainers (`fastqc:0.12.1--hdfd78af_0`, `bcftools:1.19--h8b25389_1`, `multiqc:1.21--pyhdfd78af_0`).
+  - Configured execution profiles for `local_dev` (Docker/Podman), `aws_batch` (SPOT compute queues with S3 staging), and `test` (headless stub mode).
+- **GxP Provenance Manifest Generator (`pipelines/provenance.py`, `pipelines/modules/provenance.nf`)**:
+  - Developed FDA 21 CFR Part 11 compliant manifest generator computing SHA-256 hashes of input files, recording container image digests, and capturing target Delta Lake commit versions.
+  - Added dynamic pipeline version resolution via `resolve_default_pipeline_version()` synchronizing manifest generation with `nextflow.config` and `pyproject.toml`.
+- **Pipelines Package API & CI/CD Automation (`pipelines/`, `.github/workflows/tf-lint.yml`)**:
+  - Established `pipelines` package with public programmatic API exports (`generate_provenance_manifest`, `validate_provenance_manifest`, `ingest_vcf_to_omop`, `resolve_default_pipeline_version`).
+  - Added automated Nextflow stub execution and test coverage verification gates to CI/CD pipeline.
+- **Nextflow Pipeline Unit Test Suite (`tests/unit/test_nextflow_pipeline.py`)**:
+  - Added unit test suite validating provenance manifest generation, SHA-256 integrity, tamper-detection, dynamic version resolution, and `nextflow.config` profile definitions.
+
+### Fixed
+- **Cohorts Time-to-Progression Censoring Operand Resolution (`analytical-layer/cohorts/survival.py`)**:
+  - Resolved mixed boolean and PySpark Column bitwise operand evaluation in `build_ttp_frame`, ensuring accurate progression-free event censoring.
+
 ## [0.3.1] - 2026-09-20
 
 ### Added

@@ -74,17 +74,13 @@ jobs:
           nextflow -v
 
       - name: Evaluate Nextflow Config Resolution
-        run: nextflow config pipelines/main.nf -profile local_dev
+        run: nextflow config pipelines/multi_omics_omop.nf -profile test
 
       - name: Dry-Run Stub Execution Gate
         run: |
-          mkdir -p mock_data
-          touch mock_data/sample_1.fastq
-          nextflow run pipelines/main.nf \
-            -profile local_dev \
-            -stub \
-            --raw_input "mock_data/*.fastq" \
-            --outdir "mock_data/out"
+          nextflow run pipelines/multi_omics_omop.nf \
+            -profile test \
+            -stub
 
   python-quality-gate:
     name: "Static Analysis & Type Safety Gate (Ruff & Mypy)"
@@ -112,7 +108,7 @@ jobs:
         run: ruff format --check .
 
       - name: Execute Mypy Static Type Verification
-        run: mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion analytical-layer/cohorts governance agentic-ai tests
+        run: mypy analytical-layer/omop_cdm_v54 analytical-layer/medallion analytical-layer/cohorts analytical-layer/discovery governance agentic-ai pipelines tests
 
   pyspark-dataops-test-suite:
     name: "PySpark DataOps & Contract Quality Gate"
@@ -141,7 +137,7 @@ jobs:
 
       - name: Execute PySpark Unit & Integration Test Suite
         run: |
-          pytest --cov=analytical-layer --cov=governance --cov=agentic-ai --cov-report=term-missing --cov-report=xml tests/
+          pytest --cov=analytical-layer --cov=governance --cov=agentic-ai --cov=pipelines --cov-report=term-missing --cov-report=xml tests/
 
       - name: Upload Test Coverage Artifact
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1

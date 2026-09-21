@@ -40,18 +40,21 @@ workflow {
     =======================================================================
     """.stripIndent()
 
-    // Channel creation with graceful empty handling
+    // Channel creation with graceful empty handling and explicit branch tapping
     fastq_ch = Channel.fromPath(params.raw_fastq)
         .ifEmpty { error("No input FASTQ files found matching: ${params.raw_fastq}") }
 
     vcf_ch = Channel.fromPath(params.raw_vcf)
         .ifEmpty { error("No input VCF files found matching: ${params.raw_vcf}") }
 
+    fastq_ch.tap { fastq_qc_ch }
+    vcf_ch.tap { vcf_filter_ch }
+
     // 1. Raw sequencing quality control
-    FASTQC(fastq_ch)
+    FASTQC(fastq_qc_ch)
 
     // 2. VCF variant filtering, statistics, and ClinVar annotation
-    BCFTOOLS_ANNOTATE_FILTER(vcf_ch)
+    BCFTOOLS_ANNOTATE_FILTER(vcf_filter_ch)
 
     // 3. Multi-tool QC metric aggregation
     MULTIQC(

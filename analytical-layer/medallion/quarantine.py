@@ -98,7 +98,7 @@ def get_active_mlflow_run_id() -> str:
             active_run = mlflow.active_run()
             if active_run and active_run.info and active_run.info.run_id:
                 return str(active_run.info.run_id)
-        except Exception:
+        except (mlflow.exceptions.MlflowException, AttributeError, OSError):
             pass
     return "untracked_run"
 
@@ -252,6 +252,10 @@ class QuarantineDeltaWriter:
     def write_quarantine_measurements(self, df: DataFrame, mode: str = "append") -> str:
         """Dedicated sink for non-compliant laboratory and genomic measurements."""
         return self.write_quarantine_sink(df, QUARANTINE_TABLE_MEASUREMENTS, mode=mode)
+
+    def write_quarantine_targets(self, df: DataFrame, mode: str = "append") -> str:
+        """Dedicated sink for non-compliant target discovery evidence records."""
+        return self.write_quarantine_sink(df, QUARANTINE_TABLE_TARGETS, mode=mode)
 
     def read_quarantine_table(self, table_name: str) -> DataFrame:
         """Reads a quarantine Delta Lake table by name."""

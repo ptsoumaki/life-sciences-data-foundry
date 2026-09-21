@@ -12,6 +12,7 @@ from pipelines.ingest_omop import ingest_vcf_to_omop
 from pipelines.provenance import (
     DEFAULT_CONTAINERS,
     generate_provenance_manifest,
+    resolve_default_pipeline_version,
     validate_provenance_manifest,
 )
 
@@ -60,6 +61,25 @@ def test_generate_provenance_manifest_basic(tmp_path: Path):
     # Verify manifest file on disk
     assert manifest_out.exists()
     assert validate_provenance_manifest(str(manifest_out)) is True
+
+
+def test_resolve_default_pipeline_version():
+    """Verifies that resolve_default_pipeline_version dynamically parses nextflow.config."""
+    resolved = resolve_default_pipeline_version()
+    assert resolved == "0.4.0"
+
+
+def test_generate_provenance_manifest_default_version(tmp_path: Path):
+    """Test generating manifest without specifying pipeline_version defaults dynamically to nextflow.config."""
+    test_file = tmp_path / "test.txt"
+    test_file.write_text("dummy", encoding="utf-8")
+    out_file = tmp_path / "manifest.json"
+
+    manifest = generate_provenance_manifest(
+        input_files=[str(test_file)],
+        output_manifest_path=str(out_file),
+    )
+    assert manifest["pipeline_version"] == "0.4.0"
 
 
 def test_validate_provenance_manifest_tampering(tmp_path: Path):

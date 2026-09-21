@@ -9,6 +9,7 @@ import tempfile
 
 import pyarrow.parquet as pq
 import pytest
+from py4j.protocol import Py4JJavaError
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DoubleType,
@@ -18,6 +19,7 @@ from pyspark.sql.types import (
     StructField,
     StructType,
 )
+from pyspark.sql.utils import AnalysisException
 
 from discovery.target_mart import (
     TARGET_EVIDENCE_SCHEMA,
@@ -505,7 +507,7 @@ def test_delta_persistence_with_liquid_clustering(
             assert df_readback.count() == df_mart.count()
             assert "target_gene_symbol" in df_readback.columns
             assert "disease_concept_id" in df_readback.columns
-        except Exception:
+        except (AnalysisException, Py4JJavaError, OSError):
             parquet_files = [
                 os.path.join(saved_path, f)
                 for f in os.listdir(saved_path)

@@ -15,8 +15,8 @@ This document tracks active development phases and engineering priorities for th
 | **Phase 7** | Agentic Lineage & MLOps Infrastructure | `agentic-ai/` · FastMCP · LangGraph | `✅ COMPLETED` |
 | **Phase 8** | Data Contract Failure & GxP Quarantine Routines | `analytical-layer/medallion/quarantine.py` | `✅ COMPLETED` |
 | **Phase 9** | Gold-Tier Analytical Cohorts & Translational Endpoints | `analytical-layer/cohorts/` · HIPAA De-ID | `✅ COMPLETED` |
-| **Phase 10** | Nextflow Multi-Omics to OMOP Workflow | `pipelines/multi_omics_omop.nf` | `📋 PLANNED` |
-| **Phase 11** | Target Discovery Data Products (Discovery Lakehouse) | `analytical-layer/discovery/` · DMTA Mart | `📋 PLANNED` |
+| **Phase 10** | Nextflow Multi-Omics to OMOP Workflow | `pipelines/multi_omics_omop.nf` | `✅ COMPLETED` |
+| **Phase 11** | Target Discovery Data Products (Discovery Lakehouse) | `analytical-layer/discovery/` · DMTA Mart | `✅ COMPLETED` |
 | **Phase 12** | Agentic DMTA Target Triage & AI Discovery | `agentic-ai/dmta_target_steward.py` | `📋 PLANNED` |
 | **Phase 13** | GxP-Validated Feature Store & Drift Monitoring Engine | `governance/drift_monitor.py` · `cohorts/` | `📋 PLANNED` |
 | **Phase 14** | End-to-End Analytical Showcase & Demonstration | Interactive Notebook & Databricks Demo | `📋 PLANNED` |

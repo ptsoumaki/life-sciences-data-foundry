@@ -7,6 +7,7 @@ Description: ML-Ready Patient Feature Store Projections & Charlson Comorbidity I
 Author: Vivi Tsoumaki
 """
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -50,6 +51,7 @@ from pyspark.sql.types import (
     StructField,
     StructType,
 )
+from pyspark.sql.utils import AnalysisException
 
 from omop_cdm_v54.compat import HAS_DELTA
 
@@ -57,6 +59,9 @@ try:
     from medallion.writer import DeltaMedallionWriter
 except ImportError:
     DeltaMedallionWriter = None  # type: ignore[assignment, misc]
+
+
+logger = logging.getLogger(__name__)
 
 
 # Standard Charlson Comorbidity Categories, Weights, and Primary SNOMED Concept Codes
@@ -595,12 +600,18 @@ class PatientFeatureStore:
                     .clusterBy("cohort_definition_id", "subject_id")
                     .save(target_path)
                 )
-                print(f"[FEATURE STORE] Persisted feature matrix to Delta Lake: {target_path}")
+                logger.info(
+                    "[FEATURE STORE] Persisted feature matrix to Delta Lake: %s", target_path
+                )
                 return target_path
-            except Exception as e:
-                print(f"[FEATURE STORE] Liquid clustering fallback to standard Delta: {e}")
+            except (AnalysisException, OSError) as lc_err:
+                logger.warning(
+                    "[FEATURE STORE] Liquid Clustering write failed; falling back to standard Delta: %s",
+                    lc_err,
+                )
                 df_features.write.format("delta").mode(mode).save(target_path)
                 return target_path
         else:
             df_features.write.mode(mode).parquet(target_path)
+            logger.info("[FEATURE STORE] Persisted feature matrix to Parquet: %s", target_path)
             return target_path

@@ -33,7 +33,7 @@ dev = [
 # Note: directories with hyphens (analytical-layer, agentic-ai) are not valid Python package
 # names and cannot be imported directly; only their underscore-named sub-packages are exposed.
 where = ["analytical-layer", "."]
-include = ["omop_cdm_v54*", "medallion*", "governance*", "cohorts*"]
+include = ["omop_cdm_v54*", "medallion*", "governance*", "cohorts*", "pipelines*"]
 exclude = ["tests*"]
 
 [tool.ruff]
@@ -58,7 +58,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["omop_cdm_v54", "governance", "medallion", "cohorts"]
+known-first-party = ["omop_cdm_v54", "governance", "medallion", "cohorts", "pipelines"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -84,7 +84,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["omop_cdm_v54", "governance", "medallion", "cohorts", "agentic-ai"]
+source = ["omop_cdm_v54", "governance", "medallion", "cohorts", "agentic-ai", "pipelines"]
 omit = ["tests/*"]
 
 [tool.coverage.paths]

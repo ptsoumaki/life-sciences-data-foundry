@@ -5,6 +5,10 @@ import re
 import tempfile
 from pathlib import Path
 
+import pytest
+from pyspark.sql import SparkSession
+
+from pipelines.ingest_omop import ingest_vcf_to_omop
 from pipelines.provenance import (
     DEFAULT_CONTAINERS,
     generate_provenance_manifest,
@@ -133,7 +137,7 @@ def test_pipeline_dsl2_files_exist():
         assert "nextflow.enable.dsl=2" in content, f"{file_path.name} must enable Nextflow DSL2"
 
 
-def test_ingest_vcf_to_omop(tmp_path: Path):
+def test_ingest_vcf_to_omop(tmp_path: Path, spark: SparkSession):
     """Test end-to-end VCF ingestion into OMOP MEASUREMENT and Delta tables."""
     repo_root = Path(__file__).resolve().parent.parent.parent
     vcf_path = repo_root / "analytical-layer" / "data" / "genomic_variants.vcf"
@@ -142,18 +146,18 @@ def test_ingest_vcf_to_omop(tmp_path: Path):
     delta_out = tmp_path / "delta"
     summary_out = tmp_path / "ingestion_summary.json"
 
-    from pipelines.ingest_omop import ingest_vcf_to_omop
-
     summary = ingest_vcf_to_omop(
         vcf_path=str(vcf_path),
         output_dir=str(delta_out),
         mode="demo",
         summary_out=str(summary_out),
+        spark=spark,
     )
 
     assert summary["status"] == "SUCCESS"
     assert summary["variant_count"] == 5
     assert summary["omop_measurement_count"] == 5
+    assert summary["write_mode"] == "append"
     assert len(summary["vcf_sha256"]) == 64
     assert summary_out.exists()
     assert Path(summary["silver_table_path"]).exists()
@@ -222,3 +226,71 @@ def test_sample_fastq_exists():
     assert len(lines) % 4 == 0, "FASTQ must consist of 4-line records"
     assert lines[0].startswith("@"), "First line must start with @"
     assert lines[2].startswith("+"), "Third line must start with +"
+
+
+def test_provenance_manifest_multi_summary_resolution(tmp_path: Path):
+    """Test that multiple ingestion summaries correctly resolve the latest Delta version."""
+    s1 = tmp_path / "summary_1.json"
+    s1.write_text(
+        json.dumps(
+            {
+                "status": "SUCCESS",
+                "target_delta_version": 2,
+                "gold_table_path": str(tmp_path / "table1"),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    s2 = tmp_path / "summary_2.json"
+    s2.write_text(
+        json.dumps(
+            {
+                "status": "SUCCESS",
+                "target_delta_version": 5,
+                "gold_table_path": str(tmp_path / "table2"),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manifest_out = tmp_path / "multi_summary_manifest.json"
+    manifest = generate_provenance_manifest(
+        input_files=[],
+        output_manifest_path=str(manifest_out),
+        summary_file=[str(s1), str(s2)],
+    )
+
+    assert manifest["target_delta_version"] == 5
+    assert "summaries" in manifest["ingestion_summary"]
+    assert len(manifest["ingestion_summary"]["summaries"]) == 2
+    assert validate_provenance_manifest(str(manifest_out)) is True
+
+
+def test_generate_provenance_manifest_remote_uris(tmp_path: Path):
+    """Test generating provenance manifest with cloud storage URIs."""
+    manifest_out = tmp_path / "remote_manifest.json"
+    remote_inputs = ["s3://bucket/reads_1.fastq", "s3a://bucket/variants.vcf"]
+
+    manifest = generate_provenance_manifest(
+        input_files=remote_inputs,
+        output_manifest_path=str(manifest_out),
+    )
+
+    assert len(manifest["inputs"]) == 2
+    assert manifest["inputs"][0]["storage"] == "remote_uri"
+    assert manifest["inputs"][0]["size_bytes"] is None
+    assert len(manifest["inputs"][0]["sha256"]) == 64
+    assert validate_provenance_manifest(str(manifest_out)) is True
+
+
+def test_generate_provenance_manifest_missing_file_raises(tmp_path: Path):
+    """Test that specifying a missing local input file raises FileNotFoundError."""
+    missing_path = tmp_path / "nonexistent.fastq"
+    with pytest.raises(
+        FileNotFoundError, match="Input file specified for provenance hashing does not exist"
+    ):
+        generate_provenance_manifest(
+            input_files=[str(missing_path)],
+            output_manifest_path=str(tmp_path / "manifest.json"),
+        )

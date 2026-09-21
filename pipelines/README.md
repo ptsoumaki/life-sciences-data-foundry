@@ -46,7 +46,7 @@ Executes processes locally with Docker/Podman containerization:
 ```bash
 export ENVIRONMENT=dev
 nextflow run pipelines/multi_omics_omop.nf -profile local_dev \
-    --raw_fastq "mock_data/*.fastq" \
+    --raw_fastq "analytical-layer/data/*.fastq" \
     --raw_vcf "analytical-layer/data/genomic_variants.vcf" \
     --outdir "mock_data/out"
 ```

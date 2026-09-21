@@ -1,6 +1,8 @@
 """Unit tests for Nextflow Multi-Omics to OMOP pipeline and GxP provenance generator."""
 
 import json
+import re
+import tempfile
 from pathlib import Path
 
 from pipelines.provenance import (
@@ -129,3 +131,94 @@ def test_pipeline_dsl2_files_exist():
         assert file_path.exists(), f"Required file missing: {file_path}"
         content = file_path.read_text(encoding="utf-8")
         assert "nextflow.enable.dsl=2" in content, f"{file_path.name} must enable Nextflow DSL2"
+
+
+def test_ingest_vcf_to_omop(tmp_path: Path):
+    """Test end-to-end VCF ingestion into OMOP MEASUREMENT and Delta tables."""
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    vcf_path = repo_root / "analytical-layer" / "data" / "genomic_variants.vcf"
+    assert vcf_path.exists(), "Sample genomic_variants.vcf must exist"
+
+    delta_out = tmp_path / "delta"
+    summary_out = tmp_path / "ingestion_summary.json"
+
+    from pipelines.ingest_omop import ingest_vcf_to_omop
+
+    summary = ingest_vcf_to_omop(
+        vcf_path=str(vcf_path),
+        output_dir=str(delta_out),
+        mode="demo",
+        summary_out=str(summary_out),
+    )
+
+    assert summary["status"] == "SUCCESS"
+    assert summary["variant_count"] == 5
+    assert summary["omop_measurement_count"] == 5
+    assert len(summary["vcf_sha256"]) == 64
+    assert summary_out.exists()
+    assert Path(summary["silver_table_path"]).exists()
+    assert Path(summary["gold_table_path"]).exists()
+
+
+def test_provenance_manifest_delta_version_resolution(tmp_path: Path):
+    """Test Delta log version extraction from table folder and summary fallback."""
+    # 1. Test resolution from table folder containing _delta_log
+    table_dir = tmp_path / "gold_measurement"
+    delta_log = table_dir / "_delta_log"
+    delta_log.mkdir(parents=True)
+    (delta_log / "00000000000000000000.json").write_text("{}", encoding="utf-8")
+    (delta_log / "00000000000000000003.json").write_text("{}", encoding="utf-8")
+
+    manifest = generate_provenance_manifest(
+        input_files=[],
+        output_manifest_path=str(tmp_path / "m1.json"),
+        delta_log_dir=str(table_dir),
+    )
+    assert manifest["target_delta_version"] == 3
+
+    # 2. Test resolution fallback from summary_file
+    summary_file = tmp_path / "summary.json"
+    summary_file.write_text(json.dumps({"target_delta_version": 7}), encoding="utf-8")
+
+    manifest2 = generate_provenance_manifest(
+        input_files=[],
+        output_manifest_path=str(tmp_path / "m2.json"),
+        summary_file=str(summary_file),
+    )
+    assert manifest2["target_delta_version"] == 7
+
+
+def test_provenance_stub_manifest_validity():
+    """Test that the stub manifest in provenance.nf is cryptographically valid."""
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    provenance_nf = repo_root / "pipelines" / "modules" / "provenance.nf"
+    assert provenance_nf.exists()
+
+    content = provenance_nf.read_text(encoding="utf-8")
+    # Extract JSON between cat << 'EOF' > provenance_manifest.json and EOF
+    match = re.search(
+        r"cat << 'EOF' > provenance_manifest\.json\s*(\{.*?\})\s*EOF", content, re.DOTALL
+    )
+    assert match is not None, "Stub manifest block not found in provenance.nf"
+
+    stub_json = json.loads(match.group(1))
+
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json") as f:
+        json.dump(stub_json, f, indent=2)
+        temp_path = f.name
+
+    assert validate_provenance_manifest(temp_path) is True
+
+
+def test_sample_fastq_exists():
+    """Test that the sample FASTQ file exists and contains valid 4-line records."""
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    fastq_path = repo_root / "analytical-layer" / "data" / "sample.fastq"
+    assert fastq_path.exists(), "sample.fastq must exist in analytical-layer/data"
+
+    lines = [
+        line.strip() for line in fastq_path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    assert len(lines) % 4 == 0, "FASTQ must consist of 4-line records"
+    assert lines[0].startswith("@"), "First line must start with @"
+    assert lines[2].startswith("+"), "Third line must start with +"

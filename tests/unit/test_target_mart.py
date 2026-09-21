@@ -9,11 +9,6 @@ import tempfile
 
 import pyarrow.parquet as pq
 import pytest
-from discovery.target_mart import (
-    TARGET_EVIDENCE_SCHEMA,
-    TargetEvidenceMart,
-    validate_and_quarantine_target_records,
-)
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DoubleType,
@@ -24,12 +19,16 @@ from pyspark.sql.types import (
     StructType,
 )
 
+from discovery.target_mart import (
+    TARGET_EVIDENCE_SCHEMA,
+    TargetEvidenceMart,
+    validate_and_quarantine_target_records,
+)
 from medallion.quarantine import (
     QUARANTINE_TABLE_TARGETS,
     ClinicalFailureCode,
     QuarantineDeltaWriter,
 )
-from medallion.writer import DELTA_OPERATIONAL_EXCEPTIONS
 
 
 @pytest.fixture
@@ -506,7 +505,7 @@ def test_delta_persistence_with_liquid_clustering(
             assert df_readback.count() == df_mart.count()
             assert "target_gene_symbol" in df_readback.columns
             assert "disease_concept_id" in df_readback.columns
-        except (*DELTA_OPERATIONAL_EXCEPTIONS, Exception):
+        except Exception:
             parquet_files = [
                 os.path.join(saved_path, f)
                 for f in os.listdir(saved_path)

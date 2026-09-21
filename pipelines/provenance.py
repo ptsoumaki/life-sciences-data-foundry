@@ -7,7 +7,9 @@ specifications, and captures Delta Lake transaction commit versions for complete
 import argparse
 import json
 import os
+import re
 import sys
+import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -19,7 +21,35 @@ if str(REPO_ROOT) not in sys.path:
 
 from governance.crypto import compute_sha256, is_valid_sha256  # noqa: E402
 
-DEFAULT_PIPELINE_VERSION = "0.4.0"
+
+def resolve_default_pipeline_version() -> str:
+    """Dynamically resolves pipeline version from nextflow.config manifest or pyproject.toml."""
+    # 1. Canonical source: nextflow.config manifest in the pipelines directory
+    nextflow_cfg = Path(__file__).resolve().parent / "nextflow.config"
+    if nextflow_cfg.is_file():
+        try:
+            content = nextflow_cfg.read_text(encoding="utf-8")
+            match = re.search(r"version\s*=\s*['\"]([^'\"]+)['\"]", content)
+            if match:
+                return match.group(1)
+        except OSError:
+            pass
+
+    # 2. Secondary source: pyproject.toml in repository root
+    pyproject_file = REPO_ROOT / "pyproject.toml"
+    if pyproject_file.is_file():
+        try:
+            with open(pyproject_file, "rb") as f:
+                data = tomllib.load(f)
+                ver = data.get("project", {}).get("version")
+                if ver:
+                    return str(ver)
+        except (OSError, tomllib.TOMLDecodeError, KeyError):
+            pass
+
+    # 3. Defensive fallback
+    return "0.4.0"
+
 
 DEFAULT_CONTAINERS = {
     "fastqc": "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0",
@@ -31,7 +61,7 @@ DEFAULT_CONTAINERS = {
 def generate_provenance_manifest(
     input_files: list[str],
     output_manifest_path: str = "provenance_manifest.json",
-    pipeline_version: str = DEFAULT_PIPELINE_VERSION,
+    pipeline_version: str | None = None,
     workflow_session_id: str | None = None,
     summary_file: str | list[str] | None = None,
     containers: dict[str, str] | None = None,
@@ -58,6 +88,7 @@ def generate_provenance_manifest(
     Raises:
         FileNotFoundError: If a specified local input file cannot be found.
     """
+    effective_pipeline_version = pipeline_version or resolve_default_pipeline_version()
     file_manifests: list[dict[str, Any]] = []
     for file_path in input_files:
         path_str = str(file_path).strip()
@@ -160,7 +191,7 @@ def generate_provenance_manifest(
     manifest = {
         "manifest_version": "1.0.0",
         "pipeline_name": "life-sciences-data-foundry-pipeline",
-        "pipeline_version": pipeline_version,
+        "pipeline_version": effective_pipeline_version,
         "workflow_session_id": workflow_session_id or "unknown-session",
         "timestamp": datetime.now(UTC).isoformat(),
         "compliance": {
@@ -241,8 +272,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--pipeline-version",
-        default="0.4.0",
-        help="Pipeline semantic version",
+        default=None,
+        help="Pipeline semantic version (defaults dynamically to nextflow.config manifest)",
     )
     parser.add_argument(
         "--workflow-session-id",

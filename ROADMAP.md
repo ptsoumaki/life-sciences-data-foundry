@@ -127,14 +127,14 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🧬 Phase 10: Nextflow Multi-Omics to OMOP Workflow `[📋 PLANNED]`
+## 🧬 Phase 10: Nextflow Multi-Omics to OMOP Workflow `[✅ COMPLETED]`
 
-- [ ] **End-to-End DSL2 Multi-Omics Pipeline (`pipelines/multi_omics_omop.nf`)**
-  - Construct modular Nextflow DSL2 workflow chaining raw sequencing QC (`FASTQC`), VCF variant annotation (`BCFTOOLS`), and PySpark Medallion OMOP CDM ingestion.
-- [ ] **Pinned Biocontainers & Multi-Target Execution Profiles (`pipelines/nextflow.config`)**
-  - Pin immutable Docker containers for bioinformatics tools; configure execution profiles for `local_dev`, `aws_batch` (Spot compute), and cloud S3 staging.
-- [ ] **GxP Provenance Manifest & MultiQC Reporting**
-  - Generate cryptographic execution manifests recording input file SHA-256 hashes, tool container digests, and target Delta Lake transaction commit IDs.
+- [x] **End-to-End DSL2 Multi-Omics Pipeline (`pipelines/multi_omics_omop.nf`)**
+  - Construct modular Nextflow DSL2 workflow chaining raw sequencing QC (`FASTQC`), VCF variant annotation (`BCFTOOLS`), aggregated multi-tool quality report generation (`MULTIQC`), and PySpark Medallion OMOP CDM ingestion.
+- [x] **Pinned Biocontainers & Multi-Target Execution Profiles (`pipelines/nextflow.config`)**
+  - Pin immutable Docker containers for bioinformatics tools (`fastqc:0.12.1--hdfd78af_0`, `bcftools:1.19--h8b25389_1`, `multiqc:1.21--pyhdfd78af_0`); configure execution profiles for `local_dev`, `aws_batch` (Spot compute), and automated testing (`test`).
+- [x] **GxP Provenance Manifest & MultiQC Reporting (`pipelines/provenance.py` & `pipelines/modules/provenance.nf`)**
+  - Generate cryptographic execution manifests recording input file SHA-256 hashes, tool container digests, and target Delta Lake transaction commit IDs adhering to FDA 21 CFR Part 11.
 
 ---
 

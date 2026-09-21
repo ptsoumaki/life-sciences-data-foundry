@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Nextflow Multi-Omics to OMOP Workflow (`pipelines/multi_omics_omop.nf`, `pipelines/ingest_omop.py`)**:
+  - Implemented end-to-end Nextflow DSL2 workflow orchestrating raw FASTQ quality control (`FASTQC`), VCF variant filtering, statistics, and annotation (`BCFTOOLS`), cross-tool QC metric aggregation (`MULTIQC`), and PySpark Medallion ingestion into OMOP CDM v5.4 (`MEASUREMENT` table) via standalone CLI bridge.
+- **Pinned Biocontainers & Multi-Target Execution Profiles (`pipelines/nextflow.config`)**:
+  - Pinned immutable Quay.io Biocontainers (`fastqc:0.12.1--hdfd78af_0`, `bcftools:1.19--h8b25389_1`, `multiqc:1.21--pyhdfd78af_0`).
+  - Configured execution profiles for `local_dev` (Docker/Podman), `aws_batch` (SPOT compute queues with S3 staging), and `test` (headless stub mode).
+- **GxP Provenance Manifest Generator (`pipelines/provenance.py`, `pipelines/modules/provenance.nf`)**:
+  - Developed FDA 21 CFR Part 11 compliant manifest generator computing SHA-256 hashes of input files, recording container image digests, and capturing target Delta Lake commit versions.
+- **Pipelines Package API & CI/CD Automation (`pipelines/`, `.github/workflows/tf-lint.yml`)**:
+  - Established `pipelines` package with public programmatic API exports (`generate_provenance_manifest`, `validate_provenance_manifest`, `ingest_vcf_to_omop`).
+  - Added automated Nextflow stub execution and test coverage verification gates to CI/CD pipeline.
+- **Nextflow Pipeline Unit Test Suite (`tests/unit/test_nextflow_pipeline.py`)**:
+  - Added unit test suite validating provenance manifest generation, SHA-256 integrity, tamper-detection, and `nextflow.config` profile definitions.
+
 ## [0.3.1] - 2026-09-20
 
 ### Added

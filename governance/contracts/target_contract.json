@@ -1,0 +1,134 @@
+{
+  "data_asset_type": "target_disease_evidence_mart",
+  "expectation_suite_name": "gxp_target_evidence_contract",
+  "meta": {
+    "compliance_standard": "FDA_21_CFR_Part_11",
+    "target_schema": "DISCOVERY_TARGET_MART_v1.0",
+    "author": "Vivi Tsoumaki"
+  },
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "target_gene_symbol"
+      },
+      "meta": {
+        "severity": "CRITICAL_FATAL",
+        "description": "HGNC gene symbol is required for target identification and cross-omics entity linking."
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_match_regex",
+      "kwargs": {
+        "column": "target_gene_symbol",
+        "regex": "^[A-Z0-9_-]{2,15}$"
+      },
+      "meta": {
+        "severity": "ERROR",
+        "description": "Gene symbols must conform strictly to canonical uppercase HGNC nomenclature standards."
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "disease_concept_id"
+      },
+      "meta": {
+        "severity": "CRITICAL_FATAL",
+        "description": "Disease concept identifier required for OMOP CDM clinical condition cross-referencing."
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "odds_ratio",
+        "min_value": 0.0001,
+        "max_value": 10000.0
+      },
+      "meta": {
+        "severity": "ERROR",
+        "description": "Haldane-Anscombe corrected Odds Ratio must remain within biologically plausible positive bounds."
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "target_tractability_score",
+        "min_value": 0.0,
+        "max_value": 1.0
+      },
+      "meta": {
+        "severity": "ERROR",
+        "description": "Composite target tractability score must be bounded within the unit interval [0.0, 1.0]."
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "p_value",
+        "min_value": 0.0,
+        "max_value": 1.0
+      },
+      "meta": {
+        "severity": "ERROR",
+        "description": "Asymptotic association p-value must be a valid probability bounded in [0.0, 1.0]."
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "biomarker_correlation",
+        "min_value": -1.0,
+        "max_value": 1.0
+      },
+      "meta": {
+        "severity": "ERROR",
+        "description": "Standardized biomarker correlation impact metric must be bounded in [-1.0, 1.0]."
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "total_cohort_size",
+        "min_value": 1
+      },
+      "meta": {
+        "severity": "CRITICAL_FATAL",
+        "description": "Cohort denominator must contain at least one evaluable patient subject."
+      }
+    },
+    {
+      "expectation_type": "expect_table_columns_to_match_set",
+      "kwargs": {
+        "column_set": [
+          "target_gene_symbol",
+          "disease_concept_id",
+          "carrier_cases",
+          "carrier_controls",
+          "non_carrier_cases",
+          "non_carrier_controls",
+          "total_cohort_size",
+          "target_mutation_burden",
+          "carrier_frequency",
+          "phenotype_prevalence",
+          "odds_ratio",
+          "log_odds_ratio",
+          "se_log_odds_ratio",
+          "odds_ratio_ci_lower",
+          "odds_ratio_ci_upper",
+          "p_value",
+          "biomarker_correlation",
+          "target_tractability_score",
+          "evidence_tier",
+          "created_at",
+          "mlflow_run_id"
+        ],
+        "exact_match": false
+      },
+      "meta": {
+        "severity": "CRITICAL_FATAL",
+        "description": "Guarantees presence of all mandatory discovery evidence schema attributes before persistence."
+      }
+    }
+  ]
+}

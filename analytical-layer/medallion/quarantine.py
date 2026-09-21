@@ -66,6 +66,7 @@ class ClinicalFailureCode(StrEnum):
     OUT_OF_BOUNDS_LAB = "OUT_OF_BOUNDS_LAB"
     TEMPORAL_ANOMALY = "TEMPORAL_ANOMALY"
     ORPHAN_FOREIGN_KEY = "ORPHAN_FOREIGN_KEY"
+    TARGET_CONTRACT_VIOLATION = "TARGET_CONTRACT_VIOLATION"
 
 
 # Standard GxP Dead-Letter Quarantine Schema
@@ -87,6 +88,7 @@ QUARANTINE_RECORD_SCHEMA = StructType(
 QUARANTINE_TABLE_PATIENTS = "quarantine_patients"
 QUARANTINE_TABLE_CONDITIONS = "quarantine_conditions"
 QUARANTINE_TABLE_MEASUREMENTS = "quarantine_measurements"
+QUARANTINE_TABLE_TARGETS = "quarantine_target_evidence"
 
 
 def get_active_mlflow_run_id() -> str:

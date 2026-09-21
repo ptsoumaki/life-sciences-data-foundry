@@ -26,13 +26,14 @@ from medallion.quarantine import (
 
 
 def test_clinical_failure_code_taxonomy(spark: SparkSession):
-    """Verifies that all 5 standard GxP clinical failure codes are correctly configured."""
+    """Verifies that all standard GxP clinical failure codes are correctly configured."""
     expected_codes = {
         "SCHEMA_VIOLATION",
         "UNMAPPED_TERMINOLOGY",
         "OUT_OF_BOUNDS_LAB",
         "TEMPORAL_ANOMALY",
         "ORPHAN_FOREIGN_KEY",
+        "TARGET_CONTRACT_VIOLATION",
     }
     actual_codes = {code.value for code in ClinicalFailureCode}
     assert actual_codes == expected_codes

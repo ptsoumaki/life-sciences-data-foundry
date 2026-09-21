@@ -19,6 +19,9 @@ analytical-layer/
 │   ├── clinical_patients.csv         # Demographics (Synthea / MIMIC-IV format)
 │   ├── genomic_variants.vcf          # VCF v4.2 variant annotations (ClinVar / 1000 Genomes)
 │   └── lab_measurements.csv          # LOINC lab biomarker observations
+├── discovery/                        # TARGET DISCOVERY LAKEHOUSE & EVIDENCE MARTS
+│   ├── __init__.py                   # Package exports & public API
+│   └── target_mart.py                # TargetEvidenceMart, tractability scoring, odds ratios, Liquid Clustering
 ├── medallion/                        # DELTA LAKE PERFORMANCE, STORAGE & GXP QUARANTINE
 │   ├── __init__.py                   # Package exports
 │   ├── quarantine.py                 # QuarantineRemediationEngine & dead-letter replay
@@ -140,6 +143,14 @@ The [`analytical-layer/cohorts/`](cohorts/) package provides an enterprise, GxP-
    - **Rolling Lookback Windows**: Multi-window condition counts (30d, 180d, 365d, lifetime).
    - **Baseline Biomarker Panels**: Latest observations, 365-day mean/min/max, and explicit missingness indicators for HbA1c, glucose, cholesterol, and creatinine.
    - **Genomic Embeddings**: Binary and count ClinVar pathogenic mutation features.
+
+5. **Target Discovery Lakehouse & Evidence Marts (`discovery/target_mart.py`)**:
+   - `TargetEvidenceMart`: Aggregation engine joining longitudinal OMOP `CONDITION_OCCURRENCE` and ClinVar variant `MEASUREMENT` records across study cohorts.
+   - **Tractability & Odds Ratio Analytics**: Computes Haldane-Anscombe continuity-corrected 2x2 Odds Ratios, standard errors, 95% confidence intervals, and asymptotic two-tailed p-values via polynomial standard normal CDF approximations.
+   - **Multi-Omics Target Metrics**: Calculates target mutation burden (TMB) per carrier, carrier frequencies, phenotype prevalences, and baseline continuous biomarker correlations.
+   - **Composite Tractability Scoring & Tiering**: Integrates genetic evidence, mutation burden, and biomarker impact into a normalized score ($[0.0, 1.0]$) categorized into clinical tiers (`TIER_1_VALIDATED`, `TIER_2_CANDIDATE`, `TIER_3_EXPLORATORY`).
+   - **Delta Lake Liquid Clustering**: Persists to Gold Delta storage with `CLUSTER BY (target_gene_symbol, disease_concept_id)` and Change Data Feed enabled.
+   - **GxP Contract Enforcement & Quarantine**: Integrates with `governance/contracts/target_contract.json` and routes defective records to `quarantine_target_evidence` with code `TARGET_CONTRACT_VIOLATION` for zero data loss provability.
 
 ---
 

@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Target-to-Phenotype Evidence Mart (`analytical-layer/discovery/target_mart.py`, `analytical-layer/discovery/__init__.py`)**:
+  - Implemented PySpark aggregation engine joining OMOP CDM v5.4 clinical condition occurrences (`CONDITION_OCCURRENCE`) and ClinVar genomic variant observations (`MEASUREMENT`) across longitudinal cohorts.
+  - Calculated target tractability metrics: target mutation burden, biomarker correlation matrices, and phenotypic Odds Ratios with Haldane-Anscombe continuity corrections (+0.5 to contingency cells), standard errors, 95% confidence intervals, and asymptotic two-tailed p-values via polynomial standard normal CDF approximation.
+  - Formulated composite target tractability scoring and clinical evidence tiering (`TIER_1_VALIDATED`, `TIER_2_CANDIDATE`, `TIER_3_EXPLORATORY`).
+  - Added Delta Lake Liquid Clustering persistence (`CLUSTER BY (target_gene_symbol, disease_concept_id)`) with Change Data Feed enabled.
+- **Declarative DMTA Data Product Contract (`governance/contracts/target_contract.json`)**:
+  - Formulated Great Expectations GxP contract enforcing semantic invariants on target entities: canonical HGNC uppercase gene symbol validation, positive permissible odds ratio bounds, target tractability score completeness, and complete schema attribute presence for FDA 21 CFR Part 11 audit compliance.
+- **GxP Dead-Letter Quarantine Routing (`analytical-layer/medallion/quarantine.py`)**:
+  - Extended `ClinicalFailureCode` with `TARGET_CONTRACT_VIOLATION` and defined canonical table `QUARANTINE_TABLE_TARGETS = "quarantine_target_evidence"`.
+  - Implemented `validate_and_quarantine_target_records` routing non-compliant target evidence records breaching data contract invariants to dedicated dead-letter Delta Lake sinks, preserving verbatim raw row payloads as JSON, failure timestamp, and MLflow run ID for zero data loss provability.
+- **Discovery Package Packaging & Roadmap (`pyproject.toml`, `ROADMAP.md`)**:
+  - Added `discovery*` package to setuptools build discovery in `pyproject.toml`.
+  - Updated `ROADMAP.md` marking Phase 11 deliverables completed.
+- **Target Discovery Unit & Quarantine Test Suite (`tests/unit/test_target_mart.py`, `tests/unit/test_quarantine.py`)**:
+  - Added comprehensive PySpark unit test suite covering variant carrier extraction, 2x2 contingency matrix calculation, Haldane-Anscombe statistical precision, tractability scoring, contract validation, quarantine dead-letter routing, and Delta Lake persistence with Liquid Clustering.
 - **Nextflow Multi-Omics to OMOP Workflow (`pipelines/multi_omics_omop.nf`, `pipelines/ingest_omop.py`)**:
   - Implemented end-to-end Nextflow DSL2 workflow orchestrating raw FASTQ quality control (`FASTQC`), VCF variant filtering, statistics, and annotation (`BCFTOOLS`), cross-tool QC metric aggregation (`MULTIQC`), and PySpark Medallion ingestion into OMOP CDM v5.4 (`MEASUREMENT` table) via standalone CLI bridge.
 - **Pinned Biocontainers & Multi-Target Execution Profiles (`pipelines/nextflow.config`)**:

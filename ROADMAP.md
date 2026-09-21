@@ -138,16 +138,16 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🎯 Phase 11: Target Discovery Data Products (Discovery Lakehouse) `[📋 PLANNED]`
+## 🎯 Phase 11: Target Discovery Data Products (Discovery Lakehouse) `[✅ COMPLETED]`
 
-- [ ] **Target-to-Phenotype Evidence Mart (`analytical-layer/discovery/target_mart.py`)**
+- [x] **Target-to-Phenotype Evidence Mart (`analytical-layer/discovery/target_mart.py`)**
   - PySpark aggregation layer joining OMOP `MEASUREMENT` (ClinVar variant calls) and `CONDITION_OCCURRENCE` across longitudinal cohorts.
   - Calculate target tractability metrics: target mutation burden, biomarker correlation matrices, and phenotypic odds ratios across disease hierarchies.
   - Delta Lake Liquid Clustering persistence: `CLUSTER BY (target_gene_symbol, disease_concept_id)`.
-- [ ] **Declarative DMTA Data Product Contract (`governance/contracts/target_contract.json`)**
+- [x] **Declarative DMTA Data Product Contract (`governance/contracts/target_contract.json`)**
   - Great Expectations GxP contract enforcing semantic invariants on target entities: HGNC canonical symbol validation, permissible odds-ratio bounds, and target tractability score completeness.
   - Integration with `analytical-layer/medallion/quarantine.py` to route contract breaches to dead-letter sinks with failure code `TARGET_CONTRACT_VIOLATION`.
-- [ ] **Unit & Contract Verification Suites (`tests/unit/test_target_mart.py`)**
+- [x] **Unit & Contract Verification Suites (`tests/unit/test_target_mart.py`)**
   - Unit tests verifying tractability aggregations, Odds Ratio calculations, and contract rejection dead-letter routing.
 
 ---

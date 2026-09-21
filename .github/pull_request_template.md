@@ -42,7 +42,7 @@ Please confirm all required automated validation gates pass cleanly before reque
   ```bash
   ruff check .
   ruff format --check .
-  mypy --explicit-package-bases --ignore-missing-imports analytical-layer/omop_cdm_v54 analytical-layer/medallion governance tests
+  mypy analytical-layer/omop_cdm_v54 analytical-layer/medallion analytical-layer/cohorts analytical-layer/discovery governance agentic-ai pipelines tests
   ```
 - [ ] **PySpark Unit & Integration Testing Suite**:
   ```bash

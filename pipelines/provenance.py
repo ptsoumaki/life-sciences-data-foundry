@@ -30,7 +30,7 @@ def generate_provenance_manifest(
     output_manifest_path: str = "provenance_manifest.json",
     pipeline_version: str = "0.4.0",
     workflow_session_id: str | None = None,
-    summary_file: str | None = None,
+    summary_file: str | list[str] | None = None,
     containers: dict[str, str] | None = None,
     delta_log_dir: str | None = None,
 ) -> dict:
@@ -41,7 +41,7 @@ def generate_provenance_manifest(
         output_manifest_path: Target path to write the JSON manifest.
         pipeline_version: Semantic version of the running pipeline.
         workflow_session_id: Nextflow session ID or unique execution identifier.
-        summary_file: Optional path to ingestion_summary.json from OMOP_INGEST.
+        summary_file: Path or list of paths to ingestion summary JSON from OMOP_INGEST.
         containers: Dictionary of tool names to pinned container URIs.
         delta_log_dir: Optional path to Delta Lake _delta_log directory to extract version.
 
@@ -62,22 +62,54 @@ def generate_provenance_manifest(
             )
 
     ingestion_metrics = {}
-    if summary_file and os.path.exists(summary_file):
-        try:
-            with open(summary_file, encoding="utf-8") as sf:
-                ingestion_metrics = json.load(sf)
-        except Exception as e:
-            ingestion_metrics = {"error": f"Failed to read summary file: {e}"}
+    if summary_file:
+        summary_paths = summary_file if isinstance(summary_file, list) else [summary_file]
+        loaded_summaries = []
+        for sp in summary_paths:
+            if os.path.exists(sp):
+                try:
+                    with open(sp, encoding="utf-8") as sf:
+                        loaded_summaries.append(json.load(sf))
+                except (OSError, json.JSONDecodeError) as e:
+                    loaded_summaries.append({"error": f"Failed to read summary file {sp}: {e}"})
+        if len(loaded_summaries) == 1:
+            ingestion_metrics = loaded_summaries[0]
+        elif len(loaded_summaries) > 1:
+            ingestion_metrics = {"summaries": loaded_summaries}
 
     delta_version = None
+    log_dir_to_check = None
     if delta_log_dir and os.path.exists(delta_log_dir):
-        # Scan for latest .json commit file in _delta_log
-        commit_files = [
-            f for f in os.listdir(delta_log_dir) if f.endswith(".json") and f[:-5].isdigit()
-        ]
-        if commit_files:
-            latest_commit = max(commit_files, key=lambda x: int(x[:-5]))
-            delta_version = int(latest_commit[:-5])
+        candidate_inner = os.path.join(delta_log_dir, "_delta_log")
+        if os.path.isdir(candidate_inner):
+            log_dir_to_check = candidate_inner
+        elif os.path.isdir(delta_log_dir):
+            log_dir_to_check = delta_log_dir
+    elif isinstance(ingestion_metrics, dict):
+        gold_path = ingestion_metrics.get("gold_table_path")
+        if gold_path and os.path.exists(gold_path):
+            candidate_inner = os.path.join(gold_path, "_delta_log")
+            if os.path.isdir(candidate_inner):
+                log_dir_to_check = candidate_inner
+
+    if log_dir_to_check and os.path.exists(log_dir_to_check):
+        try:
+            commit_files = [
+                f for f in os.listdir(log_dir_to_check) if f.endswith(".json") and f[:-5].isdigit()
+            ]
+            if commit_files:
+                latest_commit = max(commit_files, key=lambda x: int(x[:-5]))
+                delta_version = int(latest_commit[:-5])
+        except OSError:
+            delta_version = None
+
+    if delta_version is None and isinstance(ingestion_metrics, dict):
+        raw_version = ingestion_metrics.get("target_delta_version")
+        if raw_version is not None:
+            try:
+                delta_version = int(raw_version)
+            except (ValueError, TypeError):
+                delta_version = None
 
     manifest = {
         "manifest_version": "1.0.0",
@@ -173,8 +205,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--summary-file",
+        nargs="*",
         default=None,
-        help="Path to ingestion_summary.json",
+        help="Path(s) to ingestion_summary.json",
     )
     parser.add_argument(
         "--delta-log-dir",

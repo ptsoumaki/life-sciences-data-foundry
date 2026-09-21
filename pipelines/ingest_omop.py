@@ -16,7 +16,7 @@ if str(ANALYTICAL_LAYER) not in sys.path:
     sys.path.insert(0, str(ANALYTICAL_LAYER))
 
 from governance.crypto import compute_sha256  # noqa: E402
-from medallion.writer import DeltaMedallionWriter  # noqa: E402
+from medallion.writer import DELTA_TELEMETRY_EXCEPTIONS, DeltaMedallionWriter  # noqa: E402
 from omop_cdm_v54.connectors import parse_vcf_to_dataframe  # noqa: E402
 from omop_cdm_v54.genomic_variants import transform_genomic_variants  # noqa: E402
 from omop_cdm_v54.pipeline import create_spark_session  # noqa: E402
@@ -39,7 +39,8 @@ def ingest_vcf_to_omop(
     Returns:
         Dictionary containing ingestion metrics and SHA-256 provenance.
     """
-    if not os.path.exists(vcf_path):
+    is_remote_vcf = vcf_path.startswith(("s3://", "s3a://", "gs://", "hdfs://"))
+    if not is_remote_vcf and not os.path.exists(vcf_path):
         raise FileNotFoundError(f"Input VCF file not found: {vcf_path}")
 
     vcf_sha256 = compute_sha256(vcf_path)
@@ -52,9 +53,18 @@ def ingest_vcf_to_omop(
         df_measurement = transform_genomic_variants(df_silver)
         measurement_count = df_measurement.count()
 
-        writer = DeltaMedallionWriter(spark, base_path=output_dir)
-        writer.write_silver_table(df_silver, "genomic_variants")
-        writer.write_gold_omop_table(df_measurement, "measurement")
+        writer = DeltaMedallionWriter(spark, base_output_dir=output_dir)
+        silver_path = writer.write_silver_table(df_silver, "genomic_variants")
+        gold_path = writer.write_gold_omop_table(df_measurement, "measurement")
+
+        target_delta_version = None
+        try:
+            telemetry = writer.get_table_telemetry(gold_path)
+            recent_commits = telemetry.get("recent_commits", [])
+            if recent_commits and "version" in recent_commits[0]:
+                target_delta_version = recent_commits[0]["version"]
+        except DELTA_TELEMETRY_EXCEPTIONS:
+            target_delta_version = None
 
         summary = {
             "status": "SUCCESS",
@@ -63,6 +73,9 @@ def ingest_vcf_to_omop(
             "variant_count": variant_count,
             "omop_measurement_count": measurement_count,
             "output_dir": str(output_dir),
+            "silver_table_path": silver_path,
+            "gold_table_path": gold_path,
+            "target_delta_version": target_delta_version,
             "timestamp": datetime.now(UTC).isoformat(),
         }
 

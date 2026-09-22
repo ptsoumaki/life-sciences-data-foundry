@@ -986,6 +986,16 @@ def _resolve_repo_path(relative_path: str) -> str:
     return relative_path
 
 
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely cast value to float, returning default if None or on conversion error."""
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
 # =====================================================================
 # Foundry MCP Core Tool Implementations
 # =====================================================================
@@ -1679,19 +1689,9 @@ def tool_get_target_biomarker_profile(
 
     # Aggregate profile
     count = len(records)
-    mean_or = (
-        sum(float(r.get("odds_ratio") if r.get("odds_ratio") is not None else 1.0) for r in records)
-        / count
-    )
-    min_p = min(float(r.get("p_value") if r.get("p_value") is not None else 1.0) for r in records)
-    max_tract = max(
-        float(
-            r.get("target_tractability_score")
-            if r.get("target_tractability_score") is not None
-            else 0.0
-        )
-        for r in records
-    )
+    mean_or = sum(_safe_float(r.get("odds_ratio"), 1.0) for r in records) / count
+    min_p = min(_safe_float(r.get("p_value"), 1.0) for r in records)
+    max_tract = max(_safe_float(r.get("target_tractability_score"), 0.0) for r in records)
     primary_tier = records[0].get("evidence_tier", "TIER_3_EXPLORATORY")
 
     return {

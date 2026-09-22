@@ -148,6 +148,16 @@ def _resolve_repo_path(relative_path: str | None) -> str | None:
     return relative_path
 
 
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely cast value to float, returning default if None or on conversion error."""
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
 # =====================================================================
 # LangGraph DMTA Target Triage Nodes
 # =====================================================================
@@ -227,13 +237,9 @@ def parse_hypothesis(state: DMTATargetState) -> dict[str, Any]:
             concept_id = None
 
     # Establish gating thresholds with resilient defaults
-    min_or = float(state.get("min_odds_ratio") if state.get("min_odds_ratio") is not None else 1.0)
-    max_p = float(state.get("max_p_value") if state.get("max_p_value") is not None else 0.05)
-    min_tract = float(
-        state.get("min_tractability_score")
-        if state.get("min_tractability_score") is not None
-        else 0.5
-    )
+    min_or = _safe_float(state.get("min_odds_ratio"), 1.0)
+    max_p = _safe_float(state.get("max_p_value"), 0.05)
+    min_tract = _safe_float(state.get("min_tractability_score"), 0.5)
     rules_path = state.get("rules_path") or "governance/contracts/target_contract.json"
     operator_id = state.get("operator_id") or "agent:dmta_target_steward"
 
@@ -318,42 +324,15 @@ def query_target_mart(state: DMTATargetState) -> dict[str, Any]:
     evidence_summary: dict[str, Any] = {}
     if records:
         count = len(records)
-        mean_or = (
-            sum(
-                float(r.get("odds_ratio") if r.get("odds_ratio") is not None else 1.0)
-                for r in records
-            )
-            / count
-        )
-        min_p = min(
-            float(r.get("p_value") if r.get("p_value") is not None else 1.0) for r in records
-        )
-        max_tract = max(
-            float(
-                r.get("target_tractability_score")
-                if r.get("target_tractability_score") is not None
-                else 0.0
-            )
-            for r in records
-        )
+        mean_or = sum(_safe_float(r.get("odds_ratio"), 1.0) for r in records) / count
+        min_p = min(_safe_float(r.get("p_value"), 1.0) for r in records)
+        max_tract = max(_safe_float(r.get("target_tractability_score"), 0.0) for r in records)
         total_cohort = max((int(r.get("total_cohort_size") or 0) for r in records), default=0)
         mean_burden = (
-            sum(
-                float(
-                    r.get("target_mutation_burden")
-                    if r.get("target_mutation_burden") is not None
-                    else 0.0
-                )
-                for r in records
-            )
-            / count
+            sum(_safe_float(r.get("target_mutation_burden"), 0.0) for r in records) / count
         )
         mean_carrier_freq = (
-            sum(
-                float(r.get("carrier_frequency") if r.get("carrier_frequency") is not None else 0.0)
-                for r in records
-            )
-            / count
+            sum(_safe_float(r.get("carrier_frequency"), 0.0) for r in records) / count
         )
         primary_tier = records[0].get("evidence_tier", "TIER_3_EXPLORATORY")
 
@@ -393,9 +372,9 @@ def validate_lineage_and_contract(state: DMTATargetState) -> dict[str, Any]:
     records = list(state.get("evidence_records") or [])
     rules_path = _resolve_repo_path(state.get("rules_path"))
     target_mart_path = _resolve_repo_path(state.get("target_mart_path"))
-    min_or = float(state.get("min_odds_ratio", 1.0))
-    max_p = float(state.get("max_p_value", 0.05))
-    min_tract = float(state.get("min_tractability_score", 0.5))
+    min_or = _safe_float(state.get("min_odds_ratio"), 1.0)
+    max_p = _safe_float(state.get("max_p_value"), 0.05)
+    min_tract = _safe_float(state.get("min_tractability_score"), 0.5)
 
     contract_findings: list[TargetContractFinding] = []
     lineage_verification: dict[str, Any] = {
@@ -611,21 +590,11 @@ def validate_lineage_and_contract(state: DMTATargetState) -> dict[str, Any]:
         # Check statistical gating criteria across records
         best_rec = max(
             records,
-            key=lambda r: float(
-                r.get("target_tractability_score")
-                if r.get("target_tractability_score") is not None
-                else 0.0
-            ),
+            key=lambda r: _safe_float(r.get("target_tractability_score"), 0.0),
         )
-        or_val = float(
-            best_rec.get("odds_ratio") if best_rec.get("odds_ratio") is not None else 1.0
-        )
-        p_val = float(best_rec.get("p_value") if best_rec.get("p_value") is not None else 1.0)
-        tract_val = float(
-            best_rec.get("target_tractability_score")
-            if best_rec.get("target_tractability_score") is not None
-            else 0.0
-        )
+        or_val = _safe_float(best_rec.get("odds_ratio"), 1.0)
+        p_val = _safe_float(best_rec.get("p_value"), 1.0)
+        tract_val = _safe_float(best_rec.get("target_tractability_score"), 0.0)
 
         # Check if contract errors exist (excluding critical fatal)
         error_count = sum(

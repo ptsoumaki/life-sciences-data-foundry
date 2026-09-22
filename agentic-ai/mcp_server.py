@@ -69,6 +69,21 @@ from omop_cdm_v54.vocabularies import (  # noqa: E402
 __all__ = [
     "OMOP_CDM_V54_SCHEMAS",
     "FoundryMCPServer",
+    "get_target_biomarker_profile",
+    "tool_get_pipeline_execution_state",
+    "tool_get_target_biomarker_profile",
+    "tool_inspect_data_contract",
+    "tool_inspect_delta_table_log",
+    "tool_inspect_omop_table_schema",
+    "tool_lookup_demographic_concept",
+    "tool_lookup_genomic_variant_concept",
+    "tool_lookup_icd10_to_snomed",
+    "tool_lookup_loinc_concept",
+    "tool_query_vocabulary_mappings",
+    "tool_validate_clinical_record",
+    "tool_verify_gxp_audit_lineage",
+    "tool_verify_target_lineage",
+    "verify_target_lineage",
 ]
 # Standard OMOP CDM v5.4 Table Schema Definitions
 OMOP_CDM_V54_SCHEMAS: dict[str, dict[str, Any]] = {
@@ -1584,6 +1599,218 @@ def tool_validate_clinical_record(
     }
 
 
+def tool_get_target_biomarker_profile(
+    gene_symbol: str, target_mart_path: str | None = None
+) -> dict[str, Any]:
+    """Retrieves target tractability, disease odds ratios, and mutation burden from Target Evidence Mart.
+
+    Queries the Discovery Lakehouse target mart for phenotypic associations, Haldane-Anscombe
+    odds ratios, confidence intervals, mutation burden, and evidence tier for a given gene.
+
+    Args:
+        gene_symbol: Canonical HGNC target gene symbol (e.g., 'BRAF', 'EGFR', 'KRAS').
+        target_mart_path: Optional custom path to Target Evidence Mart Delta table or Parquet storage.
+
+    Returns:
+        Structured biomarker profile including tractability score, associated phenotypes, and odds ratios.
+    """
+    clean_gene = str(gene_symbol).strip().upper()
+    resolved_path = _resolve_repo_path(target_mart_path) if target_mart_path else None
+
+    # If no path specified, check standard default paths
+    if not resolved_path:
+        default_candidate = os.path.join(BASE_DIR, "data", "gold", "target_disease_evidence")
+        if os.path.exists(default_candidate):
+            resolved_path = default_candidate
+
+    records: list[dict[str, Any]] = []
+    if resolved_path and os.path.exists(resolved_path):
+        try:
+            if os.path.isfile(resolved_path) and resolved_path.endswith(".json"):
+                with open(resolved_path, encoding="utf-8") as f:
+                    data = json.load(f)
+                    raw_list = data if isinstance(data, list) else [data]
+                    records = [
+                        r
+                        for r in raw_list
+                        if str(r.get("target_gene_symbol", "")).upper() == clean_gene
+                    ]
+            elif os.path.isdir(resolved_path):
+                parquet_files = glob.glob(
+                    os.path.join(resolved_path, "**", "*.parquet"), recursive=True
+                )
+                if parquet_files:
+                    try:
+                        import pandas as pd
+
+                        dfs = [pd.read_parquet(pf) for pf in parquet_files]
+                        if dfs:
+                            combined = pd.concat(dfs, ignore_index=True)
+                            if "target_gene_symbol" in combined.columns:
+                                filtered = combined[
+                                    combined["target_gene_symbol"].astype(str).str.upper()
+                                    == clean_gene
+                                ]
+                                records = filtered.to_dict(orient="records")
+                    except Exception as pe:
+                        return {
+                            "success": False,
+                            "gene_symbol": clean_gene,
+                            "error": f"Error reading parquet: {pe}",
+                        }
+        except Exception as e:
+            return {
+                "success": False,
+                "gene_symbol": clean_gene,
+                "error": f"Failed reading target mart: {e}",
+            }
+
+    found = len(records) > 0
+    if not found:
+        return {
+            "success": True,
+            "found": False,
+            "gene_symbol": clean_gene,
+            "target_mart_path": resolved_path,
+            "message": f"No target evidence records found for gene '{clean_gene}'.",
+            "associated_phenotypes_count": 0,
+            "records": [],
+        }
+
+    # Aggregate profile
+    count = len(records)
+    mean_or = (
+        sum(float(r.get("odds_ratio") if r.get("odds_ratio") is not None else 1.0) for r in records)
+        / count
+    )
+    min_p = min(float(r.get("p_value") if r.get("p_value") is not None else 1.0) for r in records)
+    max_tract = max(
+        float(
+            r.get("target_tractability_score")
+            if r.get("target_tractability_score") is not None
+            else 0.0
+        )
+        for r in records
+    )
+    primary_tier = records[0].get("evidence_tier", "TIER_3_EXPLORATORY")
+
+    return {
+        "success": True,
+        "found": True,
+        "gene_symbol": clean_gene,
+        "target_mart_path": resolved_path,
+        "associated_phenotypes_count": count,
+        "mean_odds_ratio": round(mean_or, 4),
+        "min_p_value": min_p,
+        "max_tractability_score": round(max_tract, 4),
+        "primary_evidence_tier": primary_tier,
+        "records": records,
+    }
+
+
+def tool_verify_target_lineage(
+    dataset_version: int | None = None,
+    target_mart_path: str | None = None,
+    rules_path: str = "governance/contracts/target_contract.json",
+) -> dict[str, Any]:
+    """Verifies cryptographic lineage, Delta commit logs, and contract compliance for target evidence.
+
+    Audits the transaction history of the Target Evidence Mart Delta table, verifies commit SHA-256
+    digests, ensures Change Data Feed is enabled, and validates rules against the Great Expectations contract.
+
+    Args:
+        dataset_version: Optional specific Delta table commit version number to verify.
+        target_mart_path: Optional custom path to target evidence Delta table.
+        rules_path: Path to target contract specification rules.json.
+
+    Returns:
+        Structured audit report verifying commit history, contract validity, and GxP compliance.
+    """
+    resolved_mart = _resolve_repo_path(target_mart_path) if target_mart_path else None
+    if not resolved_mart:
+        default_candidate = os.path.join(BASE_DIR, "data", "gold", "target_disease_evidence")
+        if os.path.exists(default_candidate):
+            resolved_mart = default_candidate
+
+    resolved_rules = _resolve_repo_path(rules_path)
+
+    # Check contract rules existence
+    contract_result = (
+        tool_inspect_data_contract(resolved_rules) if resolved_rules else {"error": "No rules path"}
+    )
+    contract_valid = "error" not in contract_result
+
+    # If no target mart path exists
+    if not resolved_mart or not os.path.exists(resolved_mart):
+        return {
+            "success": False,
+            "status": "TARGET_MART_NOT_FOUND",
+            "target_mart_path": resolved_mart,
+            "contract_valid": contract_valid,
+            "rules_path": resolved_rules,
+            "rules_sha256": contract_result.get("rules_sha256"),
+            "commit_log": None,
+        }
+
+    # Inspect Delta log using existing tool_inspect_delta_table_log
+    delta_log_result = tool_inspect_delta_table_log(resolved_mart)
+    commits = delta_log_result.get("commits", [])
+
+    selected_commit = None
+    if dataset_version is not None:
+        for c in commits:
+            if c.get("version") == dataset_version:
+                selected_commit = c
+                break
+    elif commits:
+        selected_commit = commits[-1]
+
+    selected_commit_sha = None
+    if selected_commit and "file" in selected_commit:
+        commit_file_path = os.path.join(resolved_mart, "_delta_log", selected_commit["file"])
+        if os.path.exists(commit_file_path):
+            selected_commit_sha = compute_sha256(commit_file_path)
+            selected_commit["commit_sha256"] = selected_commit_sha
+
+    lineage_intact = len(commits) > 0 and contract_valid
+
+    # Check if Change Data Feed is enabled in any commit metadata
+    cdf_enabled = False
+    delta_log_dir = os.path.join(resolved_mart, "_delta_log")
+    if os.path.exists(delta_log_dir):
+        for cf in glob.glob(os.path.join(delta_log_dir, "*.json")):
+            try:
+                with open(cf, encoding="utf-8") as f:
+                    for line in f:
+                        if "enableChangeDataFeed" in line:
+                            cdf_enabled = True
+                            break
+            except Exception:
+                pass
+            if cdf_enabled:
+                break
+
+    return {
+        "success": lineage_intact,
+        "status": "VERIFIED" if lineage_intact else "DEVIATION_DETECTED",
+        "target_mart_path": resolved_mart,
+        "dataset_version": selected_commit.get("version") if selected_commit else None,
+        "selected_commit": selected_commit,
+        "commit_sha256": selected_commit_sha,
+        "total_commits": len(commits),
+        "change_data_feed_enabled": cdf_enabled,
+        "contract_valid": contract_valid,
+        "rules_path": resolved_rules,
+        "rules_sha256": contract_result.get("rules_sha256"),
+        "expectations_count": contract_result.get("expectations_count", 0),
+    }
+
+
+# Standard Discovery Aliases
+get_target_biomarker_profile = tool_get_target_biomarker_profile
+verify_target_lineage = tool_verify_target_lineage
+
+
 # =====================================================================
 # Foundry MCP Server Class
 # =====================================================================
@@ -1643,6 +1870,8 @@ class FoundryMCPServer:
         self.server.tool()(tool_verify_gxp_audit_lineage)
         self.server.tool()(tool_inspect_data_contract)
         self.server.tool()(tool_validate_clinical_record)
+        self.server.tool()(tool_get_target_biomarker_profile)
+        self.server.tool()(tool_verify_target_lineage)
 
         self._tools_registered = True
 

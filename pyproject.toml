@@ -18,6 +18,8 @@ dependencies = [
     "pydantic>=2.6.0",
     "langgraph>=0.0.20",
     "mcp>=0.1.0",
+    "matplotlib>=3.7.0",
+    "numpy>=1.24.0",
 ]
 
 [project.optional-dependencies]
@@ -56,6 +58,9 @@ ignore = [
     "B008",   # Do not perform function calls in argument defaults
     "RUF012", # Mutable class attributes should be annotated with typing.ClassVar
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"notebooks/*" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["omop_cdm_v54", "governance", "medallion", "cohorts", "pipelines", "discovery"]

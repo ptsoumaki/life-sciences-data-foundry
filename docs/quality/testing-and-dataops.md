@@ -17,10 +17,13 @@ This document describes the automated testing strategy, GxP data contract valida
 │    ├── GxP dead-letter quarantine (test_quarantine.py)      │
 │    ├── Centralized SHA-256 crypto tests (test_crypto.py)    │
 │    ├── LangGraph GxP auditor tests (test_graph_auditor.py)  │
+│    ├── DMTA Target Steward tests (test_dmta_steward.py)     │
+│    ├── FastMCP Discovery & Server tests (test_mcp_server.py)│
 │    ├── OHDSI cohort phenotyping (test_cohort_builder.py)    │
 │    ├── HIPAA Safe Harbor de-id (test_deid.py)               │
 │    ├── Survival analysis marts (test_survival.py)           │
 │    ├── Patient feature store & CCI (test_features.py)       │
+│    ├── Target discovery evidence mart (test_target_mart.py) │
 │    ├── Open data connectors (test_connectors.py)            │
 │    └── Delta Medallion writer & merge (test_writer.py)      │
 ├─────────────────────────────────────────────────────────────┤
@@ -34,7 +37,8 @@ This document describes the automated testing strategy, GxP data contract valida
 │ 3. GxP Compliance & Lineage Auditing (governance/ & AI)     │
 │    ├── Decoupled JSON data contracts (rules.json)           │
 │    ├── MLflow SHA-256 cryptographic provenance tracking     │
-│    └── LangGraph state graph auditor with HITL sign-offs    │
+│    ├── LangGraph state graph auditor with HITL sign-offs    │
+│    └── DMTA Target Steward with 21 CFR §11.50 signatures    │
 ├─────────────────────────────────────────────────────────────┤
 │ 4. Workflow & IaC Validation (pipelines/ & terraform/)      │
 │    ├── Nextflow DSL2 dry-run stub execution                 │
@@ -51,6 +55,12 @@ Executes unit tests verifying domain transformers, vocabulary resolution, crypto
 
 ```bash
 pytest tests/unit/ -v
+
+# Run agentic DMTA and FastMCP unit suites specifically
+pytest tests/unit/test_dmta_steward.py tests/unit/test_mcp_server.py tests/unit/test_graph_auditor.py -v
+
+# Run target evidence mart unit suite specifically
+pytest tests/unit/test_target_mart.py -v
 
 # Run analytical cohort and survival unit suites specifically
 pytest tests/unit/test_cohort_builder.py tests/unit/test_deid.py tests/unit/test_survival.py tests/unit/test_features.py -v
@@ -121,7 +131,19 @@ python pipelines/provenance.py \
     --delta-log-dir "mock_data/out/omop/gold/measurement"
 ```
 
-### 8. Static Code Quality & Type Checking
+### 8. Agentic DMTA Target Triage Steward CLI
+Executes autonomous target feasibility checks and generates FDA 21 CFR §11.50 sealed validation dossiers:
+
+```bash
+python agentic-ai/dmta_target_steward.py \
+    --gene "BRAF" \
+    --disease-concept-id 254637 \
+    --hypothesis "Evaluate BRAF V600E mutations in colorectal carcinoma" \
+    --operator-id "qa_lead_vivi" \
+    --output "dossier_braf.json"
+```
+
+### 9. Static Code Quality & Type Checking
 Runs `ruff` and `mypy` static type checking configured in [`pyproject.toml`](../../pyproject.toml):
 
 ```bash

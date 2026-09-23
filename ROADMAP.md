@@ -17,7 +17,7 @@ This document tracks active development phases and engineering priorities for th
 | **Phase 9** | Gold-Tier Analytical Cohorts & Translational Endpoints | `analytical-layer/cohorts/` · HIPAA De-ID | `✅ COMPLETED` |
 | **Phase 10** | Nextflow Multi-Omics to OMOP Workflow | `pipelines/multi_omics_omop.nf` | `✅ COMPLETED` |
 | **Phase 11** | Target Discovery Data Products (Discovery Lakehouse) | `analytical-layer/discovery/` · DMTA Mart | `✅ COMPLETED` |
-| **Phase 12** | Agentic DMTA Target Triage & AI Discovery | `agentic-ai/dmta_target_steward.py` | `📋 PLANNED` |
+| **Phase 12** | Agentic DMTA Target Triage & AI Discovery | `agentic-ai/dmta_target_steward.py` | `✅ COMPLETED` |
 | **Phase 13** | End-to-End Analytical Showcase & Demonstration | Interactive Notebook & Databricks Demo | `✅ COMPLETED` |
 | **Phase 14** | GxP-Validated Feature Store & Drift Monitoring Engine | `governance/drift_monitor.py` · `cohorts/` | `📋 PLANNED` |
 
@@ -152,14 +152,14 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🤖 Phase 12: Agentic DMTA Target Triage & AI Discovery `[📋 PLANNED]`
+## 🤖 Phase 12: Agentic DMTA Target Triage & AI Discovery `[✅ COMPLETED]`
 
-- [ ] **Agentic DMTA Target Triage Graph (`agentic-ai/dmta_target_steward.py`)**
+- [x] **Agentic DMTA Target Triage Graph (`agentic-ai/dmta_target_steward.py`)**
   - 4-node LangGraph state machine (`ParseHypothesis` -> `QueryTargetMart` -> `ValidateLineageAndContract` -> `SynthesizeValidationDossier`) executing autonomous target feasibility checks.
   - Integrate with `governance/crypto.py` to seal target dossier outputs with 21 CFR §11.50 cryptographic signatures and Delta commit SHAs.
-- [ ] **FastMCP Discovery Tool Extensions (`agentic-ai/mcp_server.py`)**
+- [x] **FastMCP Discovery Tool Extensions (`agentic-ai/mcp_server.py`)**
   - Expose discovery-specific endpoints: `get_target_biomarker_profile(gene_symbol)` and `verify_target_lineage(dataset_version)` via FastMCP for programmatic agent tool use.
-- [ ] **Agentic DMTA Unit & Integration Tests (`tests/unit/test_dmta_steward.py`)**
+- [x] **Agentic DMTA Unit & Integration Tests (`tests/unit/test_dmta_steward.py`)**
   - Unit tests verifying LangGraph multi-node execution, state transitions, and electronic signature generation.
 
 ---

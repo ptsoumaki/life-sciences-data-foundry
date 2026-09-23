@@ -23,7 +23,7 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
 | **Analytical Cohorts & Survival** | OHDSI phenotyping, HIPAA Safe Harbor de-identification, Kaplan-Meier TTE modeling, and ML-ready feature store with Charlson Comorbidity Index |
 | **Multi-Omics Pipeline** | Nextflow DSL2 workflow chaining FastQC, bcftools, MultiQC, and OMOP CDM ingestion |
 | **Target Discovery Lakehouse** | Target-to-phenotype evidence mart, tractability scoring, and Haldane-Anscombe phenotypic odds ratios |
-| **Agentic Compliance Audit** | LangGraph state-graph auditor + FastMCP server with HITL 21 CFR §11.50 sign-off |
+| **Agentic DMTA & Audit** | LangGraph DMTA Target Steward + GxP state-graph auditor + FastMCP discovery/governance server |
 | **Agent Guidelines & Skills** | Repository architecture instructions (`AGENTS.md`) and 7 GxP workspace skills (`.agents/skills/`) |
 | **Cloud-Native IaC** | Databricks Asset Bundles + Terraform provisioning AWS S3 WORM (`COMPLIANCE` mode) |
 
@@ -42,7 +42,7 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
 | **Target Discovery & DMTA** | [`analytical-layer/discovery/`](analytical-layer/discovery/) | Target tractability, phenotypic odds ratios, ClinVar biomarker evidence mart |
 | **Delta Lake ACID** | [`analytical-layer/medallion/`](analytical-layer/medallion/) | Transactional reliability, schema evolution, time-travel, Liquid Clustering |
 | **GxP Quarantine & Remediation** | [`analytical-layer/medallion/quarantine.py`](analytical-layer/medallion/quarantine.py) | Dead-letter Delta sinks, ALCOA+ raw JSON preservation, batch quality gates, vocabulary replay |
-| **Agentic GxP Audit / MCP** | [`agentic-ai/graph_auditor.py`](agentic-ai/graph_auditor.py) · [`agentic-ai/mcp_server.py`](agentic-ai/mcp_server.py) | Autonomous lineage audit with HITL electronic sign-offs & AI discovery interface |
+| **Agentic DMTA & Audit / MCP** | [`agentic-ai/dmta_target_steward.py`](agentic-ai/dmta_target_steward.py) · [`agentic-ai/graph_auditor.py`](agentic-ai/graph_auditor.py) · [`agentic-ai/mcp_server.py`](agentic-ai/mcp_server.py) | Autonomous target feasibility triage, lineage audit with 21 CFR §11.50 sign-offs & FastMCP discovery interface |
 | **AWS S3 Object Lock** | [`terraform/storage_and_compute.tf`](terraform/storage_and_compute.tf) | WORM storage preventing unauthorized deletion of clinical records |
 
 ---
@@ -91,9 +91,9 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
                    ├───────────────────────────────────┐
                    ▼                                   ▼
           ┌───────────────────┐               ┌───────────────────┐
-          │ LangGraph Auditor │               │ Analytical Cohort │
-          │ FastMCP Server    │               │ & Survival Marts  │
-          │ (Agentic GxP)     │               │ (HIPAA De-ID/ML)  │
+          │ DMTA Steward /    │               │ Analytical Cohort │
+          │ LangGraph Auditor │               │ & Survival Marts  │
+          │ FastMCP Discovery │               │ (HIPAA De-ID/ML)  │
           └───────────────────┘               └───────────────────┘
 ```
 
@@ -105,7 +105,7 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
 life-sciences-data-foundry/
 ├── .agents/              # Workspace skills & agent runbooks
 ├── .github/              # CI/CD workflows & automated quality gates
-├── agentic-ai/           # FastMCP server & LangGraph GxP compliance auditor
+├── agentic-ai/           # FastMCP server, DMTA target triage steward & LangGraph GxP auditor
 ├── analytical-layer/     # PySpark OMOP CDM v5.4 normalization & Medallion engine
 │   ├── cohorts/          # OHDSI phenotyping, HIPAA de-id, survival analysis & feature store
 │   ├── discovery/        # Target discovery evidence mart & phenotypic odds ratio engine

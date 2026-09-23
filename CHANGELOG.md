@@ -17,6 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `execute_analytical_showcase` task definition executing the showcase notebook across `dev`, `staging`, and `prod` targets.
 - **Showcase Unit Test Suite (`tests/unit/test_showcase_notebook.py`)**:
   - Added comprehensive PySpark unit test suite verifying Bronze/Silver quarantine routing, Gold OMOP transformation, cohort phenotyping, Kaplan-Meier biostatistical bounds, publication figure generation, and end-to-end pipeline orchestration.
+- **Agentic DMTA Target Triage Steward (`agentic-ai/dmta_target_steward.py`)**:
+  - Implemented 4-node LangGraph autonomous target feasibility state machine (`ParseHypothesis` $\to$ `QueryTargetMart` $\to$ `ValidateLineageAndContract` $\to$ `SynthesizeValidationDossier`) executing target evidence triage.
+  - Added hypothesis parser supporting canonical HGNC uppercase gene normalization (`^[A-Z0-9_-]{2,15}$`), regex pattern extraction, and ICD-10 clinical diagnosis code translation into standard OMOP condition concepts.
+  - Implemented Target Evidence Mart querying for mutation burdens, Haldane-Anscombe phenotypic Odds Ratios, p-values, and tractability metrics.
+  - Built Great Expectations target contract evaluation (`governance/contracts/target_contract.json`), Delta Lake transaction log continuity verification (`_delta_log/*.json`), and Change Data Feed audit.
+  - Integrated with `governance/crypto.py` generating FDA 21 CFR §11.50 Electronic Signatures (`operator_id`, `meaning`, `timestamp`, `signature_checksum`) and sealing canonical dossier JSON with SHA-256 receipt digests.
+  - Added standalone CLI runner with `--gene`, `--disease-concept-id`, `--hypothesis`, and `--output` options.
+- **FastMCP Target Discovery Tool Extensions (`agentic-ai/mcp_server.py`)**:
+  - Exposed `tool_get_target_biomarker_profile` querying target phenotypic profiles, odds ratios, mutation burdens, and tractability scores.
+  - Exposed `tool_verify_target_lineage` evaluating Delta Lake commit logs, Change Data Feed activation, and Great Expectations contract compliance for discovery data products.
+  - Registered both discovery endpoints on `FoundryMCPServer`, raising total registered tools to 13.
+- **Agentic DMTA Unit Test Suite (`tests/unit/test_dmta_steward.py`, `tests/unit/test_mcp_server.py`)**:
+  - Added comprehensive PyTest suite covering graph compilation, hypothesis parsing, target evidence querying, contract validation, discontinuous Delta commit detection, 21 CFR §11.50 electronic signatures, end-to-end feasibility triage, and CLI execution.
 
 ## [0.4.0] - 2026-09-21
 

@@ -494,7 +494,7 @@ def plot_kaplan_meier_curves(
     if not show_plot:
         matplotlib.use("Agg")
 
-    pdf = df_km.toPandas()
+    pdf: Any = df_km.toPandas()
     if pdf.empty:
         logger.warning("Kaplan-Meier summary is empty; generating placeholder plot.")
         fig, ax = plt.subplots(figsize=(8, 5))

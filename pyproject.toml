@@ -68,7 +68,7 @@ known-first-party = ["omop_cdm_v54", "governance", "medallion", "cohorts", "pipe
 [tool.mypy]
 python_version = "3.11"
 explicit_package_bases = true
-mypy_path = ["analytical-layer", "."]
+mypy_path = ["analytical-layer", "agentic-ai", "."]
 ignore_missing_imports = false
 check_untyped_defs = true
 warn_unused_ignores = true

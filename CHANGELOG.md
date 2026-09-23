@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **End-to-End Analytical Showcase & Demonstration (`notebooks/clinical_multiomics_showcase.py`, `notebooks/clinical_multiomics_showcase.ipynb`, `notebooks/README.md`)**:
+  - Implemented an interactive, production-grade 9-stage analytical showcase executable both as a headless CLI script and as a Databricks/Jupyter notebook.
+  - Guided execution through Bronze multi-modal ingestion (EHR clinical demographics, diagnoses, LOINC chemistry panels, VCF v4.2 variants), Silver GxP quality filtering with dead-letter Delta Lake quarantine routing, Gold OMOP CDM v5.4 semantic normalization (`PERSON`, `CONDITION_OCCURRENCE`, `MEASUREMENT`) with Liquid Clustering, cohort phenotyping, and HIPAA Safe Harbor de-identification (HMAC-SHA256 pseudonymization, date shifting, age 89+ capping).
+  - Executed longitudinal time-to-event (TTE) survival analysis computing non-parametric Kaplan-Meier curves and Greenwood standard errors stratified by ClinVar pathogenic genomic variants, rendering publication-grade 300 DPI step survival curves with 95% confidence intervals and right-censoring tick marks.
+  - Evaluated Target Discovery & Phenotypic Evidence Mart associations and performed autonomous regulatory compliance audits via the LangGraph GxP State Graph Auditor (FDA 21 CFR §11.50).
+- **Databricks Asset Bundle Showcase Task (`resources/omop_pipeline_job.yml`)**:
+  - Added `execute_analytical_showcase` task definition executing the showcase notebook across `dev`, `staging`, and `prod` targets.
+- **Showcase Unit Test Suite (`tests/unit/test_showcase_notebook.py`)**:
+  - Added comprehensive PySpark unit test suite verifying Bronze/Silver quarantine routing, Gold OMOP transformation, cohort phenotyping, Kaplan-Meier biostatistical bounds, publication figure generation, and end-to-end pipeline orchestration.
 - **Agentic DMTA Target Triage Steward (`agentic-ai/dmta_target_steward.py`)**:
   - Implemented 4-node LangGraph autonomous target feasibility state machine (`ParseHypothesis` $\to$ `QueryTargetMart` $\to$ `ValidateLineageAndContract` $\to$ `SynthesizeValidationDossier`) executing target evidence triage.
   - Added hypothesis parser supporting canonical HGNC uppercase gene normalization (`^[A-Z0-9_-]{2,15}$`), regex pattern extraction, and ICD-10 clinical diagnosis code translation into standard OMOP condition concepts.

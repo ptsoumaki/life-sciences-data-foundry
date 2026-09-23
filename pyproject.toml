@@ -18,6 +18,8 @@ dependencies = [
     "pydantic>=2.6.0",
     "langgraph>=0.0.20",
     "mcp>=0.1.0",
+    "matplotlib>=3.7.0",
+    "numpy>=1.24.0",
 ]
 
 [project.optional-dependencies]
@@ -57,13 +59,16 @@ ignore = [
     "RUF012", # Mutable class attributes should be annotated with typing.ClassVar
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"notebooks/*" = ["E402"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["omop_cdm_v54", "governance", "medallion", "cohorts", "pipelines", "discovery"]
 
 [tool.mypy]
 python_version = "3.11"
 explicit_package_bases = true
-mypy_path = ["analytical-layer", "."]
+mypy_path = ["analytical-layer", "agentic-ai", "."]
 ignore_missing_imports = false
 check_untyped_defs = true
 warn_unused_ignores = true

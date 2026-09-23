@@ -24,3 +24,15 @@ resources:
               - "--save_delta"
               - "--output_dir"
               - "/dbfs/FileStore/omop_warehouse/"
+
+        - task_key: execute_analytical_showcase
+          depends_on:
+            - task_key: execute_omop_normalization
+          environment_key: default
+          spark_python_task:
+            python_file: ${workspace.root_path}/files/notebooks/clinical_multiomics_showcase.py
+            parameters:
+              - "--headless"
+              - "--output_dir"
+              - "/dbfs/FileStore/omop_warehouse/showcase"
+

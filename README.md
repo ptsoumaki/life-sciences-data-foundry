@@ -113,6 +113,7 @@ life-sciences-data-foundry/
 │   └── omop_cdm_v54/     # Domain transformers & open data connectors
 ├── docs/                 # Platform documentation hub
 ├── governance/           # Great Expectations contracts & MLflow GxP lineage tracking
+├── notebooks/            # Interactive clinical & multi-omics showcase notebooks
 ├── pipelines/            # Nextflow DSL2 orchestration & AWS Batch compute modules
 ├── scripts/              # Environment bootstrapping (PowerShell & POSIX)
 ├── terraform/            # Cloud IaC (AWS S3 WORM, KMS, IAM)
@@ -162,6 +163,7 @@ life-sciences-data-foundry/
 | Analytical Layer | [`analytical-layer/README.md`](analytical-layer/README.md) |
 | Governance & GxP | [`governance/README.md`](governance/README.md) |
 | Workflow Pipelines | [`pipelines/README.md`](pipelines/README.md) |
+| Showcase Notebooks | [`notebooks/README.md`](notebooks/README.md) |
 | Agentic AI Tier | [`agentic-ai/README.md`](agentic-ai/README.md) |
 | Agent Guidelines & Skills | [`AGENTS.md`](AGENTS.md) · [`.agents/skills/`](.agents/skills/) |
 | Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) |

@@ -18,8 +18,8 @@ This document tracks active development phases and engineering priorities for th
 | **Phase 10** | Nextflow Multi-Omics to OMOP Workflow | `pipelines/multi_omics_omop.nf` | `✅ COMPLETED` |
 | **Phase 11** | Target Discovery Data Products (Discovery Lakehouse) | `analytical-layer/discovery/` · DMTA Mart | `✅ COMPLETED` |
 | **Phase 12** | Agentic DMTA Target Triage & AI Discovery | `agentic-ai/dmta_target_steward.py` | `📋 PLANNED` |
-| **Phase 13** | GxP-Validated Feature Store & Drift Monitoring Engine | `governance/drift_monitor.py` · `cohorts/` | `📋 PLANNED` |
-| **Phase 14** | End-to-End Analytical Showcase & Demonstration | Interactive Notebook & Databricks Demo | `📋 PLANNED` |
+| **Phase 13** | End-to-End Analytical Showcase & Demonstration | Interactive Notebook & Databricks Demo | `✅ COMPLETED` |
+| **Phase 14** | GxP-Validated Feature Store & Drift Monitoring Engine | `governance/drift_monitor.py` · `cohorts/` | `📋 PLANNED` |
 
 ---
 
@@ -164,7 +164,18 @@ This document tracks active development phases and engineering priorities for th
 
 ---
 
-## 🔍 Phase 13: GxP-Validated Feature Store & Drift Monitoring Engine `[📋 PLANNED]`
+## 📈 Phase 13: End-to-End Analytical Showcase & Demonstration `[✅ COMPLETED]`
+
+- [x] **Interactive Clinical & Multi-Omics Showcase Notebook (`notebooks/clinical_multiomics_showcase.py`, `notebooks/clinical_multiomics_showcase.ipynb`, `notebooks/README.md`)**
+  - Standalone, dual-format (PySpark script / Jupyter notebook) showcase demonstrating Bronze ingestion $\to$ Silver GxP assertion & dead-letter quarantine $\to$ Gold OMOP v5.4 normalization & Liquid Clustering $\to$ Type 2 Diabetes cohort phenotyping & HIPAA Safe Harbor de-identification $\to$ Longitudinal Kaplan-Meier survival curves with Greenwood SE & 95% CIs $\to$ Target Discovery Mart $\to$ LangGraph autonomous GxP lineage audit.
+- [x] **Databricks Asset Bundle Showcase Task (`resources/omop_pipeline_job.yml`)**
+  - Integrated `execute_analytical_showcase` task into DABs workflow orchestrating automated demonstration execution.
+- [x] **Showcase Verification Test Suite (`tests/unit/test_showcase_notebook.py`)**
+  - Comprehensive PySpark unit test suite validating each stage of the showcase notebook and verifying headless CLI execution.
+
+---
+
+## 🔍 Phase 14: GxP-Validated Feature Store & Drift Monitoring Engine `[📋 PLANNED]`
 
 - [ ] **Point-in-Time Correctness & Feature Store Immutability (`analytical-layer/cohorts/point_in_time.py`)**
   - Implement distributed `as_of_join` engine enforcing zero future data leakage across longitudinal clinical events and multi-omics observations:
@@ -183,13 +194,6 @@ This document tracks active development phases and engineering priorities for th
   - Expose MLOps governance endpoints: `get_feature_drift_report(cohort_definition_id, target_metric)` and `verify_feature_matrix_lineage(matrix_delta_version)` via FastMCP for agentic quality inspection.
 - [ ] **Unit & Gating Verification Suites (`tests/unit/test_drift_monitor.py`, `tests/unit/test_point_in_time.py`)**
   - Unit tests verifying temporal isolation (assert zero record contamination for $T_{\text{event}} > T_0$), analytical PSI calculation precision ($\pm 10^{-4}$), and automated pipeline abort triggers on simulated out-of-distribution batches.
-
----
-
-## 📈 Phase 14: End-to-End Analytical Showcase & Demonstration `[📋 PLANNED]`
-
-- [ ] **Interactive Clinical & Multi-Omics Showcase Notebook**
-  - Provide a standalone, documented Jupyter/Databricks showcase demonstrating Bronze ingestion $\to$ Silver GxP assertion $\to$ Gold cohort extraction $\to$ LangGraph agentic lineage audit with visual survival curve plots.
 
 ---
 

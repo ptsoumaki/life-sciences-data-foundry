@@ -25,6 +25,8 @@ The repository is structured into modular layers:
 - **`tests/`**:
   - `tests/unit/`: Comprehensive PySpark and Python unit tests.
   - `tests/integration/`: End-to-end Medallion pipeline integration tests.
+- **`notebooks/`**:
+  - Interactive clinical and multi-omics analytical showcase notebooks (`clinical_multiomics_showcase.py`, `.ipynb`, `README.md`) executable via Databricks Workspaces, VS Code Interactive, or headless CLI.
 
 ---
 

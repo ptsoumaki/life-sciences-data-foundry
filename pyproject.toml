@@ -99,7 +99,7 @@ ignore_missing_imports = true
 minversion = "8.0"
 testpaths = ["tests/unit", "tests/integration"]
 python_files = ["test_*.py"]
-addopts = "-v --strict-markers"
+addopts = "-v -s --strict-markers"
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",

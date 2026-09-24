@@ -13,8 +13,8 @@ flowchart LR
     C --> D["Cohort Phenotyping<br/>& HIPAA De-Identification"]
     D --> E["Time-to-Event (TTE) Mart<br/>& Kaplan-Meier Estimation"]
     E --> F["Publication-Grade<br/>Survival Curve Visualizations"]
-    F --> G["Target Discovery Mart<br/>& Odds Ratios"]
-    G --> H["LangGraph GxP Audit<br/>(21 CFR Part 11 e-Signatures)"]
+    F --> G["Target Discovery Mart<br/>& Delta Lake Persistence"]
+    G --> H["LangGraph GxP Audit<br/>& DMTA Target Triage (e-Sig)"]
 ```
 
 ---
@@ -62,5 +62,5 @@ databricks bundle run omop_cdm_medallion_pipeline -t dev
 - **Zero Data Loss Provability**: Real-world records violating physiological boundaries or timestamp formats are routed to dedicated Delta Lake dead-letter sinks (`quarantine_patients`, `quarantine_conditions`, `quarantine_measurements`) preserving raw payloads and failure reasons.
 - **HIPAA Safe Harbor Compliance**: Applies keyed HMAC-SHA256 pseudonymization, salt-seeded date shifting (±Δ days preserving inter-event duration and survival follow-up), and age 89+ capping (45 CFR §164.514(b)(2)).
 - **Kaplan-Meier Survival Estimation**: Evaluates non-parametric product-limit survival functions $S(t) = \prod [1 - d(t)/n(t)]$ with Greenwood standard errors across ClinVar pathogenic variant strata and exports high-resolution publication figures (`kaplan_meier_survival_curves.png`).
-- **Target-to-Phenotype Discovery**: Evaluates Haldane-Anscombe disease odds ratios, tractability scores, and ClinVar mutation burden for therapeutic target validation.
-- **GxP Audit Trail**: LangGraph state machine autonomous evaluation of Delta Lake transaction log continuity and FDA 21 CFR §11.50 dual electronic signatures.
+- **Target-to-Phenotype Discovery & Delta Persistence**: Evaluates Haldane-Anscombe disease odds ratios, tractability scores, and ClinVar mutation burden for therapeutic target validation, and persists the Target Evidence Mart to Delta Lake format with Liquid Clustering.
+- **Autonomous GxP Audit & DMTA Target Triage**: LangGraph state machine evaluation of Delta Lake transaction log continuity, compliance status scoring, and autonomous DMTA target feasibility validation with cryptographically sealed FDA 21 CFR §11.50 Electronic Signatures.

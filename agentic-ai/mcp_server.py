@@ -21,6 +21,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 try:
     import mlflow
     from mlflow.tracking import MlflowClient
@@ -1627,11 +1629,22 @@ def tool_get_target_biomarker_profile(
     clean_gene = str(gene_symbol).strip().upper()
     resolved_path = _resolve_repo_path(target_mart_path) if target_mart_path else None
 
-    # If no path specified, check standard default paths
+    # If no path specified, check standard default paths (delta_warehouse gold mart then repo data root)
     if not resolved_path:
-        default_candidate = os.path.join(BASE_DIR, "data", "gold", "target_disease_evidence")
-        if os.path.exists(default_candidate):
-            resolved_path = default_candidate
+        for candidate in [
+            os.path.join(
+                BASE_DIR,
+                "analytical-layer",
+                "data",
+                "delta_warehouse",
+                "gold",
+                "target_disease_evidence",
+            ),
+            os.path.join(BASE_DIR, "data", "gold", "target_disease_evidence"),
+        ]:
+            if os.path.exists(candidate):
+                resolved_path = candidate
+                break
 
     records: list[dict[str, Any]] = []
     if resolved_path and os.path.exists(resolved_path):
@@ -1646,13 +1659,14 @@ def tool_get_target_biomarker_profile(
                         if str(r.get("target_gene_symbol", "")).upper() == clean_gene
                     ]
             elif os.path.isdir(resolved_path):
-                parquet_files = glob.glob(
+                all_parquet = glob.glob(
                     os.path.join(resolved_path, "**", "*.parquet"), recursive=True
                 )
+                parquet_files = [
+                    pf for pf in all_parquet if "_delta_log" not in pf.replace("\\", "/").split("/")
+                ]
                 if parquet_files:
                     try:
-                        import pandas as pd
-
                         dfs = [pd.read_parquet(pf) for pf in parquet_files]
                         if dfs:
                             combined = pd.concat(dfs, ignore_index=True)
@@ -1728,9 +1742,20 @@ def tool_verify_target_lineage(
     """
     resolved_mart = _resolve_repo_path(target_mart_path) if target_mart_path else None
     if not resolved_mart:
-        default_candidate = os.path.join(BASE_DIR, "data", "gold", "target_disease_evidence")
-        if os.path.exists(default_candidate):
-            resolved_mart = default_candidate
+        for candidate in [
+            os.path.join(
+                BASE_DIR,
+                "analytical-layer",
+                "data",
+                "delta_warehouse",
+                "gold",
+                "target_disease_evidence",
+            ),
+            os.path.join(BASE_DIR, "data", "gold", "target_disease_evidence"),
+        ]:
+            if os.path.exists(candidate):
+                resolved_mart = candidate
+                break
 
     resolved_rules = _resolve_repo_path(rules_path)
 

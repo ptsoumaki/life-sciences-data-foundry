@@ -141,3 +141,25 @@ def test_showcase_full_end_to_end_pipeline(spark: SparkSession, showcase_temp_di
     assert results["target_evidence"].count() > 0
     assert results["target_evidence"].select("mlflow_run_id").first()[0].startswith("showcase_run_")
     assert results["audit_report"] is not None
+    assert results["audit_report"].get("compliance_status") in (
+        "COMPLIANT",
+        "FLAGGED_FOR_REVIEW",
+        "NON_COMPLIANT",
+    )
+
+    # Verify Target Evidence Mart was persisted to Delta Lake
+    target_mart_dir = os.path.join(showcase_temp_dir, "gold", "target_disease_evidence")
+    assert os.path.exists(target_mart_dir)
+
+    # Verify DMTA Target Steward validation dossier and 21 CFR §11.50 e-Signature
+    assert "target_dossier" in results
+    dossier = results["target_dossier"]
+    assert dossier.get("triage_decision") in (
+        "FEASIBLE",
+        "INCONCLUSIVE",
+        "HIGH_RISK_REJECTED",
+        "INVALID_LINEAGE",
+    )
+    assert dossier.get("electronic_signature") is not None
+    assert "signature_checksum" in dossier["electronic_signature"]
+    assert dossier.get("dossier_receipt_sha256") is not None

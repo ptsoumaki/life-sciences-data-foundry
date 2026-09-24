@@ -47,6 +47,7 @@ for _path in [REPO_ROOT, _ANALYTICAL_DIR, _AGENTIC_DIR]:
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from dmta_target_steward import DMTATargetSteward
 from graph_auditor import GxPGraphAuditor
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -113,7 +114,7 @@ def init_showcase_spark_session(
     )
 
     if warehouse_dir:
-        builder = builder.config("spark.sql.warehouse.dir", warehouse_dir)
+        builder = builder.config("spark.sql.warehouse.dir", os.path.abspath(warehouse_dir))
 
     if HAS_DELTA and configure_spark_with_delta_pip is not None:
         builder = builder.config(
@@ -587,14 +588,15 @@ def run_target_discovery_mart(
     gold_dfs: dict[str, DataFrame],
     df_cohort: DataFrame,
     mlflow_run_id: str,
+    warehouse_dir: str | None = None,
 ) -> DataFrame:
-    """Computes Target-to-Phenotype association evidence, Haldane-Anscombe Odds Ratios, and tractability scores."""
+    """Computes and persists Target-to-Phenotype association evidence, Haldane-Anscombe Odds Ratios, and tractability scores."""
     logger.info("Evaluating Target-to-Phenotype Evidence Mart...")
     target_mart = TargetEvidenceMart(
         spark,
         TargetEvidenceMartConfig(
             min_carrier_count=1,
-            table_name="target_disease_evidence_showcase",
+            table_name="target_disease_evidence",
         ),
     )
     df_evidence = target_mart.build_target_evidence_mart(
@@ -603,13 +605,16 @@ def run_target_discovery_mart(
         df_measurement=gold_dfs["measurement"],
     )
     df_evidence = df_evidence.withColumn("mlflow_run_id", F.lit(mlflow_run_id))
+    if warehouse_dir:
+        persisted_path = target_mart.persist_target_mart(df_evidence, base_output_dir=warehouse_dir)
+        logger.info("Persisted Target Evidence Mart to Delta Lake: %s", persisted_path)
     logger.info("Generated %d target-disease evidence associations.", df_evidence.count())
     return df_evidence
 
 
 # COMMAND ----------
 # %% [markdown]
-# ### Stage 9: LangGraph Autonomous GxP Lineage Audit (21 CFR Part 11)
+# ### Stage 9: LangGraph Autonomous GxP Lineage Audit & DMTA Target Triage (21 CFR Part 11)
 
 
 # COMMAND ----------
@@ -619,7 +624,7 @@ def run_langgraph_gxp_audit(
     delta_table_path: str,
     rules_path: str,
 ) -> dict[str, Any]:
-    """Audits Delta transaction logs, verifies MLflow lineage hashes, and generates signed GxP dossiers."""
+    """Audits Delta transaction logs, verifies MLflow lineage hashes, and evaluates GxP compliance."""
     logger.info("Executing LangGraph State Graph GxP Compliance Auditor...")
     auditor = GxPGraphAuditor()
     audit_result = auditor.audit_run_lineage(
@@ -629,8 +634,43 @@ def run_langgraph_gxp_audit(
         enable_hitl=False,
         log_to_mlflow=False,
     )
-    logger.info("GxP Audit State evaluated with final status: %s", audit_result.get("final_status"))
+    status = audit_result.get("compliance_status", audit_result.get("final_status", "COMPLIANT"))
+    logger.info("GxP Audit State evaluated with compliance status: %s", status)
     return audit_result
+
+
+def run_dmta_target_triage(
+    gene_symbol: str = "BRAF",
+    disease_concept_id: int | None = 254637,
+    target_mart_path: str | None = None,
+    rules_path: str | None = None,
+    operator_id: str = "agent:dmta_target_steward",
+) -> dict[str, Any]:
+    """Executes autonomous LangGraph DMTA target triage and synthesizes 21 CFR §11.50 signed dossier."""
+    logger.info("Executing Autonomous LangGraph DMTA Target Triage for '%s'...", gene_symbol)
+    steward = DMTATargetSteward()
+    effective_rules = rules_path or os.path.join(
+        REPO_ROOT, "governance", "contracts", "target_contract.json"
+    )
+    dossier = steward.triage_target(
+        target_gene_symbol=gene_symbol,
+        disease_concept_id=disease_concept_id,
+        target_mart_path=target_mart_path,
+        rules_path=effective_rules,
+        operator_id=operator_id,
+    )
+    decision = dossier.get("triage_decision", "INCONCLUSIVE")
+    score = dossier.get("feasibility_score", 0.0)
+    sig = dossier.get("electronic_signature", {})
+    sig_checksum = sig.get("signature_checksum") if isinstance(sig, dict) else None
+    sig_repr = sig_checksum[:12] + "..." if sig_checksum else "NONE"
+    logger.info(
+        "DMTA Triage completed: decision=%s, feasibility_score=%.1f, e-signature=%s",
+        decision,
+        score,
+        sig_repr,
+    )
+    return dossier
 
 
 # COMMAND ----------
@@ -649,8 +689,8 @@ def run_showcase_pipeline(
 ) -> dict[str, Any]:
     """Executes the full end-to-end Life Sciences Data Foundry showcase pipeline."""
     effective_data_dir = resolve_data_dir(data_dir)
-    effective_output_dir = output_dir or os.path.join(
-        REPO_ROOT, "analytical-layer", "data", "delta_warehouse"
+    effective_output_dir = os.path.abspath(
+        output_dir or os.path.join(REPO_ROOT, "analytical-layer", "data", "delta_warehouse")
     )
     rules_path = os.path.join(REPO_ROOT, "governance", "rules.json")
 
@@ -683,15 +723,37 @@ def run_showcase_pipeline(
     fig = plot_kaplan_meier_curves(df_km, output_path=fig_path, show_plot=not headless)
 
     # 7. Target Discovery Mart (Phase 11)
-    df_target_evidence = run_target_discovery_mart(spark, gold_dfs, df_cohort, mlflow_run_id)
+    df_target_evidence = run_target_discovery_mart(
+        spark, gold_dfs, df_cohort, mlflow_run_id, warehouse_dir=effective_output_dir
+    )
 
-    # 8. LangGraph GxP Compliance Audit
+    # 8. LangGraph GxP Compliance Audit (FDA 21 CFR Part 11)
     gold_person_path = os.path.join(effective_output_dir, "gold", "person")
     audit_report = run_langgraph_gxp_audit(
         run_id=mlflow_run_id,
         delta_table_path=gold_person_path,
         rules_path=rules_path,
     )
+
+    # 9. Autonomous DMTA Target Triage & e-Signature (Phase 12)
+    mart_path = os.path.join(effective_output_dir, "gold", "target_disease_evidence")
+    target_contract_path = os.path.join(
+        REPO_ROOT, "governance", "contracts", "target_contract.json"
+    )
+    target_dossier = run_dmta_target_triage(
+        gene_symbol="BRAF",
+        disease_concept_id=254637,
+        target_mart_path=mart_path,
+        rules_path=target_contract_path,
+    )
+
+    compliance_gate = audit_report.get(
+        "compliance_status", audit_report.get("final_status", "PASSED")
+    )
+    e_sig = target_dossier.get("electronic_signature", {})
+    sig_raw = e_sig.get("signature_checksum") if isinstance(e_sig, dict) else None
+    sig_short = sig_raw[:16] + "..." if sig_raw else "N/A"
+    operator_name = e_sig.get("operator_id", "N/A") if isinstance(e_sig, dict) else "N/A"
 
     print("\n" + "=" * 80)
     print(" [LSDF] LIFE SCIENCES DATA FOUNDRY -- SHOWCASE EXECUTION SUMMARY")
@@ -705,7 +767,11 @@ def run_showcase_pipeline(
     print(f" * Survival KM Strata     : {df_km.count()} points evaluated")
     print(f" * Kaplan-Meier Figure    : {fig_path}")
     print(f" * Target Evidence Rows   : {df_target_evidence.count()}")
-    print(f" * GxP Audit Lineage Gate : {audit_report.get('final_status', 'PASSED')}")
+    print(f" * GxP Lineage Audit Gate : {compliance_gate}")
+    print(
+        f" * DMTA Target Triage     : {target_dossier.get('triage_decision')} (Score: {target_dossier.get('feasibility_score')})"
+    )
+    print(f" * 21 CFR §11.50 e-Sig    : {sig_short} (Operator: {operator_name})")
     print("=" * 80 + "\n")
 
     return {
@@ -722,6 +788,7 @@ def run_showcase_pipeline(
         "figure_path": fig_path,
         "target_evidence": df_target_evidence,
         "audit_report": audit_report,
+        "target_dossier": target_dossier,
     }
 
 

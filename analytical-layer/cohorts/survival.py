@@ -17,6 +17,7 @@ from pyspark.sql import Column, DataFrame, SparkSession, Window
 from pyspark.sql.functions import (
     coalesce,
     col,
+    date_add,
     datediff,
     exp,
     greatest,
@@ -254,17 +255,17 @@ class SurvivalMartBuilder:
             df_base = df_base.withColumn("has_pathogenic_variant", lit(0).cast(IntegerType()))
 
         # 6. Determine Effective Censor Cutoff Date
-        # Precedence: study_end_date > obs_period_end > cohort_end_date
-        fallback_censor = coalesce(
+        # Precedence: study_end_date > obs_period_end > cohort_end_date > default_censor_window_days
+        obs_censor = coalesce(
             col("obs_period_end"),
             col("cohort_end_date"),
         )
         if self.config.study_end_date:
             admin_end = to_date(lit(self.config.study_end_date))
             effective_censor_expr = coalesce(
-                least(fallback_censor, admin_end),
+                least(obs_censor, admin_end),
                 admin_end,
-                fallback_censor,
+                obs_censor,
             )
             # is_study_end_expr is a lazy Column expression; it references
             # "effective_censor_date" which is added to df_base one line below.
@@ -272,7 +273,13 @@ class SurvivalMartBuilder:
             # until an action (collect/write) is triggered.
             is_study_end_expr = col("effective_censor_date") == admin_end
         else:
-            effective_censor_expr = fallback_censor
+            default_window_censor = date_add(
+                col("cohort_start_date"), lit(self.config.default_censor_window_days)
+            )
+            effective_censor_expr = coalesce(
+                obs_censor,
+                default_window_censor,
+            )
             is_study_end_expr = lit(False)
 
         df_base = df_base.withColumn("effective_censor_date", effective_censor_expr)

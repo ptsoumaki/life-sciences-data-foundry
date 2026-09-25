@@ -35,6 +35,7 @@ from pyspark.sql.types import (
     StructField,
     StructType,
 )
+from pyspark.sql.utils import AnalysisException
 
 from omop_cdm_v54.compat import HAS_DELTA
 
@@ -434,12 +435,20 @@ class OHDSICohortBuilder:
                     target_path,
                 )
                 return target_path
-            except Exception as delta_err:
+            except (AnalysisException, OSError) as delta_err:
                 _log.warning(
                     "[COHORT SINK] Delta Liquid Clustering write encountered error: %s. "
-                    "Falling back to Parquet.",
+                    "Falling back to standard Delta.",
                     delta_err,
                 )
+                try:
+                    df_cohort.write.format("delta").mode(mode).save(target_path)
+                    return target_path
+                except (AnalysisException, OSError) as fallback_err:
+                    _log.warning(
+                        "[COHORT SINK] Standard Delta write failed: %s. Falling back to Parquet.",
+                        fallback_err,
+                    )
 
         # Fallback to standard Parquet persistence for environments without Delta/Liquid Clustering.
         os.makedirs(target_path, exist_ok=True)

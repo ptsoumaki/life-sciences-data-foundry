@@ -28,7 +28,7 @@ process PROVENANCE_MANIFEST {
     {
       "manifest_version": "1.0.0",
       "pipeline_name": "life-sciences-data-foundry-pipeline",
-      "pipeline_version": "0.4.0",
+      "pipeline_version": "0.5.0",
       "workflow_session_id": "stub-session-000",
       "timestamp": "2026-09-20T00:00:00Z",
       "compliance": {
@@ -49,7 +49,7 @@ process PROVENANCE_MANIFEST {
         "execution_mode": "stub"
       },
       "target_delta_version": 0,
-      "manifest_sha256": "9275d8454a48db88b67be2b7b202755489bc783d13b8879b48b9d3eef333f569"
+      "manifest_sha256": "6a19a3310ce579fc7d64c4140ed6cf6f526a2aecb72fc3be78fd5f19155f2d01"
     }
     EOF
     """

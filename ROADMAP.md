@@ -167,7 +167,7 @@ This document tracks active development phases and engineering priorities for th
 ## 📈 Phase 13: End-to-End Analytical Showcase & Demonstration `[✅ COMPLETED]`
 
 - [x] **Interactive Clinical & Multi-Omics Showcase Notebook (`notebooks/clinical_multiomics_showcase.py`, `notebooks/clinical_multiomics_showcase.ipynb`, `notebooks/README.md`)**
-  - Standalone, dual-format (PySpark script / Jupyter notebook) showcase demonstrating Bronze ingestion $\to$ Silver GxP assertion & dead-letter quarantine $\to$ Gold OMOP v5.4 normalization & Liquid Clustering $\to$ Type 2 Diabetes cohort phenotyping & HIPAA Safe Harbor de-identification $\to$ Longitudinal Kaplan-Meier survival curves with Greenwood SE & 95% CIs $\to$ Target Discovery Mart $\to$ LangGraph autonomous GxP lineage audit.
+  - Standalone, dual-format (PySpark script / Jupyter notebook) showcase demonstrating Bronze ingestion $\to$ Silver GxP assertion & dead-letter quarantine $\to$ Gold OMOP v5.4 normalization & Liquid Clustering $\to$ Type 2 Diabetes cohort phenotyping & HIPAA Safe Harbor de-identification $\to$ Longitudinal Kaplan-Meier survival curves with Greenwood SE & 95% CIs $\to$ Target Discovery Mart Delta persistence $\to$ LangGraph DMTA target triage with 21 CFR §11.50 e-signatures $\to$ LangGraph autonomous GxP lineage audit.
 - [x] **Databricks Asset Bundle Showcase Task (`resources/omop_pipeline_job.yml`)**
   - Integrated `execute_analytical_showcase` task into DABs workflow orchestrating automated demonstration execution.
 - [x] **Showcase Verification Test Suite (`tests/unit/test_showcase_notebook.py`)**

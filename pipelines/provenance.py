@@ -48,7 +48,7 @@ def resolve_default_pipeline_version() -> str:
             pass
 
     # 3. Defensive fallback
-    return "0.4.0"
+    return "0.5.0"
 
 
 DEFAULT_CONTAINERS = {

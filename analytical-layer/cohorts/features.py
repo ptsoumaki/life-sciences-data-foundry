@@ -276,6 +276,7 @@ class PatientFeatureStore:
             return df_res
 
         # Filter conditions occurring on or before cohort_start_date (T0)
+        episode_keys = ["cohort_definition_id", "subject_id", "cohort_start_date"]
         cond_prior = (
             df_condition_occurrence.select(
                 col("person_id").cast(LongType()).alias("subject_id"),
@@ -283,7 +284,7 @@ class PatientFeatureStore:
                 to_date(col("condition_start_date")).alias("condition_start_date"),
             )
             .join(
-                df_features.select("subject_id", "cohort_start_date"),
+                df_features.select(*episode_keys).distinct(),
                 on="subject_id",
                 how="inner",
             )
@@ -303,7 +304,7 @@ class PatientFeatureStore:
             )
             for days in self.config.lookback_windows_days
         ]
-        cond_counts = cond_prior.groupBy("subject_id").agg(
+        cond_counts = cond_prior.groupBy(*episode_keys).agg(
             *window_aggs,
             countDistinct(
                 when(col("days_prior_to_index") <= 365, col("condition_concept_id")).otherwise(
@@ -320,7 +321,7 @@ class PatientFeatureStore:
         for days in self.config.lookback_windows_days:
             fill_defaults[f"condition_count_{days}d"] = 0
 
-        df_joined = df_features.join(cond_counts, on="subject_id", how="left").fillna(fill_defaults)
+        df_joined = df_features.join(cond_counts, on=episode_keys, how="left").fillna(fill_defaults)
 
         # Build indicators for each Charlson category
         cat_aggs = []
@@ -332,8 +333,8 @@ class PatientFeatureStore:
                 ).alias(f"_raw_cci_{cat_name}")
             )
 
-        df_cci_raw = cond_prior.groupBy("subject_id").agg(*cat_aggs)
-        df_with_cci = df_joined.join(df_cci_raw, on="subject_id", how="left")
+        df_cci_raw = cond_prior.groupBy(*episode_keys).agg(*cat_aggs)
+        df_with_cci = df_joined.join(df_cci_raw, on=episode_keys, how="left")
 
         # Clean nulls to 0 for raw indicators
         for cat_name in CHARLSON_CATEGORIES:
@@ -414,6 +415,7 @@ class PatientFeatureStore:
             return df_res
 
         # Measurement table filtered to values prior to or on index date
+        episode_keys = ["cohort_definition_id", "subject_id", "cohort_start_date"]
         meas_prior = (
             df_measurement.select(
                 col("person_id").cast(LongType()).alias("subject_id"),
@@ -422,7 +424,7 @@ class PatientFeatureStore:
                 col("value_as_number").cast(DoubleType()),
             )
             .join(
-                df_features.select("subject_id", "cohort_start_date"),
+                df_features.select(*episode_keys).distinct(),
                 on="subject_id",
                 how="inner",
             )
@@ -440,12 +442,12 @@ class PatientFeatureStore:
             bio_df = meas_prior.filter(col("measurement_concept_id") == bio_concept_id)
 
             # Latest measurement prior to T0
-            w_latest = Window.partitionBy("subject_id").orderBy(col("measurement_date").desc())
+            w_latest = Window.partitionBy(*episode_keys).orderBy(col("measurement_date").desc())
             df_latest = (
                 bio_df.withColumn("rn", row_number().over(w_latest))
                 .filter(col("rn") == 1)
                 .select(
-                    col("subject_id"),
+                    *episode_keys,
                     spark_round(col("value_as_number"), 2).alias(f"latest_{bio_name}"),
                 )
             )
@@ -453,7 +455,7 @@ class PatientFeatureStore:
             # 365-day baseline statistics
             df_stats = (
                 bio_df.filter(col("days_prior") <= 365)
-                .groupBy("subject_id")
+                .groupBy(*episode_keys)
                 .agg(
                     spark_round(spark_avg("value_as_number"), 2).alias(f"mean_{bio_name}_365d"),
                     spark_round(spark_min("value_as_number"), 2).alias(f"min_{bio_name}_365d"),
@@ -462,8 +464,8 @@ class PatientFeatureStore:
             )
 
             df_res = (
-                df_res.join(df_latest, on="subject_id", how="left")
-                .join(df_stats, on="subject_id", how="left")
+                df_res.join(df_latest, on=episode_keys, how="left")
+                .join(df_stats, on=episode_keys, how="left")
                 .withColumn(
                     f"is_missing_{bio_name}",
                     when(col(f"latest_{bio_name}").isNull(), lit(1))

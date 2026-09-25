@@ -21,6 +21,7 @@ import re
 import sys
 from typing import Any, TypedDict
 
+import pandas as pd
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -290,14 +291,17 @@ def query_target_mart(state: DMTATargetState) -> dict[str, Any]:
                         ]
                 # 2. Check if path is a directory (Delta Lake or Parquet)
                 elif os.path.isdir(target_mart_path):
-                    # Check for parquet files directly
-                    parquet_files = glob.glob(
+                    # Check for parquet files directly, excluding Delta Lake transaction log checkpoints
+                    all_parquet = glob.glob(
                         os.path.join(target_mart_path, "**", "*.parquet"), recursive=True
                     )
+                    parquet_files = [
+                        pf
+                        for pf in all_parquet
+                        if "_delta_log" not in pf.replace("\\", "/").split("/")
+                    ]
                     if parquet_files:
                         try:
-                            import pandas as pd
-
                             dfs = [pd.read_parquet(pf) for pf in parquet_files]
                             if dfs:
                                 combined = pd.concat(dfs, ignore_index=True)
@@ -452,10 +456,71 @@ def validate_lineage_and_contract(state: DMTATargetState) -> dict[str, Any]:
                 }
             )
 
+    table_expectations = [
+        exp
+        for exp in expectations
+        if exp.get("expectation_type") == "expect_table_columns_to_match_set"
+    ]
+    column_expectations = [
+        exp
+        for exp in expectations
+        if exp.get("expectation_type") != "expect_table_columns_to_match_set"
+    ]
+
     if records:
+        # Table-level schema evaluations (evaluated once across record set)
+        record_cols = set(records[0].keys())
+        for exp in table_expectations:
+            exp_type = str(exp.get("expectation_type") or "expect_table_columns_to_match_set")
+            kwargs = exp.get("kwargs", {})
+            meta = exp.get("meta", {})
+            severity = meta.get("severity", "ERROR")
+            col_set = kwargs.get("column_set", [])
+            exact_match = kwargs.get("exact_match", False)
+
+            missing_cols = set(col_set) - record_cols
+            if missing_cols and exact_match:
+                if severity == "CRITICAL_FATAL":
+                    has_fatal_contract_breach = True
+                contract_findings.append(
+                    {
+                        "rule": "TABLE_COLUMNS_MATCH_SET",
+                        "expectation_type": exp_type,
+                        "severity": severity,
+                        "passed": False,
+                        "message": f"Mandatory columns missing from record: {sorted(missing_cols)}.",
+                        "details": {"missing_columns": sorted(missing_cols)},
+                    }
+                )
+            elif missing_cols and len(record_cols) > 15:
+                contract_findings.append(
+                    {
+                        "rule": "TABLE_COLUMNS_MATCH_SET",
+                        "expectation_type": exp_type,
+                        "severity": "WARNING",
+                        "passed": False,
+                        "message": f"Attributes missing from record: {sorted(missing_cols)}.",
+                        "details": {"missing_columns": sorted(missing_cols)},
+                    }
+                )
+            if exact_match:
+                extra_cols = record_cols - set(col_set)
+                if extra_cols:
+                    contract_findings.append(
+                        {
+                            "rule": "TABLE_COLUMNS_EXACT_MATCH",
+                            "expectation_type": exp_type,
+                            "severity": severity,
+                            "passed": False,
+                            "message": f"Unexpected extra columns found in record: {sorted(extra_cols)}.",
+                            "details": {"extra_columns": sorted(extra_cols)},
+                        }
+                    )
+
+        # Record-level column evaluations
         for rec in records:
-            for exp in expectations:
-                exp_type = exp.get("expectation_type")
+            for exp in column_expectations:
+                exp_type = str(exp.get("expectation_type") or "")
                 kwargs = exp.get("kwargs", {})
                 meta = exp.get("meta", {})
                 severity = meta.get("severity", "ERROR")
@@ -530,51 +595,6 @@ def validate_lineage_and_contract(state: DMTATargetState) -> dict[str, Any]:
                                     "passed": False,
                                     "message": f"Value '{val}' in '{col_name}' is not numeric.",
                                     "details": {"value": val},
-                                }
-                            )
-
-                elif exp_type == "expect_table_columns_to_match_set":
-                    col_set = kwargs.get("column_set", [])
-                    exact_match = kwargs.get("exact_match", False)
-                    record_cols = set(rec.keys())
-                    missing_cols = set(col_set) - record_cols
-                    # Record warning for record-level triage when querying subset of mart attributes;
-                    # enforce fatal breach only when exact_match is required
-                    if missing_cols and exact_match:
-                        if severity == "CRITICAL_FATAL":
-                            has_fatal_contract_breach = True
-                        contract_findings.append(
-                            {
-                                "rule": "TABLE_COLUMNS_MATCH_SET",
-                                "expectation_type": exp_type,
-                                "severity": severity,
-                                "passed": False,
-                                "message": f"Mandatory columns missing from record: {sorted(missing_cols)}.",
-                                "details": {"missing_columns": sorted(missing_cols)},
-                            }
-                        )
-                    elif missing_cols and len(record_cols) > 15:
-                        contract_findings.append(
-                            {
-                                "rule": "TABLE_COLUMNS_MATCH_SET",
-                                "expectation_type": exp_type,
-                                "severity": "WARNING",
-                                "passed": False,
-                                "message": f"Attributes missing from record: {sorted(missing_cols)}.",
-                                "details": {"missing_columns": sorted(missing_cols)},
-                            }
-                        )
-                    if exact_match:
-                        extra_cols = record_cols - set(col_set)
-                        if extra_cols:
-                            contract_findings.append(
-                                {
-                                    "rule": "TABLE_COLUMNS_EXACT_MATCH",
-                                    "expectation_type": exp_type,
-                                    "severity": severity,
-                                    "passed": False,
-                                    "message": f"Unexpected extra columns found in record: {sorted(extra_cols)}.",
-                                    "details": {"extra_columns": sorted(extra_cols)},
                                 }
                             )
 

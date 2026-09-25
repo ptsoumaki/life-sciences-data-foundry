@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "life-sciences-data-foundry"
-version = "0.4.0"
+version = "0.5.0"
 description = "Enterprise GxP-compliant multi-omics foundry & clinical normalization engine"
 authors = [{ name = "Vivi Tsoumaki", email = "ptsoumaki@gmail.com" }]
 readme = "README.md"
@@ -20,6 +20,8 @@ dependencies = [
     "mcp>=0.1.0",
     "matplotlib>=3.7.0",
     "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "pyarrow>=14.0.0",
 ]
 
 [project.optional-dependencies]
@@ -97,7 +99,7 @@ ignore_missing_imports = true
 minversion = "8.0"
 testpaths = ["tests/unit", "tests/integration"]
 python_files = ["test_*.py"]
-addopts = "-v --strict-markers"
+addopts = "-v -s --strict-markers"
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",

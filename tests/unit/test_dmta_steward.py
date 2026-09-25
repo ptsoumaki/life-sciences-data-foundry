@@ -168,6 +168,29 @@ def test_query_target_mart_in_memory_and_file(tmp_path):
     assert res_none["evidence_summary"]["max_tractability_score"] == 0.0
     assert res_none["evidence_summary"]["total_cohort_size"] == 0
 
+    # 5. Delta log checkpoint exclusion test
+    mart_dir = tmp_path / "delta_mart"
+    mart_dir.mkdir()
+    delta_log = mart_dir / "_delta_log"
+    delta_log.mkdir()
+
+    import pandas as pd
+
+    df_data = pd.DataFrame([{"target_gene_symbol": "BRAF", "odds_ratio": 2.5, "p_value": 0.01}])
+    df_data.to_parquet(mart_dir / "part-00000.parquet")
+
+    df_checkpoint = pd.DataFrame([{"txn": {"appId": "test", "version": 1}}])
+    df_checkpoint.to_parquet(delta_log / "00000000000000000010.checkpoint.parquet")
+
+    state_checkpoint: DMTATargetState = {
+        "target_gene_symbol": "BRAF",
+        "target_mart_path": mart_dir.as_posix(),
+    }
+    res_ckpt = query_target_mart(state_checkpoint)
+    assert len(res_ckpt["evidence_records"]) == 1
+    assert res_ckpt["evidence_records"][0]["target_gene_symbol"] == "BRAF"
+    assert len(res_ckpt["errors"]) == 0
+
 
 def test_validate_lineage_and_contract(tmp_path):
     """Validates Great Expectations target contract evaluation and Delta commit lineage verification."""

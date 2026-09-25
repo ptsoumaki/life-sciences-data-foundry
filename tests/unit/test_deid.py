@@ -245,3 +245,31 @@ def test_deid_empty_dataframe(spark: SparkSession):
     deid = HIPAADeIdentifier()
     df_res = deid.deidentify_cohort(df_empty)
     assert df_res.count() == 0
+
+
+def test_person_source_value_masking(spark: SparkSession):
+    """Verifies that person_source_value is pseudonymized per HIPAA Safe Harbor rules."""
+    schema = StructType(
+        [
+            StructField("person_id", LongType(), False),
+            StructField("person_source_value", StringType(), False),
+            StructField("year_of_birth", IntegerType(), False),
+            StructField("birth_datetime", StringType(), True),
+        ]
+    )
+    data = [
+        (101, "MRN_CONFIDENTIAL_12345", 1985, "1985-06-15T00:00:00Z"),
+        (102, "PATIENT_RAW_99999", 1990, "1990-01-01T00:00:00Z"),
+    ]
+    df_person = spark.createDataFrame(data, schema)
+
+    deid = HIPAADeIdentifier(salt="TEST_MRN_SALT")
+    df_deid = deid.deidentify_person(df_person, reference_year=2026)
+
+    rows = df_deid.collect()
+    for r in rows:
+        # Original raw MRN / patient ID must be completely removed
+        assert "MRN_CONFIDENTIAL" not in r["person_source_value"]
+        assert "PATIENT_RAW" not in r["person_source_value"]
+        # Pseudonymized source value should start with PSEUDO_ and contain the pseudonymous ID
+        assert r["person_source_value"] == f"PSEUDO_{r['person_id']}"

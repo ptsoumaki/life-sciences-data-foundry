@@ -7,12 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-25
+
 ### Added
 - **End-to-End Analytical Showcase & Demonstration (`notebooks/clinical_multiomics_showcase.py`, `notebooks/clinical_multiomics_showcase.ipynb`, `notebooks/README.md`)**:
   - Implemented an interactive, production-grade 9-stage analytical showcase executable both as a headless CLI script and as a Databricks/Jupyter notebook.
   - Guided execution through Bronze multi-modal ingestion (EHR clinical demographics, diagnoses, LOINC chemistry panels, VCF v4.2 variants), Silver GxP quality filtering with dead-letter Delta Lake quarantine routing, Gold OMOP CDM v5.4 semantic normalization (`PERSON`, `CONDITION_OCCURRENCE`, `MEASUREMENT`) with Liquid Clustering, cohort phenotyping, and HIPAA Safe Harbor de-identification (HMAC-SHA256 pseudonymization, date shifting, age 89+ capping).
   - Executed longitudinal time-to-event (TTE) survival analysis computing non-parametric Kaplan-Meier curves and Greenwood standard errors stratified by ClinVar pathogenic genomic variants, rendering publication-grade 300 DPI step survival curves with 95% confidence intervals and right-censoring tick marks.
-  - Evaluated Target Discovery & Phenotypic Evidence Mart associations and performed autonomous regulatory compliance audits via the LangGraph GxP State Graph Auditor (FDA 21 CFR §11.50).
+  - Evaluated and persisted Target Discovery & Phenotypic Evidence Mart Delta tables with Liquid Clustering, executed autonomous target feasibility triage via the LangGraph DMTA Target Steward with FDA 21 CFR §11.50 electronic signatures, and performed autonomous regulatory compliance audits via the LangGraph GxP State Graph Auditor.
 - **Databricks Asset Bundle Showcase Task (`resources/omop_pipeline_job.yml`)**:
   - Added `execute_analytical_showcase` task definition executing the showcase notebook across `dev`, `staging`, and `prod` targets.
 - **Showcase Unit Test Suite (`tests/unit/test_showcase_notebook.py`)**:
@@ -30,6 +32,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Registered both discovery endpoints on `FoundryMCPServer`, raising total registered tools to 13.
 - **Agentic DMTA Unit Test Suite (`tests/unit/test_dmta_steward.py`, `tests/unit/test_mcp_server.py`)**:
   - Added comprehensive PyTest suite covering graph compilation, hypothesis parsing, target evidence querying, contract validation, discontinuous Delta commit detection, 21 CFR §11.50 electronic signatures, end-to-end feasibility triage, and CLI execution.
+
+### Fixed
+- **HIPAA Safe Harbor Source Value Masking (`analytical-layer/cohorts/deid.py`)**:
+  - Masked cleartext `person_source_value` with `PSEUDO_<id>` in `deidentify_person` and `deidentify_longitudinal_table`, eliminating cleartext MRN/patient ID leakage in de-identified research cohorts.
+- **Biostatistical Survival Mart Fallback Censoring (`analytical-layer/cohorts/survival.py`)**:
+  - Wired `SurvivalConfig.default_censor_window_days` via `date_add` into fallback censoring when observation, cohort end, and administrative study end dates are missing, preventing null `time_to_event_days` in `SURVIVAL_FRAME_SCHEMA`.
+- **Genomic Variant VCF Token Safety & OMOP Date Support (`analytical-layer/omop_cdm_v54/genomic_variants.py`)**:
+  - Enforced fixed 7-token colon-delimited format in `value_source_value` by coalescing missing VCF IDs and annotation tags to `.`, preventing downstream regex parsing token shift; added optional `default_measurement_date` parameter for OMOP CDM v5.4 date compliance.
+- **Discovery Target Mart Empty Cohort Isolation (`analytical-layer/discovery/target_mart.py`)**:
+  - Added explicit zero-record short-circuiting in `extract_target_variant_carriers` and `extract_phenotype_diagnoses` when `df_cohort` is empty, preventing accidental cohort filter bypass and data leakage across the broader lakehouse.
+- **Patient Feature Store Multi-Episode Anchoring (`analytical-layer/cohorts/features.py`)**:
+  - Anchored condition lookback windows, Charlson Comorbidity Index calculations, and baseline biomarker aggregations to full episode primary keys (`cohort_definition_id`, `subject_id`, `cohort_start_date`), eliminating Cartesian explosion and cross-contamination across multiple cohort episodes for the same subject.
+- **Enterprise Exception Handling & Tiered Delta Fallback (`analytical-layer/cohorts/builder.py`, `governance/mlflow_tracker.py`)**:
+  - Replaced broad `Exception` clauses with specific `(GreatExpectationsError, KeyError, ValueError)` in Great Expectations context initialization and `(AnalysisException, OSError)` in cohort persistence with tiered Delta and Parquet fallbacks.
 
 ## [0.4.0] - 2026-09-21
 

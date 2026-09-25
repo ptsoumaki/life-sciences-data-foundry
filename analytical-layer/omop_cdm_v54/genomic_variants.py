@@ -14,6 +14,8 @@ from pyspark.sql.functions import (
     concat_ws,
     lit,
     regexp_extract,
+    to_date,
+    to_timestamp,
     when,
     xxhash64,
 )
@@ -27,6 +29,7 @@ from omop_cdm_v54.vocabularies import (
 def transform_genomic_variants(
     df_silver_genomics: DataFrame,
     concept_mappings: dict[str, int] | None = None,
+    default_measurement_date: str | None = None,
 ) -> DataFrame:
     """Transforms Silver-tier VCF variant records into OMOP CDM v5.4 MEASUREMENT format.
 
@@ -39,6 +42,8 @@ def transform_genomic_variants(
         df_silver_genomics: Silver-tier DataFrame derived from a parsed VCF file.
         concept_mappings: Optional custom dictionary mapping ClinVar CLNSIG strings to concept IDs.
             Defaults to mappings loaded from governance/concept_mappings.json.
+        default_measurement_date: Optional ISO date string (YYYY-MM-DD) assigned to measurement_date
+            and measurement_datetime when sequencing collection dates are known. Defaults to None (NULL).
 
     Returns:
         OMOP MEASUREMENT DataFrame with all CDM v5.4 required columns.
@@ -67,6 +72,27 @@ def transform_genomic_variants(
 
     value_concept_expr = build_concept_lookup(col("clinvar_sig"), clinvar_map, default_val=0)
 
+    # Safe token expressions to guarantee 7 fixed colon-delimited tokens in value_source_value
+    # Format: chrom:pos:ref:alt:id:gene_symbol:clinvar_sig (prevents token shifting when ID or tags are null/empty)
+    safe_id_expr = coalesce(when(col("id") == "", lit(".")).otherwise(col("id")), lit("."))
+    safe_gene_expr = coalesce(
+        when(col("gene_symbol") == "", lit(".")).otherwise(col("gene_symbol")), lit(".")
+    )
+    safe_clinvar_expr = coalesce(
+        when(col("clinvar_sig") == "", lit(".")).otherwise(col("clinvar_sig")), lit(".")
+    )
+
+    meas_date_expr = (
+        to_date(lit(default_measurement_date))
+        if default_measurement_date is not None
+        else lit(None).cast("date")
+    )
+    meas_datetime_expr = (
+        to_timestamp(lit(default_measurement_date))
+        if default_measurement_date is not None
+        else lit(None).cast("timestamp")
+    )
+
     return df_annotated.select(
         xxhash64(
             concat_ws(
@@ -77,23 +103,15 @@ def transform_genomic_variants(
                 col("pos"),
                 col("ref"),
                 col("alt"),
-                col("id"),
+                safe_id_expr,
             )
         )
         .cast("long")
         .alias("measurement_id"),
         xxhash64(col("patient_id_ref")).cast("long").alias("person_id"),
         lit(35917873).cast("integer").alias("measurement_concept_id"),
-        lit(None)
-        .cast("date")
-        .alias(
-            "measurement_date"
-        ),  # OMOP CDM: NULL — VCF fileDate is a file-level header, not a per-variant attribute.
-        lit(None)
-        .cast("timestamp")
-        .alias(
-            "measurement_datetime"
-        ),  # OMOP CDM: NULL — no per-variant call timestamp available in VCF format.
+        meas_date_expr.alias("measurement_date"),
+        meas_datetime_expr.alias("measurement_datetime"),
         lit(4182210).cast("integer").alias("measurement_type_concept_id"),  # Lab/EHR Record
         coalesce(
             when(col("qual") == ".", lit(0.0)).otherwise(col("qual")).cast("double"), lit(0.0)
@@ -109,9 +127,9 @@ def transform_genomic_variants(
             col("pos"),
             col("ref"),
             col("alt"),
-            col("id"),
-            col("gene_symbol"),
-            col("clinvar_sig"),
+            safe_id_expr,
+            safe_gene_expr,
+            safe_clinvar_expr,
         )
         .cast("string")
         .alias("value_source_value"),

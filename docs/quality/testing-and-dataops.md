@@ -127,7 +127,7 @@ python pipelines/provenance.py \
     --input-files "analytical-layer/data/sample.fastq" "analytical-layer/data/genomic_variants.vcf" \
     --summary-file "ingestion_summary.json" \
     --output-manifest "mock_data/out/provenance_manifest.json" \
-    --pipeline-version "0.4.0" \
+    --pipeline-version "0.5.0" \
     --delta-log-dir "mock_data/out/omop/gold/measurement"
 ```
 

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-25
+
 ### Added
 - **End-to-End Analytical Showcase & Demonstration (`notebooks/clinical_multiomics_showcase.py`, `notebooks/clinical_multiomics_showcase.ipynb`, `notebooks/README.md`)**:
   - Implemented an interactive, production-grade 9-stage analytical showcase executable both as a headless CLI script and as a Databricks/Jupyter notebook.
@@ -30,6 +32,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Registered both discovery endpoints on `FoundryMCPServer`, raising total registered tools to 13.
 - **Agentic DMTA Unit Test Suite (`tests/unit/test_dmta_steward.py`, `tests/unit/test_mcp_server.py`)**:
   - Added comprehensive PyTest suite covering graph compilation, hypothesis parsing, target evidence querying, contract validation, discontinuous Delta commit detection, 21 CFR §11.50 electronic signatures, end-to-end feasibility triage, and CLI execution.
+
+### Fixed
+- **HIPAA Safe Harbor Source Value Masking (`analytical-layer/cohorts/deid.py`)**:
+  - Masked cleartext `person_source_value` with `PSEUDO_<id>` in `deidentify_person` and `deidentify_longitudinal_table`, eliminating cleartext MRN/patient ID leakage in de-identified research cohorts.
+- **Biostatistical Survival Mart Fallback Censoring (`analytical-layer/cohorts/survival.py`)**:
+  - Wired `SurvivalConfig.default_censor_window_days` via `date_add` into fallback censoring when observation, cohort end, and administrative study end dates are missing, preventing null `time_to_event_days` in `SURVIVAL_FRAME_SCHEMA`.
+- **Genomic Variant VCF Token Safety & OMOP Date Support (`analytical-layer/omop_cdm_v54/genomic_variants.py`)**:
+  - Enforced fixed 7-token colon-delimited format in `value_source_value` by coalescing missing VCF IDs and annotation tags to `.`, preventing downstream regex parsing token shift; added optional `default_measurement_date` parameter for OMOP CDM v5.4 date compliance.
+- **Discovery Target Mart Empty Cohort Isolation (`analytical-layer/discovery/target_mart.py`)**:
+  - Added explicit zero-record short-circuiting in `extract_target_variant_carriers` and `extract_phenotype_diagnoses` when `df_cohort` is empty, preventing accidental cohort filter bypass and data leakage across the broader lakehouse.
+- **Patient Feature Store Multi-Episode Anchoring (`analytical-layer/cohorts/features.py`)**:
+  - Anchored condition lookback windows, Charlson Comorbidity Index calculations, and baseline biomarker aggregations to full episode primary keys (`cohort_definition_id`, `subject_id`, `cohort_start_date`), eliminating Cartesian explosion and cross-contamination across multiple cohort episodes for the same subject.
+- **Enterprise Exception Handling & Tiered Delta Fallback (`analytical-layer/cohorts/builder.py`, `governance/mlflow_tracker.py`)**:
+  - Replaced broad `Exception` clauses with specific `(GreatExpectationsError, KeyError, ValueError)` in Great Expectations context initialization and `(AnalysisException, OSError)` in cohort persistence with tiered Delta and Parquet fallbacks.
 
 ## [0.4.0] - 2026-09-21
 

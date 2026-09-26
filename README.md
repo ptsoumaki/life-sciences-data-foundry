@@ -1,7 +1,7 @@
 # Enterprise Life Sciences Data Engineering Foundry 🧬
 
 [![DataOps CI/CD Gate](https://github.com/ptsoumaki/life-sciences-data-foundry/actions/workflows/tf-lint.yml/badge.svg)](https://github.com/ptsoumaki/life-sciences-data-foundry/actions/workflows/tf-lint.yml)
-![Version](https://img.shields.io/badge/version-0.4.0-informational)
+![Version](https://img.shields.io/badge/version-0.5.0-informational)
 ![Compliance](https://img.shields.io/badge/Compliance-FDA%2021%20CFR%20Part%2011-blue)
 ![Architecture](https://img.shields.io/badge/Architecture-OMOP%20CDM%20v5.4%20%7C%20Medallion-orange)
 ![Storage](https://img.shields.io/badge/Storage-Delta%20Lake%203.1-green)
@@ -23,7 +23,7 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
 | **Analytical Cohorts & Survival** | OHDSI phenotyping, HIPAA Safe Harbor de-identification, Kaplan-Meier TTE modeling, and ML-ready feature store with Charlson Comorbidity Index |
 | **Multi-Omics Pipeline** | Nextflow DSL2 workflow chaining FastQC, bcftools, MultiQC, and OMOP CDM ingestion |
 | **Target Discovery Lakehouse** | Target-to-phenotype evidence mart, tractability scoring, and Haldane-Anscombe phenotypic odds ratios |
-| **Agentic Compliance Audit** | LangGraph state-graph auditor + FastMCP server with HITL 21 CFR §11.50 sign-off |
+| **Agentic DMTA & Audit** | LangGraph DMTA Target Steward + GxP state-graph auditor + FastMCP discovery/governance server |
 | **Agent Guidelines & Skills** | Repository architecture instructions (`AGENTS.md`) and 7 GxP workspace skills (`.agents/skills/`) |
 | **Cloud-Native IaC** | Databricks Asset Bundles + Terraform provisioning AWS S3 WORM (`COMPLIANCE` mode) |
 
@@ -42,7 +42,7 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
 | **Target Discovery & DMTA** | [`analytical-layer/discovery/`](analytical-layer/discovery/) | Target tractability, phenotypic odds ratios, ClinVar biomarker evidence mart |
 | **Delta Lake ACID** | [`analytical-layer/medallion/`](analytical-layer/medallion/) | Transactional reliability, schema evolution, time-travel, Liquid Clustering |
 | **GxP Quarantine & Remediation** | [`analytical-layer/medallion/quarantine.py`](analytical-layer/medallion/quarantine.py) | Dead-letter Delta sinks, ALCOA+ raw JSON preservation, batch quality gates, vocabulary replay |
-| **Agentic GxP Audit / MCP** | [`agentic-ai/graph_auditor.py`](agentic-ai/graph_auditor.py) · [`agentic-ai/mcp_server.py`](agentic-ai/mcp_server.py) | Autonomous lineage audit with HITL electronic sign-offs & AI discovery interface |
+| **Agentic DMTA & Audit / MCP** | [`agentic-ai/dmta_target_steward.py`](agentic-ai/dmta_target_steward.py) · [`agentic-ai/graph_auditor.py`](agentic-ai/graph_auditor.py) · [`agentic-ai/mcp_server.py`](agentic-ai/mcp_server.py) | Autonomous target feasibility triage, lineage audit with 21 CFR §11.50 sign-offs & FastMCP discovery interface |
 | **AWS S3 Object Lock** | [`terraform/storage_and_compute.tf`](terraform/storage_and_compute.tf) | WORM storage preventing unauthorized deletion of clinical records |
 
 ---
@@ -91,9 +91,9 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
                    ├───────────────────────────────────┐
                    ▼                                   ▼
           ┌───────────────────┐               ┌───────────────────┐
-          │ LangGraph Auditor │               │ Analytical Cohort │
-          │ FastMCP Server    │               │ & Survival Marts  │
-          │ (Agentic GxP)     │               │ (HIPAA De-ID/ML)  │
+          │ DMTA Steward /    │               │ Analytical Cohort │
+          │ LangGraph Auditor │               │ & Survival Marts  │
+          │ FastMCP Discovery │               │ (HIPAA De-ID/ML)  │
           └───────────────────┘               └───────────────────┘
 ```
 
@@ -105,7 +105,7 @@ A production-grade, GxP-compliant data engineering platform for Biopharma R&D �
 life-sciences-data-foundry/
 ├── .agents/              # Workspace skills & agent runbooks
 ├── .github/              # CI/CD workflows & automated quality gates
-├── agentic-ai/           # FastMCP server & LangGraph GxP compliance auditor
+├── agentic-ai/           # FastMCP server, DMTA target triage steward & LangGraph GxP auditor
 ├── analytical-layer/     # PySpark OMOP CDM v5.4 normalization & Medallion engine
 │   ├── cohorts/          # OHDSI phenotyping, HIPAA de-id, survival analysis & feature store
 │   ├── discovery/        # Target discovery evidence mart & phenotypic odds ratio engine
@@ -113,6 +113,7 @@ life-sciences-data-foundry/
 │   └── omop_cdm_v54/     # Domain transformers & open data connectors
 ├── docs/                 # Platform documentation hub
 ├── governance/           # Great Expectations contracts & MLflow GxP lineage tracking
+├── notebooks/            # Interactive clinical & multi-omics showcase notebooks
 ├── pipelines/            # Nextflow DSL2 orchestration & AWS Batch compute modules
 ├── scripts/              # Environment bootstrapping (PowerShell & POSIX)
 ├── terraform/            # Cloud IaC (AWS S3 WORM, KMS, IAM)
@@ -162,6 +163,7 @@ life-sciences-data-foundry/
 | Analytical Layer | [`analytical-layer/README.md`](analytical-layer/README.md) |
 | Governance & GxP | [`governance/README.md`](governance/README.md) |
 | Workflow Pipelines | [`pipelines/README.md`](pipelines/README.md) |
+| Showcase Notebooks | [`notebooks/README.md`](notebooks/README.md) |
 | Agentic AI Tier | [`agentic-ai/README.md`](agentic-ai/README.md) |
 | Agent Guidelines & Skills | [`AGENTS.md`](AGENTS.md) · [`.agents/skills/`](.agents/skills/) |
 | Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) |

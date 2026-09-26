@@ -2,6 +2,8 @@
 Unit tests for omop_cdm_v54.genomic_variants domain transformer.
 """
 
+from datetime import date
+
 from omop_cdm_v54.genomic_variants import transform_genomic_variants
 
 
@@ -151,3 +153,81 @@ def test_transform_genomic_variants_patient_sample_id_resolution(spark):
     assert row["measurement_id"] > 0
     assert isinstance(row["person_id"], int)
     assert row["person_id"] > 0
+
+
+def test_transform_genomic_variants_null_id_token_stability(spark):
+    """Verifies that missing or null VCF ID fields do not shift downstream token indices."""
+    data = [
+        (
+            "chr17",
+            41245466,
+            "G",
+            "A",
+            None,  # Null VCF ID
+            "99.0",
+            "PASS",
+            "GENE=BRCA1;CLNSIG=Pathogenic",
+            "P1",
+            "S1",
+        ),
+        (
+            "chr13",
+            32906729,
+            "A",
+            "C",
+            "",  # Empty string VCF ID
+            "90.0",
+            "PASS",
+            "GENE=BRCA2;CLNSIG=Benign",
+            "P2",
+            "S2",
+        ),
+    ]
+    df = spark.createDataFrame(
+        data,
+        ["chrom", "pos", "ref", "alt", "id", "qual", "filter", "info", "patient_id", "sample_id"],
+    )
+
+    rows = transform_genomic_variants(df).collect()
+    assert len(rows) == 2
+
+    for row in rows:
+        tokens = row["value_source_value"].split(":")
+        # Format must have exactly 7 tokens: chrom:pos:ref:alt:id:gene_symbol:clinvar_sig
+        assert len(tokens) == 7
+        assert tokens[4] == "."  # Token 5 is safely '.'
+    tokens_0 = rows[0]["value_source_value"].split(":")
+    assert tokens_0[5] == "BRCA1"
+    assert tokens_0[6] == "Pathogenic"
+
+    tokens_1 = rows[1]["value_source_value"].split(":")
+    assert tokens_1[5] == "BRCA2"
+    assert tokens_1[6] == "Benign"
+
+
+def test_transform_genomic_variants_default_measurement_date(spark):
+    """Verifies that providing default_measurement_date assigns non-null OMOP dates."""
+    data = [
+        (
+            "chr17",
+            41245466,
+            "G",
+            "A",
+            "rs80357906",
+            "99.0",
+            "PASS",
+            "GENE=BRCA1;CLNSIG=Pathogenic",
+            "P1",
+            "S1",
+        )
+    ]
+    df = spark.createDataFrame(
+        data,
+        ["chrom", "pos", "ref", "alt", "id", "qual", "filter", "info", "patient_id", "sample_id"],
+    )
+
+    row = transform_genomic_variants(df, default_measurement_date="2024-03-15").first()
+    assert row is not None
+    assert row["measurement_date"] == date(2024, 3, 15)
+    assert row["measurement_datetime"] is not None
+    assert "2024-03-15" in str(row["measurement_datetime"])

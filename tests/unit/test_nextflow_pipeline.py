@@ -41,13 +41,13 @@ def test_generate_provenance_manifest_basic(tmp_path: Path):
     manifest = generate_provenance_manifest(
         input_files=[str(fastq_file), str(vcf_file)],
         output_manifest_path=str(manifest_out),
-        pipeline_version="0.4.0",
+        pipeline_version="0.5.0",
         workflow_session_id="test-session-123",
         summary_file=str(summary_file),
     )
 
     assert manifest["pipeline_name"] == "life-sciences-data-foundry-pipeline"
-    assert manifest["pipeline_version"] == "0.4.0"
+    assert manifest["pipeline_version"] == "0.5.0"
     assert manifest["workflow_session_id"] == "test-session-123"
     assert manifest["compliance"]["regulatory_standard"] == "FDA 21 CFR Part 11 (§11.10, §11.50)"
     assert manifest["compliance"]["hash_algorithm"] == "SHA-256"
@@ -66,7 +66,7 @@ def test_generate_provenance_manifest_basic(tmp_path: Path):
 def test_resolve_default_pipeline_version():
     """Verifies that resolve_default_pipeline_version dynamically parses nextflow.config."""
     resolved = resolve_default_pipeline_version()
-    assert resolved == "0.4.0"
+    assert resolved == "0.5.0"
 
 
 def test_generate_provenance_manifest_default_version(tmp_path: Path):
@@ -79,7 +79,7 @@ def test_generate_provenance_manifest_default_version(tmp_path: Path):
         input_files=[str(test_file)],
         output_manifest_path=str(out_file),
     )
-    assert manifest["pipeline_version"] == "0.4.0"
+    assert manifest["pipeline_version"] == "0.5.0"
 
 
 def test_validate_provenance_manifest_tampering(tmp_path: Path):

@@ -22,6 +22,7 @@ if agentic_dir not in sys.path:
 from mcp_server import (  # noqa: E402
     FoundryMCPServer,
     tool_get_pipeline_execution_state,
+    tool_get_target_biomarker_profile,
     tool_inspect_data_contract,
     tool_inspect_delta_table_log,
     tool_inspect_omop_table_schema,
@@ -32,7 +33,10 @@ from mcp_server import (  # noqa: E402
     tool_query_vocabulary_mappings,
     tool_validate_clinical_record,
     tool_verify_gxp_audit_lineage,
+    tool_verify_target_lineage,
 )
+
+from governance.crypto import is_valid_sha256  # noqa: E402
 
 
 def test_mcp_server_initialization_and_tool_list():
@@ -44,7 +48,7 @@ def test_mcp_server_initialization_and_tool_list():
     async def _check():
         tools = await server.list_tools()
         tool_names = [t.name for t in tools]
-        assert len(tool_names) == 11
+        assert len(tool_names) == 13
 
         expected_tools = [
             "tool_lookup_icd10_to_snomed",
@@ -58,6 +62,8 @@ def test_mcp_server_initialization_and_tool_list():
             "tool_verify_gxp_audit_lineage",
             "tool_inspect_data_contract",
             "tool_validate_clinical_record",
+            "tool_get_target_biomarker_profile",
+            "tool_verify_target_lineage",
         ]
         for exp in expected_tools:
             assert exp in tool_names
@@ -403,3 +409,95 @@ def test_call_tool_via_mcp_server():
         assert res_loinc.is_error is False
 
     asyncio.run(_test())
+
+
+def test_tool_get_target_biomarker_profile(tmp_path):
+    """Validates target biomarker profiling for existing and unmapped targets."""
+    # Test not found
+    res_not_found = tool_get_target_biomarker_profile("NONEXISTENT_GENE")
+    assert res_not_found["success"] is True
+    assert res_not_found["found"] is False
+    assert res_not_found["gene_symbol"] == "NONEXISTENT_GENE"
+
+    # Test with mock target mart JSON store
+    mart_file = (tmp_path / "mock_target_mart.json").as_posix()
+    mock_records = [
+        {
+            "target_gene_symbol": "BRAF",
+            "disease_concept_id": 254637,
+            "odds_ratio": 3.45,
+            "p_value": 0.0001,
+            "target_tractability_score": 0.82,
+            "evidence_tier": "TIER_1_VALIDATED",
+            "carrier_cases": 12,
+            "carrier_controls": 8,
+            "non_carrier_cases": 40,
+            "non_carrier_controls": 140,
+            "total_cohort_size": 200,
+        },
+        {
+            "target_gene_symbol": "BRAF",
+            "disease_concept_id": 316866,
+            "odds_ratio": 2.15,
+            "p_value": 0.005,
+            "target_tractability_score": 0.74,
+            "evidence_tier": "TIER_2_CANDIDATE",
+            "carrier_cases": 10,
+            "carrier_controls": 10,
+            "non_carrier_cases": 50,
+            "non_carrier_controls": 130,
+            "total_cohort_size": 200,
+        },
+    ]
+    with open(mart_file, "w", encoding="utf-8") as f:
+        json.dump(mock_records, f)
+
+    res_braf = tool_get_target_biomarker_profile("braf", target_mart_path=mart_file)
+    assert res_braf["success"] is True
+    assert res_braf["found"] is True
+    assert res_braf["gene_symbol"] == "BRAF"
+    assert res_braf["associated_phenotypes_count"] == 2
+    assert res_braf["max_tractability_score"] == 0.82
+    assert res_braf["min_p_value"] == 0.0001
+    assert len(res_braf["records"]) == 2
+
+
+def test_tool_verify_target_lineage(tmp_path):
+    """Validates cryptographic lineage audit for Target Evidence Mart."""
+    # Test when path does not exist
+    res_missing = tool_verify_target_lineage(target_mart_path=(tmp_path / "nonexistent").as_posix())
+    assert res_missing["success"] is False
+    assert res_missing["status"] == "TARGET_MART_NOT_FOUND"
+
+    # Test with simulated Delta Lake directory containing _delta_log
+    delta_dir = tmp_path / "mock_target_delta"
+    log_dir = delta_dir / "_delta_log"
+    log_dir.mkdir(parents=True)
+
+    commit_0 = log_dir / "00000000000000000000.json"
+    commit_payload = (
+        json.dumps({"commitInfo": {"timestamp": 1726963200000, "operation": "CREATE TABLE"}})
+        + "\n"
+        + json.dumps(
+            {
+                "metaData": {
+                    "id": "mock-meta-id",
+                    "format": {"provider": "parquet"},
+                    "configuration": {"delta.enableChangeDataFeed": "true"},
+                }
+            }
+        )
+        + "\n"
+    )
+    commit_0.write_text(commit_payload, encoding="utf-8")
+
+    res_valid = tool_verify_target_lineage(
+        target_mart_path=delta_dir.as_posix(),
+        rules_path="governance/contracts/target_contract.json",
+    )
+    assert res_valid["success"] is True
+    assert res_valid["status"] == "VERIFIED"
+    assert res_valid["total_commits"] == 1
+    assert res_valid["change_data_feed_enabled"] is True
+    assert res_valid["contract_valid"] is True
+    assert is_valid_sha256(res_valid["commit_sha256"]) is True

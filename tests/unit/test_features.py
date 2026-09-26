@@ -310,3 +310,81 @@ def test_empty_feature_matrix_custom_lookback_windows(spark: SparkSession):
     assert "condition_count_60d" in df_empty.columns
     assert "condition_count_90d" in df_empty.columns
     assert "condition_count_30d" not in df_empty.columns
+
+
+def test_multi_episode_feature_matrix_anchoring(spark: SparkSession):
+    """Verifies that multiple cohort episodes for the same patient remain temporally isolated."""
+    cohort_schema = StructType(
+        [
+            StructField("cohort_definition_id", LongType(), False),
+            StructField("subject_id", LongType(), False),
+            StructField("cohort_start_date", StringType(), False),
+            StructField("cohort_end_date", StringType(), False),
+        ]
+    )
+    cohort_rows = [
+        (1001, 1, "2020-01-01", "2020-12-31"),  # Episode 1
+        (1001, 1, "2022-01-01", "2022-12-31"),  # Episode 2
+    ]
+    df_cohort = spark.createDataFrame(cohort_rows, cohort_schema)
+
+    person_schema = StructType(
+        [
+            StructField("person_id", LongType(), False),
+            StructField("gender_concept_id", LongType(), False),
+            StructField("year_of_birth", IntegerType(), False),
+        ]
+    )
+    df_person = spark.createDataFrame([(1, 8507, 1980)], person_schema)
+
+    cond_schema = StructType(
+        [
+            StructField("person_id", LongType(), False),
+            StructField("condition_concept_id", IntegerType(), False),
+            StructField("condition_start_date", StringType(), False),
+        ]
+    )
+    cond_rows = [
+        (1, 201820, "2019-06-01"),  # Diabetes (prior to Ep 1 and Ep 2)
+        (1, 4329847, "2021-06-01"),  # MI (after Ep 1, but prior to Ep 2)
+    ]
+    df_cond = spark.createDataFrame(cond_rows, cond_schema)
+
+    meas_schema = StructType(
+        [
+            StructField("person_id", LongType(), False),
+            StructField("measurement_concept_id", IntegerType(), False),
+            StructField("measurement_date", StringType(), False),
+            StructField("value_as_number", DoubleType(), True),
+            StructField("value_source_value", StringType(), True),
+            StructField("value_as_concept_id", IntegerType(), True),
+        ]
+    )
+    meas_rows = [
+        (1, 3000483, "2019-12-01", 100.0, "Glucose", 0),  # Prior to Ep 1
+        (1, 3000483, "2021-12-01", 180.0, "Glucose", 0),  # Prior to Ep 2
+    ]
+    df_meas = spark.createDataFrame(meas_rows, meas_schema)
+
+    store = PatientFeatureStore(spark)
+    df_matrix = store.build_feature_matrix(
+        df_cohort=df_cohort,
+        df_person=df_person,
+        df_condition_occurrence=df_cond,
+        df_measurement=df_meas,
+    )
+
+    rows = df_matrix.orderBy("cohort_start_date").collect()
+    assert len(rows) == 2
+
+    # Episode 1 (2020-01-01): only diabetes prior -> CCI = 1, Glucose = 100.0
+    ep1 = rows[0]
+    assert ep1["condition_count_lifetime"] == 1
+    assert ep1["charlson_comorbidity_index"] == 1
+    assert ep1["latest_glucose"] == 100.0
+
+    # Episode 2 (2022-01-01): both diabetes and MI prior -> CCI = 2, Glucose = 180.0
+    ep2 = rows[1]
+    assert ep2["condition_count_lifetime"] == 2
+    assert ep2["charlson_comorbidity_index"] == 2
+    assert ep2["latest_glucose"] == 180.0

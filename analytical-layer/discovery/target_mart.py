@@ -170,7 +170,18 @@ class TargetEvidenceMart:
 
         # Restrict to cohort population if provided
         df_meas = df_measurement
-        if df_cohort is not None and df_cohort.limit(1).count() > 0:
+        if df_cohort is not None:
+            if df_cohort.limit(1).count() == 0:
+                empty_schema = StructType(
+                    [
+                        StructField("person_id", LongType(), False),
+                        StructField("target_gene_symbol", StringType(), False),
+                        StructField("variant_count", IntegerType(), False),
+                        StructField("is_carrier", IntegerType(), False),
+                        StructField("has_pathogenic_variant", IntegerType(), False),
+                    ]
+                )
+                return self.spark.createDataFrame([], empty_schema)
             cohort_sub = df_cohort.select(
                 col("subject_id" if "subject_id" in df_cohort.columns else "person_id").alias(
                     "person_id"
@@ -274,7 +285,15 @@ class TargetEvidenceMart:
             col("condition_concept_id").isNotNull() & (col("condition_concept_id") > 0)
         )
 
-        if df_cohort is not None and df_cohort.limit(1).count() > 0:
+        if df_cohort is not None:
+            if df_cohort.limit(1).count() == 0:
+                empty_schema = StructType(
+                    [
+                        StructField("person_id", LongType(), False),
+                        StructField("disease_concept_id", LongType(), False),
+                    ]
+                )
+                return self.spark.createDataFrame([], empty_schema)
             cohort_sub = df_cohort.select(
                 col("subject_id" if "subject_id" in df_cohort.columns else "person_id").alias(
                     "person_id"

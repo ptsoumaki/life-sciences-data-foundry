@@ -63,7 +63,7 @@ class DeltaMedallionWriter:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             self.base_output_dir = os.path.join(base_dir, "data", "delta_warehouse")
         else:
-            self.base_output_dir = base_output_dir
+            self.base_output_dir = os.path.abspath(base_output_dir)
 
     def _get_table_path(self, tier: str, table_name: str) -> str:
         """Constructs canonical file path for a Medallion table tier."""
@@ -97,7 +97,19 @@ class DeltaMedallionWriter:
             writer.option("path", path).saveAsTable(uc_table)
             print(f"[DELTA] Silver table '{table_name}' saved to UC '{uc_table}' at {path}")
         else:
-            writer.save(path)
+            try:
+                writer.save(path)
+            except Exception as e:
+                if (
+                    os.name == "nt"
+                    and ("UnsatisfiedLinkError" in str(e) or "NativeIO" in str(e))
+                    and mode == "overwrite"
+                    and os.path.exists(path)
+                ):
+                    shutil.rmtree(path, ignore_errors=True)
+                    writer.save(path)
+                else:
+                    raise
             print(
                 f"[DELTA] Silver table '{table_name}' saved to {path} (mode={mode}, mergeSchema={merge_schema})"
             )
@@ -125,7 +137,19 @@ class DeltaMedallionWriter:
             writer.option("path", path).saveAsTable(uc_table)
             print(f"[DELTA] Quarantined records saved to UC '{uc_table}' at {path}")
         else:
-            writer.save(path)
+            try:
+                writer.save(path)
+            except Exception as e:
+                if (
+                    os.name == "nt"
+                    and ("UnsatisfiedLinkError" in str(e) or "NativeIO" in str(e))
+                    and mode == "overwrite"
+                    and os.path.exists(path)
+                ):
+                    shutil.rmtree(path, ignore_errors=True)
+                    writer.save(path)
+                else:
+                    raise
             print(f"[DELTA] Quarantined records saved to {path} (mode={mode})")
         return path
 
@@ -194,10 +218,22 @@ class DeltaMedallionWriter:
                 else:
                     writer.save(path)
             except Exception as e:
-                print(
-                    f"[DELTA NOTICE] Local Delta save with clusterBy API fallback ({e}). Persisting table standard Delta format."
-                )
-                writer.save(path)
+                if (
+                    os.name == "nt"
+                    and ("UnsatisfiedLinkError" in str(e) or "NativeIO" in str(e))
+                    and mode == "overwrite"
+                    and os.path.exists(path)
+                ):
+                    print(
+                        f"[DELTA NOTICE] Windows native hadoop.dll access0 exception encountered on {path}. Retrying resilient local persistence."
+                    )
+                    shutil.rmtree(path, ignore_errors=True)
+                    writer.save(path)
+                else:
+                    print(
+                        f"[DELTA NOTICE] Local Delta save with clusterBy API fallback ({e}). Persisting table standard Delta format."
+                    )
+                    writer.save(path)
             print(
                 f"[DELTA] Gold OMOP Table '{table_name}' saved to {path} (mode={mode}, clusterBy={cluster_by})"
             )

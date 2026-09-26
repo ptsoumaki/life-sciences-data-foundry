@@ -174,23 +174,23 @@ def evaluate_data_contract(
             ds: Any
             try:
                 ds = context.data_sources.add_pandas("gxp_pandas_source")
-            except Exception:
+            except (ge.exceptions.GreatExpectationsError, KeyError, ValueError):
                 ds = context.data_sources.get("gxp_pandas_source")
 
             try:
                 asset = ds.add_dataframe_asset("gxp_clinical_asset")
-            except Exception:
+            except (ge.exceptions.GreatExpectationsError, KeyError, ValueError):
                 asset = ds.get_asset("gxp_clinical_asset")
 
             try:
                 batch_def = asset.add_batch_definition_whole_dataframe("gxp_batch")
-            except Exception:
+            except (ge.exceptions.GreatExpectationsError, KeyError, ValueError):
                 batch_def = asset.get_batch_definition("gxp_batch")
 
             suite_name = suite_config.get("expectation_suite_name", "gxp_suite")
             try:
                 suite = context.suites.add(ge.ExpectationSuite(name=suite_name))
-            except Exception:
+            except (ge.exceptions.GreatExpectationsError, KeyError, ValueError):
                 suite = context.suites.get(suite_name)
 
             for exp_dict in suite_config.get("expectations", []):
@@ -217,7 +217,7 @@ def evaluate_data_contract(
                 val_def = context.validation_definitions.add(
                     ge.ValidationDefinition(name=val_def_name, data=batch_def, suite=suite)
                 )
-            except Exception:
+            except (ge.exceptions.GreatExpectationsError, KeyError, ValueError):
                 val_def = context.validation_definitions.get(val_def_name)
 
             results = val_def.run(batch_parameters={"dataframe": pdf})

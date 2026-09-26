@@ -193,6 +193,14 @@ class HIPAADeIdentifier:
                     ),
                 )
 
+        # HIPAA Safe Harbor (45 CFR §164.514(b)(2)(i)(A)):
+        # Medical record numbers, raw patient IDs, and unique account identifiers must be removed.
+        if "person_source_value" in df_deid.columns:
+            df_deid = df_deid.withColumn(
+                "person_source_value",
+                concat(lit("PSEUDO_"), pseudo_id_col.cast("string")),
+            )
+
         df_deid = df_deid.withColumn("person_id", pseudo_id_col).drop("raw_age")
         return df_deid
 
@@ -222,6 +230,12 @@ class HIPAADeIdentifier:
         for d_col in date_cols:
             if d_col in df_deid.columns:
                 df_deid = df_deid.withColumn(d_col, date_add(to_date(col(d_col)), col("_shift")))
+
+        if "person_source_value" in df_deid.columns:
+            df_deid = df_deid.withColumn(
+                "person_source_value",
+                concat(lit("PSEUDO_"), pseudo_id_col.cast("string")),
+            )
 
         df_deid = df_deid.withColumn(person_id_col, pseudo_id_col).drop("_shift")
         return df_deid

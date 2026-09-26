@@ -362,3 +362,49 @@ def test_survival_censoring_null_obs_period_fallback(spark: SparkSession):
     assert rows[0]["censoring_reason"] == "STUDY_END"
     assert rows[0]["event"] == 0
     assert rows[0]["time_to_event_days"] == 1460
+
+
+def test_survival_censoring_null_dates_default_censor_window(spark: SparkSession):
+    """Verifies that when obs_period_end, cohort_end_date, and study_end_date are all NULL,
+
+    censor date falls back to cohort_start_date + default_censor_window_days,
+    ensuring time_to_event_days is non-null per SURVIVAL_FRAME_SCHEMA.
+    """
+    config = SurvivalConfig(
+        endpoint=SurvivalEndpoint.OVERALL_SURVIVAL,
+        study_end_date=None,
+        default_censor_window_days=365,
+    )
+    builder = SurvivalMartBuilder(spark, config=config)
+
+    cohort_schema = StructType(
+        [
+            StructField("cohort_definition_id", LongType(), False),
+            StructField("subject_id", LongType(), False),
+            StructField("cohort_start_date", StringType(), False),
+            StructField("cohort_end_date", StringType(), True),
+        ]
+    )
+    df_cohort = spark.createDataFrame([(1001, 1, "2020-01-01", None)], cohort_schema)
+
+    person_schema = StructType(
+        [
+            StructField("person_id", LongType(), False),
+            StructField("gender_concept_id", LongType(), False),
+            StructField("year_of_birth", IntegerType(), False),
+        ]
+    )
+    df_person = spark.createDataFrame([(1, 8507, 1980)], person_schema)
+
+    df_surv = builder.build_survival_frame(
+        df_cohort=df_cohort,
+        df_person=df_person,
+        df_death=None,
+        df_observation_period=None,
+    )
+
+    rows = df_surv.collect()
+    assert len(rows) == 1
+    assert rows[0]["censoring_reason"] == "OBSERVATION_END"
+    assert rows[0]["event"] == 0
+    assert rows[0]["time_to_event_days"] == 365

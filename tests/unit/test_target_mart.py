@@ -519,3 +519,36 @@ def test_delta_persistence_with_liquid_clustering(
 
     finally:
         shutil.rmtree(temp_delta_dir, ignore_errors=True)
+
+
+def test_extract_target_variant_carriers_empty_cohort(
+    spark: SparkSession, target_discovery_synthetic_data
+):
+    """Verifies that providing an empty cohort restricts results to 0 rows rather than bypassing filter."""
+    mart = TargetEvidenceMart(spark)
+    df_meas = target_discovery_synthetic_data["measurement"]
+    empty_cohort = spark.createDataFrame(
+        [],
+        StructType([StructField("subject_id", LongType(), False)]),
+    )
+
+    df_carriers = mart.extract_target_variant_carriers(df_meas, df_cohort=empty_cohort)
+    assert df_carriers.count() == 0
+    assert "target_gene_symbol" in df_carriers.columns
+    assert "is_carrier" in df_carriers.columns
+
+
+def test_extract_phenotype_diagnoses_empty_cohort(
+    spark: SparkSession, target_discovery_synthetic_data
+):
+    """Verifies that providing an empty cohort restricts diagnoses to 0 rows rather than bypassing filter."""
+    mart = TargetEvidenceMart(spark)
+    df_cond = target_discovery_synthetic_data["condition"]
+    empty_cohort = spark.createDataFrame(
+        [],
+        StructType([StructField("person_id", LongType(), False)]),
+    )
+
+    df_pheno = mart.extract_phenotype_diagnoses(df_cond, df_cohort=empty_cohort)
+    assert df_pheno.count() == 0
+    assert "disease_concept_id" in df_pheno.columns

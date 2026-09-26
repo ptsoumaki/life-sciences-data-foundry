@@ -130,6 +130,9 @@ def read_http_csv(spark: SparkSession, url: str, fallback_path: str | None = Non
                 )
         pdf = pd.read_csv(io.BytesIO(content), dtype=str)
         return spark.createDataFrame(pdf)
+    except ValueError:
+        # Size-guard ValueError is an intentional programmatic sentinel; propagate to caller.
+        raise
     except Exception as e:
         if not fallback_path or not os.path.exists(fallback_path):
             raise FileNotFoundError(
@@ -296,7 +299,7 @@ def parse_vcf_to_dataframe(
         raise ValueError(f"No #CHROM header line found in VCF: {vcf_path}")
 
     vcf_columns = [c.lstrip("#").lower() for c in header_row[0].split("\t")]
-    df_data = df_raw.filter(~col("value").startswith("#CHROM"))
+    df_data = df_raw.filter(~col("value").startswith("#"))
     if max_rows:
         df_data = df_data.limit(max_rows)
     df_data = df_data.withColumn("_vcf_parts", split(col("value"), "\t"))

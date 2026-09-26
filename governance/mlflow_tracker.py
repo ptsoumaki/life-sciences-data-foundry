@@ -157,6 +157,10 @@ def evaluate_data_contract(
     else:
         run = mlflow.start_run(run_name="gxp_data_contract_gate")
 
+    # Capture run_id before entering the try block; GE suite execution may alter
+    # the MLflow active run context, making post-hoc re-queries unreliable.
+    run_id: str = getattr(getattr(run, "info", None), "run_id", None) or "unknown_run"
+
     try:
         mlflow.log_param("data_input_path", dataset_source_path or "in_memory_dataframe")
         mlflow.log_param("data_sha256", data_checksum)
@@ -267,14 +271,7 @@ def evaluate_data_contract(
         except (mlflow.exceptions.MlflowException, OSError, TypeError) as art_err:
             print(f"[MLFLOW WARNING] Could not log audit artifact: {art_err}")
 
-        # For nested runs, re-query the active run to get the current run_id rather than
-        # relying on the stale reference captured before the try block.
-        active = mlflow.active_run() if is_nested_run else None
-        run_id = (
-            active.info.run_id
-            if active is not None
-            else getattr(getattr(run, "info", None), "run_id", None) or "unknown_run"
-        )
+        # run_id was captured before the try block to ensure stability across GE execution.
         if not validation_passed:
             print(
                 f"[WARNING] GxP Data Contract Gate: {unsuccessful_expectations} expectations evaluated for review. Run ID: {run_id}"

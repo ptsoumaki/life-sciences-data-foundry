@@ -5,7 +5,6 @@ Description: Time-to-Event (TTE) & Biostatistical Survival Analysis Marts.
              analytical frames from OMOP CDM v5.4 and OHDSI COHORT tables, incorporating clinical covariates,
              administrative/observational right-censoring, multi-omics ClinVar genomic strata,
              and distributed Kaplan-Meier product-limit estimation with Greenwood standard errors.
-Author: Vivi Tsoumaki
 """
 
 import logging

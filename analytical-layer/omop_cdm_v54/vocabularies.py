@@ -17,6 +17,7 @@ Public API:
 
 import functools
 import json
+import logging
 import os
 from typing import Any
 
@@ -91,15 +92,20 @@ def _warn_on_fallback_drift(loaded: dict[str, Any]) -> None:
         ("ethnicity_to_concept", DEFAULT_ETHNICITY_MAPPINGS),
         ("clinvar_to_concept", DEFAULT_CLINVAR_MAPPINGS),
     ]
+    _log = logging.getLogger(__name__)
     for section_key, default_dict in checks:
         json_section = loaded.get(section_key, {})
         for code, fallback_id in default_dict.items():
             json_id = json_section.get(code)
             if json_id is not None and int(json_id) != fallback_id:
-                print(
-                    f"[VOCABULARY WARNING] Fallback drift in '{section_key}': "
-                    f"code='{code}' fallback={fallback_id} json={json_id}. "
-                    "Sync DEFAULT_* dict in vocabularies.py with concept_mappings.json."
+                _log.warning(
+                    "[VOCABULARY WARNING] Fallback drift in '%s': "
+                    "code='%s' fallback=%d json=%s. "
+                    "Sync DEFAULT_* dict in vocabularies.py with concept_mappings.json.",
+                    section_key,
+                    code,
+                    fallback_id,
+                    json_id,
                 )
 
 

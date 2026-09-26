@@ -15,6 +15,7 @@ import asyncio
 import glob
 import importlib
 import json
+import logging
 import os
 import re
 import sys
@@ -1281,8 +1282,10 @@ def tool_get_pipeline_execution_state(
         try:
             art_list = client.list_artifacts(target_run_id)
             artifacts = [a.path for a in art_list]
-        except Exception:
-            pass
+        except (mlflow.exceptions.MlflowException, OSError) as list_err:
+            logging.getLogger(__name__).warning(
+                "[MCP] Could not list artifacts for run '%s': %s", target_run_id, list_err
+            )
 
         return {
             "run_id": info.run_id,
@@ -1361,7 +1364,11 @@ def tool_inspect_delta_table_log(delta_table_path: str, limit: int = 10) -> dict
                         if "schemaString" in meta:
                             try:
                                 latest_schema = json.loads(meta["schemaString"])
-                            except Exception:
+                            except (json.JSONDecodeError, ValueError) as schema_err:
+                                logging.getLogger(__name__).warning(
+                                    "[MCP] Could not parse Delta schema JSON for entry; using raw string: %s",
+                                    schema_err,
+                                )
                                 latest_schema = meta["schemaString"]
                     elif "add" in entry:
                         added_files += 1
@@ -1810,8 +1817,10 @@ def tool_verify_target_lineage(
                         if "enableChangeDataFeed" in line:
                             cdf_enabled = True
                             break
-            except Exception:
-                pass
+            except OSError as cdf_err:
+                logging.getLogger(__name__).warning(
+                    "[MCP] Could not read Delta log file for CDF check: %s", cdf_err
+                )
             if cdf_enabled:
                 break
 

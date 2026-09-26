@@ -4,7 +4,6 @@ Description: HIPAA Safe Harbor De-Identification Transformer (45 CFR §164.514(b
              Applies deterministic keyed pseudonymization, patient-specific date shifting (±Δ days)
              preserving longitudinal event intervals and survival durations, age 89+ capping,
              and geographic ZIP3 truncation.
-Author: Vivi Tsoumaki
 """
 
 import os
@@ -215,7 +214,11 @@ class HIPAADeIdentifier:
         Args:
             df_table: Input DataFrame (e.g. CONDITION_OCCURRENCE or MEASUREMENT).
             person_id_col: Column name identifying the patient.
-            date_cols: List of date/timestamp columns to shift.
+            date_cols: List of date or timestamp columns to shift. Each column is
+                cast to DateType via ``to_date()`` before shifting; any time-of-day
+                component in TimestampType columns (e.g. condition_start_datetime,
+                measurement_datetime) is discarded. Pass only DateType columns when
+                preserving time precision is required.
 
         Returns:
             De-identified DataFrame with shifted dates and pseudonymous person IDs.
@@ -229,6 +232,7 @@ class HIPAADeIdentifier:
         df_deid = df_table.withColumn("_shift", shift_col)
         for d_col in date_cols:
             if d_col in df_deid.columns:
+                # date_add returns DateType; TimestampType columns are truncated to midnight.
                 df_deid = df_deid.withColumn(d_col, date_add(to_date(col(d_col)), col("_shift")))
 
         if "person_source_value" in df_deid.columns:

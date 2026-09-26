@@ -4,7 +4,6 @@ Description: Enterprise GxP Dead-Letter Quarantine Sinks and Standardized Clinic
              Isolates non-compliant clinical, observational, and genomic records in dedicated Delta Lake
              quarantine tables preserving verbatim raw JSON payloads, failure timestamps, and MLflow run IDs
              for FDA 21 CFR Part 11 audit traceability.
-Author: Vivi Tsoumaki
 """
 
 import datetime
@@ -243,7 +242,7 @@ class QuarantineDeltaWriter:
             except Exception as e:
                 if os.name == "nt" and ("UnsatisfiedLinkError" in str(e) or "NativeIO" in str(e)):
                     print(
-                        "[DELTA QUARANTINE NOTICE] Windows native hadoop.dll access0 exception encountered. Retrying resilient non-destructive persistence."
+                        "[DELTA QUARANTINE NOTICE] Windows native hadoop.dll access exception encountered. Retrying resilient non-destructive persistence."
                     )
                     # Preserve historical dead-letter records to guarantee GxP zero data loss
                     if mode == "append" and os.path.exists(path):
@@ -503,6 +502,7 @@ class QuarantineRemediationEngine:
                                 "operation": "UPDATE",
                                 "operationParameters": {},
                                 "engineInfo": "LifeSciencesDataFoundry",
+                                "dataChange": True,
                             }
                         }
                     ]
@@ -701,9 +701,10 @@ class QuarantineRemediationEngine:
         )
 
         valid_codes = [k.upper() for k, v in loinc_map.items() if not k.startswith("_") and v != 0]
-        # Include dash-stripped variants (e.g. '8480-6' and '84806') to handle format
-        # inconsistencies between stored LOINC codes and vocabulary map keys.
-        # Matches the dot-stripping expansion applied to ICD-10 codes in remediate_conditions.
+        # Include dash-stripped variants (e.g. '8480-6' → '84806') to handle format
+        # inconsistencies between stored LOINC codes and vocabulary map keys. Note that
+        # LOINC codes use dash ('-') as the delimiter, whereas ICD-10 codes use dot ('.') —
+        # the analogous expansion in remediate_conditions strips dots, not dashes.
         all_valid_loinc_codes = list(set(valid_codes) | {c.replace("-", "") for c in valid_codes})
         is_valid_date = col("parsed_lab_dt").isNotNull()
         is_non_negative = col("numeric_value").isNull() | (col("numeric_value") >= 0.0)

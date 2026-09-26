@@ -5,10 +5,8 @@ Description: LangGraph state graph auditor for agentic GxP compliance, Delta Lak
              with FDA 21 CFR §11.50 / §11.200 Electronic Signatures.
 
 Dependencies:
-    Requires `langgraph>=0.0.20`, `mlflow>=2.10.0`, `pydantic>=2.6.0`.
+    Requires `langgraph>=0.2.0`, `mlflow>=2.10.0`, `pydantic>=2.6.0`.
     Install with: `pip install -e .`
-
-Author: Vivi Tsoumaki
 """
 
 import argparse

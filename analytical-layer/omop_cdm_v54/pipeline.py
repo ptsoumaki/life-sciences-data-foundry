@@ -3,7 +3,6 @@ Module: pipeline.py
 Description: Production PySpark Medallion Lakehouse pipeline orchestrating Bronze raw ingestion,
              Silver GxP quality filtering, and Gold OMOP CDM v5.4 relational table generation.
              Supports dual execution modes ('demo' local vs 'remote' public open datasets).
-Author: Vivi Tsoumaki
 """
 
 import argparse
@@ -508,11 +507,11 @@ def run_omop_pipeline(
             print("[WARN] Cohort analytical modules are unavailable; skipping cohort construction.")
         else:
             try:
-                builder = OHDSICohortBuilder(spark)
+                cohort_builder = OHDSICohortBuilder(spark)
                 t2d_def = get_type_2_diabetes_cohort_definition()
-                df_cohort_t2d = builder.build_cohort(
+                df_cohort_t2d = cohort_builder.build_cohort(
                     definition=t2d_def,
-                    df_condition_occurrence=df_omop_condition,
+                    df_condition=df_omop_condition,
                     df_person=df_omop_person,
                     df_measurement=df_omop_measurement,
                 )
@@ -545,7 +544,7 @@ def run_omop_pipeline(
                 if save_delta:
                     effective_output_dir = output_dir or "data/delta_warehouse"
                     cohort_dir = os.path.join(effective_output_dir, "gold")
-                    builder.save_cohort(df_cohort_t2d, cohort_dir)
+                    cohort_builder.save_cohort(df_cohort_t2d, cohort_dir)
                     surv_builder.save_survival_mart(df_surv, cohort_dir)
                     feat_store.save_feature_matrix(df_features, cohort_dir)
 

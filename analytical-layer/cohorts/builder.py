@@ -4,7 +4,6 @@ Description: Configurable OHDSI Phenotyping Engine and Cohort Builder for PySpar
              Translates declarative phenotyping rules (index events, continuous observation lookbacks,
              demographic parameters, clinical exclusions, biomarker cutoffs, genomic variant status)
              into standardized OHDSI COHORT relational tables with Delta Lake Liquid Clustering.
-Author: Vivi Tsoumaki
 """
 
 import logging

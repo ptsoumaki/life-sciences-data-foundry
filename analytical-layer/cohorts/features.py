@@ -4,7 +4,6 @@ Description: ML-Ready Patient Feature Store Projections & Charlson Comorbidity I
              Transforms longitudinal OMOP CDM v5.4 clinical events, baseline biomarker panels,
              and multi-omics ClinVar genomic variants into wide, numerically-encoded,
              scikit-learn and XGBoost-ready patient feature matrices anchored around index date T0.
-Author: Vivi Tsoumaki
 """
 
 import logging

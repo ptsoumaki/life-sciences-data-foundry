@@ -4,7 +4,6 @@ Description: Enterprise PySpark Delta Lake Medallion writer providing Liquid Clu
              Schema Evolution contracts, Deletion Vectors, Change Data Feed,
              Idempotent Upsert (SCD Type 1 MERGE), Unity Catalog registration,
              and GxP storage metrology.
-Author: Vivi Tsoumaki
 """
 
 import os
@@ -217,7 +216,7 @@ class DeltaMedallionWriter:
                     writer_clustered.save(path)
                 else:
                     writer.save(path)
-            except Exception as e:
+            except DELTA_OPERATIONAL_EXCEPTIONS as e:
                 if (
                     os.name == "nt"
                     and ("UnsatisfiedLinkError" in str(e) or "NativeIO" in str(e))
@@ -225,15 +224,20 @@ class DeltaMedallionWriter:
                     and os.path.exists(path)
                 ):
                     print(
-                        f"[DELTA NOTICE] Windows native hadoop.dll access0 exception encountered on {path}. Retrying resilient local persistence."
+                        f"[DELTA NOTICE] Windows native hadoop.dll access exception encountered on {path}. Retrying resilient local persistence."
                     )
                     shutil.rmtree(path, ignore_errors=True)
                     writer.save(path)
-                else:
+                elif cluster_by and hasattr(writer, "clusterBy"):
+                    # Liquid Clustering API call failed on this runtime (e.g., Delta < 3.1).
+                    # Fall back to writing without clustering; clustering will be applied
+                    # post-write via ALTER TABLE if HAS_DELTA is available.
                     print(
-                        f"[DELTA NOTICE] Local Delta save with clusterBy API fallback ({e}). Persisting table standard Delta format."
+                        f"[DELTA NOTICE] clusterBy() unavailable on this runtime ({e}). Persisting table in standard Delta format."
                     )
                     writer.save(path)
+                else:
+                    raise
             print(
                 f"[DELTA] Gold OMOP Table '{table_name}' saved to {path} (mode={mode}, clusterBy={cluster_by})"
             )
@@ -353,9 +357,14 @@ class DeltaMedallionWriter:
             )
             try:
                 return self.write_silver_table(df, table_name, mode="append")
-            except DELTA_OPERATIONAL_EXCEPTIONS:
-                shutil.rmtree(path, ignore_errors=True)
-                return self.write_silver_table(df, table_name, mode="overwrite")
+            except DELTA_OPERATIONAL_EXCEPTIONS as append_err:
+                # Both Delta MERGE and append have failed. Re-raise rather than overwriting
+                # the existing table, which would silently destroy historical Silver records
+                # and violate GxP zero-data-loss requirements.
+                raise RuntimeError(
+                    f"[DELTA] Silver table '{table_name}' could not be updated via MERGE or append. "
+                    "Manual intervention required to preserve data integrity."
+                ) from append_err
         return path
 
     def optimize_table(self, table_path: str, zorder_by: list[str] | None = None) -> None:

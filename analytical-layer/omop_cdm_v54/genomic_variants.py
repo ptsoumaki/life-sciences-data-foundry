@@ -112,11 +112,18 @@ def transform_genomic_variants(
         lit(35917873).cast("integer").alias("measurement_concept_id"),
         meas_date_expr.alias("measurement_date"),
         meas_datetime_expr.alias("measurement_datetime"),
-        lit(4182210).cast("integer").alias("measurement_type_concept_id"),  # Lab/EHR Record
+        lit(45754907)
+        .cast("integer")
+        .alias("measurement_type_concept_id"),  # 45754907 = Lab result (OMOP Meas Type vocabulary)
         coalesce(
             when(col("qual") == ".", lit(0.0)).otherwise(col("qual")).cast("double"), lit(0.0)
         ).alias("value_as_number"),
         value_concept_expr.cast("integer").alias("value_as_concept_id"),
+        lit(0)
+        .cast("integer")
+        .alias(
+            "unit_concept_id"
+        ),  # OMOP CDM v5.4: 0 when no standard unit concept exists for VCF genomic variant records
         lit("VCF_QUAL").cast("string").alias("unit_source_value"),
         concat_ws(":", col("sample_id_ref"), col("filter"))
         .cast("string")

@@ -119,7 +119,9 @@ def test_transform_genomic_variants_qual_score_and_null_dates(spark):
 
     for row in rows:
         assert row["measurement_concept_id"] == 35917873  # Genomic variant quality assessment
-        assert row["measurement_type_concept_id"] == 4182210  # Lab/EHR Record
+        assert (
+            row["measurement_type_concept_id"] == 45754907
+        )  # Lab result (OMOP Meas Type vocabulary)
         assert row["measurement_date"] is None  # OMOP spec: NULL for global VCF dates
         assert row["measurement_datetime"] is None
         assert row["unit_source_value"] == "VCF_QUAL"

@@ -7,6 +7,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
     col,
     dayofmonth,
+    lit,
     month,
     trim,
     upper,
@@ -67,6 +68,21 @@ def transform_person(
         ethnicity_concept_expr.cast("integer").alias("ethnicity_concept_id"),
         col("raw_patient_id").cast("string").alias("person_source_value"),
         col("gender").cast("string").alias("gender_source_value"),
+        lit(0)
+        .cast("integer")
+        .alias(
+            "gender_source_concept_id"
+        ),  # OMOP CDM v5.4: 0 when no source vocabulary mapping exists
         col("race").cast("string").alias("race_source_value"),
+        lit(0)
+        .cast("integer")
+        .alias(
+            "race_source_concept_id"
+        ),  # OMOP CDM v5.4: 0 when no source vocabulary mapping exists
         col("ethnicity").cast("string").alias("ethnicity_source_value"),
+        lit(0)
+        .cast("integer")
+        .alias(
+            "ethnicity_source_concept_id"
+        ),  # OMOP CDM v5.4: 0 when no source vocabulary mapping exists
     )

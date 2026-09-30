@@ -88,6 +88,11 @@ def transform_measurement(
         .alias("measurement_type_concept_id"),  # 45754907 = Lab result (OMOP Meas Type vocabulary)
         expr("try_cast(numeric_value as double)").alias("value_as_number"),
         lit(0).cast("integer").alias("value_as_concept_id"),
+        lit(0)
+        .cast("integer")
+        .alias(
+            "unit_concept_id"
+        ),  # OMOP CDM v5.4: 0 when no standard unit concept exists; unit text preserved in unit_source_value
         col("unit_value").cast("string").alias("unit_source_value"),
         concat_ws(":", col("loinc_code"), col("test_name"))
         .cast("string")

@@ -113,4 +113,9 @@ def transform_condition_occurrence(
         .alias(
             "condition_source_concept_id"
         ),  # OMOP CDM v5.4: INTEGER; 0 when no standard source concept mapping exists
+        lit(0)
+        .cast("integer")
+        .alias(
+            "condition_status_concept_id"
+        ),  # OMOP CDM v5.4: INTEGER; 0 when source does not record a clinical condition status
     )

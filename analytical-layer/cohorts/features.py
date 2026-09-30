@@ -373,6 +373,11 @@ class PatientFeatureStore:
             df_with_cci = df_with_cci.withColumn(f"cci_{cat_name}", final_flag.cast(IntegerType()))
             cci_weight_terms.append(col(f"cci_{cat_name}") * lit(wt))
 
+        # Guard: if no CCI categories were evaluated (e.g., empty CHARLSON_CATEGORIES),
+        # return a zero CCI column to preserve schema consistency and avoid IndexError.
+        if not cci_weight_terms:
+            return df_with_cci.withColumn("charlson_comorbidity_index", lit(0).cast(IntegerType()))
+
         # Sum all weighted components
         total_cci_expr = cci_weight_terms[0]
         for term in cci_weight_terms[1:]:

@@ -252,6 +252,12 @@ def evaluate_data_contract(
             success_rate = 0.0
             validation_passed = False
             res_dict = {"success": False, "error": str(e)}
+            # Log an explicit failure indicator so audit aggregations cannot interpret
+            # (evaluated=0, failed=0) as a passing result.
+            try:
+                mlflow.log_metric("gxp_suite_execution_failed", 1.0)
+            except Exception:
+                pass
 
         # Log GxP metrics and archive the contract spec and validation result as MLflow artifacts.
         mlflow.log_metric("total_records_ingested", len(pdf))

@@ -148,11 +148,15 @@ def _load_concept_mappings_cached(resolved_path: str | None) -> dict[str, dict[s
                     ),
                     "clinvar_to_concept": data.get("clinvar_to_concept", DEFAULT_CLINVAR_MAPPINGS),
                 }
-                _warn_on_fallback_drift(result)
+                # Pass the raw JSON dict so that entirely absent sections are detected as drift,
+                # not the result dict which already carries the fallback defaults for missing sections.
+                _warn_on_fallback_drift(data)
                 return result
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
-            print(
-                f"[VOCABULARY WARNING] Failed to load {resolved_path} ({e}); using built-in defaults."
+            logging.getLogger(__name__).warning(
+                "[VOCABULARY WARNING] Failed to load %s (%s); using built-in defaults.",
+                resolved_path,
+                e,
             )
 
     return {

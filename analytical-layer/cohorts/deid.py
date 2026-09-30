@@ -15,6 +15,7 @@ from pyspark.sql.functions import (
     concat,
     date_add,
     lit,
+    pmod,
     substring,
     to_date,
     when,
@@ -87,7 +88,10 @@ class HIPAADeIdentifier:
         """Derives a deterministic patient-specific date shift column in [-max_shift, +max_shift]."""
         range_span = 2 * self.max_shift_days + 1
         raw_hash = xxhash64(concat(col(id_col).cast("string"), lit(f"{self.salt}_SHIFT")))
-        pos_mod = ((raw_hash % lit(range_span)) + lit(range_span)) % lit(range_span)
+        # pmod() always returns a non-negative result regardless of the sign of raw_hash,
+        # guaranteeing a uniform distribution across [0, range_span) even for maximally
+        # negative 64-bit hash values where Java-style % would yield a negative remainder.
+        pos_mod = pmod(raw_hash, lit(range_span))
         return (pos_mod - lit(self.max_shift_days)).cast("int")
 
     def _get_pseudonymized_id_col(self, id_col: str) -> Column:

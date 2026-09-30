@@ -62,7 +62,8 @@
     "_comment_HISPANIC": "Concept 38003563 = Hispanic or Latino",
     "NOT_HISPANIC": 38003564,
     "NON_HISPANIC": 38003564,
-    "_comment_NOT_HISPANIC": "Concept 38003564 = Not Hispanic or Latino"
+    "_comment_NOT_HISPANIC": "Concept 38003564 = Not Hispanic or Latino",
+    "_comment_NON_HISPANIC": "Concept 38003564 = Not Hispanic or Latino (alternate source string alias)"
   },
   "clinvar_to_concept": {
     "_description": "ClinVar CLNSIG variant annotations mapped to OMOP Meas Value standard concepts (MEASUREMENT.value_as_concept_id)",

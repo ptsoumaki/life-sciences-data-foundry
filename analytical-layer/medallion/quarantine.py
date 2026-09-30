@@ -7,7 +7,6 @@ Description: Enterprise GxP Dead-Letter Quarantine Sinks and Standardized Clinic
 """
 
 import datetime
-import json
 import os
 import shutil
 from enum import StrEnum
@@ -457,87 +456,29 @@ class QuarantineRemediationEngine:
             except Exception as e:
                 print(f"[REMEDIATION NOTICE] Delta MERGE update notice: {e}")
 
-        # PyArrow fallback for local/non-Delta environments where the JVM Delta MERGE path failed.
-        # Reads via the quarantine table reader (which has its own fallback chain) to ensure only
-        # committed data is processed, not stale Parquet files left behind before VACUUM runs.
+        # PyArrow fallback: mutate status in Pandas and delegate persistence to the Spark
+        # overwrite path below. Manual Delta transaction log construction is intentionally
+        # avoided here — hand-crafted log entries bypass Delta's ACID concurrency protocol
+        # and omit required metaData action fields, risking table corruption under concurrent
+        # writers. The Spark overwrite path handles Delta log integrity correctly.
         try:
             df_current = self.q_writer.read_quarantine_table(table_name)
             pdf = cast(pd.DataFrame, df_current.toPandas())
-            # Use a timezone-naive UTC datetime to match the datetime64[ns] dtype that
-            # pandas infers for the null-initialised remediation_timestamp column.
             now_dt = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
             rem_set = set(remediated_ids)
             mask = pdf["quarantine_id"].isin(rem_set)
             pdf.loc[mask, "status"] = "REMEDIATED"
             pdf.loc[mask, "remediation_timestamp"] = now_dt
-            # Track old parquet files to record in Delta transaction log if present
-            delta_log_dir = os.path.join(target_path, "_delta_log")
-            old_parquet_files = [
-                fname for fname in os.listdir(target_path) if fname.endswith(".parquet")
-            ]
-
-            for fname in old_parquet_files:
-                try:
-                    os.remove(os.path.join(target_path, fname))
-                except OSError:
-                    pass
-
             updated_table = pa.Table.from_pandas(pdf)
-            out_filename = "part-00000-remediated.parquet"
-            out_file = os.path.join(target_path, out_filename)
-            pq.write_table(updated_table, out_file)
-
-            # If _delta_log exists, commit the update action to preserve Delta transaction log integrity
-            if os.path.isdir(delta_log_dir):
-                json_commits = sorted([f for f in os.listdir(delta_log_dir) if f.endswith(".json")])
-                if json_commits:
-                    latest_idx = int(json_commits[-1].split(".")[0])
-                    next_idx = latest_idx + 1
-                    next_commit_file = os.path.join(delta_log_dir, f"{next_idx:020d}.json")
-                    now_ms = int(datetime.datetime.now(datetime.UTC).timestamp() * 1000)
-                    commit_entries: list[dict[str, Any]] = [
-                        {
-                            "commitInfo": {
-                                "timestamp": now_ms,
-                                "operation": "UPDATE",
-                                "operationParameters": {},
-                                "engineInfo": "LifeSciencesDataFoundry",
-                                "dataChange": True,
-                            }
-                        }
-                    ]
-                    for old_f in old_parquet_files:
-                        commit_entries.append(
-                            {
-                                "remove": {
-                                    "path": old_f,
-                                    "deletionTimestamp": now_ms,
-                                    "dataChange": True,
-                                }
-                            }
-                        )
-                    commit_entries.append(
-                        {
-                            "add": {
-                                "path": out_filename,
-                                "partitionValues": {},
-                                "size": os.path.getsize(out_file),
-                                "modificationTime": now_ms,
-                                "dataChange": True,
-                                "stats": json.dumps({"numRecords": len(pdf)}),
-                            }
-                        }
-                    )
-                    with open(next_commit_file, "w", encoding="utf-8") as f:
-                        for entry in commit_entries:
-                            f.write(json.dumps(entry) + "\n")
-
+            df_updated = self.spark.createDataFrame(pdf, schema=QUARANTINE_RECORD_SCHEMA)
+            self.q_writer.write_quarantine_sink(df_updated, table_name, mode="overwrite")
             print(
-                f"[REMEDIATION] Overwritten {len(remediated_ids)} records as REMEDIATED in {target_path} (pyarrow fallback)"
+                f"[REMEDIATION] Marked {len(remediated_ids)} records as REMEDIATED in {target_path} (pyarrow+spark fallback)"
             )
             return
         except Exception as pyarrow_err:
             print(f"[REMEDIATION NOTICE] PyArrow fallback notice: {pyarrow_err}")
+            del updated_table  # release before Spark fallback allocates
 
         # Secondary fallback via Spark DataFrame overwrite
         try:

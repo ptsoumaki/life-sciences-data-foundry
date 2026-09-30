@@ -142,7 +142,6 @@ class DeltaMedallionWriter:
                 if (
                     os.name == "nt"
                     and ("UnsatisfiedLinkError" in str(e) or "NativeIO" in str(e))
-                    and mode == "overwrite"
                     and os.path.exists(path)
                 ):
                     shutil.rmtree(path, ignore_errors=True)

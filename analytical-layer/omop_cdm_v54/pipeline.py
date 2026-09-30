@@ -274,7 +274,9 @@ def run_omop_pipeline(
     df_silver_genomics = df_raw_genomics.filter(valid_genomics_condition)
     df_quarantine_genomics = df_raw_genomics.filter(~valid_genomics_condition)
 
-    # Materialize counts and calculate batch quality metrics
+    # Materialize batch quality metrics while Bronze DataFrames are still cached.
+    # Silver and quarantine counts are derived arithmetically from the raw totals to avoid
+    # triggering additional full scans on un-cached downstream DataFrames.
     _raw_patients_count = df_raw_patients.count()
     _raw_diag_count = df_raw_diagnoses.count()
     _raw_labs_count = df_raw_labs.count()
@@ -286,10 +288,12 @@ def run_omop_pipeline(
     _silver_labs_count = df_silver_labs.count()
     _silver_genomics_count = df_silver_genomics.count()
 
-    _qc_patients_count = df_quarantine_clinical.count()
-    _qc_diag_count = df_quarantine_diagnoses.count()
-    _qc_labs_count = df_quarantine_labs.count()
-    _qc_genomics_count = df_quarantine_genomics.count()
+    # Quarantine counts are the complement of Silver within each domain;
+    # derive arithmetically to avoid re-scanning uncached Bronze partitions.
+    _qc_patients_count = _raw_patients_count - _silver_clinical_count
+    _qc_diag_count = _raw_diag_count - _silver_diag_count
+    _qc_labs_count = _raw_labs_count - _silver_labs_count
+    _qc_genomics_count = _raw_genomics_count - _silver_genomics_count
     total_quarantined = _qc_patients_count + _qc_diag_count + _qc_labs_count + _qc_genomics_count
 
     # Release cached Bronze DataFrames — all downstream split counts are now materialised and
